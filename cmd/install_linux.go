@@ -17,7 +17,7 @@ var (
 		Short: "Update V2bX version",
 		Run: func(_ *cobra.Command, _ []string) {
 			exec.RunCommandStd("bash",
-				"<(curl -Ls https://raw.githubusercontents.com/InazumaV/V2bX-script/master/install.sh)",
+				"<(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh)",
 				targetVersion)
 		},
 		Args: cobra.NoArgs,
@@ -37,15 +37,16 @@ func init() {
 
 func uninstallHandle(_ *cobra.Command, _ []string) {
 	var yes string
-	fmt.Println(Warn("确定要卸载 V2bX 吗?(Y/n)"))
+	fmt.Println(Warn("Are you sure you want to uninstall V2bX? | آیا مطمئنید که می‌خواهید V2bX را حذف کنید؟ (Y/n)"))
 	fmt.Scan(&yes)
 	if strings.ToLower(yes) != "y" {
-		fmt.Println("已取消卸载")
+		fmt.Println("Uninstall cancelled | حذف لغو شد")
+		return
 	}
 	_, err := exec.RunCommandByShell("systemctl stop V2bX&&systemctl disable V2bX")
 	if err != nil {
 		fmt.Println(Err("exec cmd error: ", err))
-		fmt.Println(Err("卸载失败"))
+		fmt.Println(Err("Uninstall failed | حذف ناموفق بود"))
 		return
 	}
 	_ = os.RemoveAll("/etc/systemd/system/V2bX.service")
@@ -55,8 +56,8 @@ func uninstallHandle(_ *cobra.Command, _ []string) {
 	_, err = exec.RunCommandByShell("systemctl daemon-reload&&systemctl reset-failed")
 	if err != nil {
 		fmt.Println(Err("exec cmd error: ", err))
-		fmt.Println(Err("卸载失败"))
+		fmt.Println(Err("Uninstall failed | حذف ناموفق بود"))
 		return
 	}
-	fmt.Println(Ok("卸载成功"))
+	fmt.Println(Ok("V2bX uninstalled successfully | V2bX با موفقیت حذف شد"))
 }

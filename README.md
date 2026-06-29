@@ -1,89 +1,142 @@
-# V2bX
+# V2bX — DrMobile Fork
 
-[![](https://img.shields.io/badge/TgChat-UnOfficialV2Board%E4%BA%A4%E6%B5%81%E7%BE%A4-green)](https://t.me/unofficialV2board)
-[![](https://img.shields.io/badge/TgChat-YuzukiProjects%E4%BA%A4%E6%B5%81%E7%BE%A4-blue)](https://t.me/YuzukiProjects)
+[![Release](https://img.shields.io/github/v/release/PoriyaVali/V2bX?color=blue&label=Release)](https://github.com/PoriyaVali/V2bX/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/PoriyaVali/V2bX/release.yml?label=Build)](https://github.com/PoriyaVali/V2bX/actions)
+[![License](https://img.shields.io/github/license/PoriyaVali/V2bX)](LICENSE)
 
-A V2board node server based on multi core, modified from XrayR.  
-一个基于多种内核的V2board节点服务端，修改自XrayR，支持V2ay,Trojan,Shadowsocks协议。
+A multi-core V2board node server, forked from [wyx2685/V2bX](https://github.com/wyx2685/V2bX) with updated cores and bilingual (English/Persian) interface.
 
-**注意： 本项目需要搭配[修改版V2board](https://github.com/wyx2685/v2board)**
+---
 
-## 特点
+یک سرویس نود چند هسته‌ای برای V2board، منشعب از [wyx2685/V2bX](https://github.com/wyx2685/V2bX) با هسته‌های به‌روز و رابط دوزبانه (انگلیسی/فارسی).
 
-* 永久开源且免费。
-* 支持Vmess/Vless, Trojan， Shadowsocks, Hysteria1/2多种协议。
-* 支持Vless和XTLS等新特性。
-* 支持单实例对接多节点，无需重复启动。
-* 支持限制在线IP。
-* 支持限制Tcp连接数。
-* 支持节点端口级别、用户级别限速。
-* 配置简单明了。
-* 修改配置自动重启实例。
-* 支持多种内核，易扩展。
-* 支持条件编译，可仅编译需要的内核。
+---
 
-## 功能介绍
+## Features | ویژگی‌ها
 
-| 功能        | v2ray | trojan | shadowsocks | hysteria1/2 |
-|-----------|-------|--------|-------------|----------|
-| 自动申请tls证书 | √     | √      | √           | √        |
-| 自动续签tls证书 | √     | √      | √           | √        |
-| 在线人数统计    | √     | √      | √           | √        |
-| 审计规则      | √     | √      | √           | √         |
-| 自定义DNS    | √     | √      | √           | √        |
-| 在线IP数限制   | √     | √      | √           | √        |
-| 连接数限制     | √     | √      | √           | √         |
-| 跨节点IP数限制  |√      |√       |√            |√          |
-| 按照用户限速    | √     | √      | √           | √         |
-| 动态限速(未测试) | √     | √      | √           | √         |
+- Permanently open source and free | همیشه متن‌باز و رایگان
+- Supports Vmess/Vless, Trojan, Shadowsocks, Hysteria2 | پشتیبانی از پروتکل‌های Vmess/Vless، Trojan، Shadowsocks، Hysteria2
+- Supports Vless + XTLS and Reality | پشتیبانی از Vless، XTLS و Reality
+- Single instance, multiple nodes — no restart needed | یک نمونه برای چندین نود بدون نیاز به راه‌اندازی مجدد
+- Online IP limit per user | محدودیت تعداد IP آنلاین
+- TCP connection limit | محدودیت تعداد اتصال TCP
+- Node-level and user-level speed limit | محدودیت سرعت در سطح نود و کاربر
+- Simple configuration | پیکربندی ساده
+- Auto-restart on config change | راه‌اندازی مجدد خودکار پس از تغییر تنظیمات
+- Multi-core support, easy to extend | پشتیبانی از چند هسته، قابل گسترش
 
-## TODO
+## Core Versions | نسخه هسته‌ها
 
-- [ ] 重新实现动态限速
-- [ ] 完善使用文档
+| Core | Version |
+|------|---------|
+| xray-core | v26.6.22 (wyx2685 fork) |
+| sing-box | v1.13.0-alpha.5 (wyx2685 fork) |
+| hysteria2 | v2.9.3 |
 
-## 软件安装
+## Feature Matrix | جدول قابلیت‌ها
 
-### 一键安装
+| Feature | v2ray | trojan | shadowsocks | hysteria2 |
+|---------|-------|--------|-------------|-----------|
+| Auto TLS certificate | ✓ | ✓ | ✓ | ✓ |
+| Auto TLS renewal | ✓ | ✓ | ✓ | ✓ |
+| Online user stats | ✓ | ✓ | ✓ | ✓ |
+| Audit rules | ✓ | ✓ | ✓ | ✓ |
+| Custom DNS | ✓ | ✓ | ✓ | ✓ |
+| Online IP limit | ✓ | ✓ | ✓ | ✓ |
+| Connection limit | ✓ | ✓ | ✓ | ✓ |
+| Cross-node IP limit | ✓ | ✓ | ✓ | ✓ |
+| Per-user speed limit | ✓ | ✓ | ✓ | ✓ |
 
+## Installation | نصب
+
+### Download Binary | دانلود باینری
+
+Download the latest release for your platform from:
+
+آخرین نسخه برای پلتفرم خود را از اینجا دانلود کنید:
+
+**[https://github.com/PoriyaVali/V2bX/releases](https://github.com/PoriyaVali/V2bX/releases)**
+
+### Manual Install (Linux) | نصب دستی (لینوکس)
+
+```bash
+# Download latest release for linux amd64
+# دانلود آخرین نسخه برای linux amd64
+wget -O V2bX.zip https://github.com/PoriyaVali/V2bX/releases/latest/download/V2bX-linux-amd64.zip
+unzip V2bX.zip -d V2bX-linux-amd64
+cp V2bX-linux-amd64/V2bX /usr/local/bin/V2bX
+chmod +x /usr/local/bin/V2bX
+
+# Set up config directory | ایجاد دایرکتوری تنظیمات
+mkdir -p /etc/V2bX
+cp V2bX-linux-amd64/*.json /etc/V2bX/
 ```
-wget -N https://raw.githubusercontent.com/wyx2685/V2bX-script/master/install.sh && bash install.sh
+
+### Service Setup | راه‌اندازی سرویس
+
+```bash
+# Create systemd service | ایجاد سرویس systemd
+cat > /etc/systemd/system/V2bX.service << EOF
+[Unit]
+Description=V2bX Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/V2bX run -c /etc/V2bX/config.json
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable V2bX
+systemctl start V2bX
 ```
 
-### 手动安装
+### CLI Commands | دستورات
 
-[手动安装教程](https://v2bx.v-50.me/v2bx/v2bx-xia-zai-he-an-zhuang/install/manual)
-
-## 构建
-``` bash
-# 通过-tags选项指定要编译的内核， 可选 xray， sing, hysteria2
-GOEXPERIMENT=jsonv2 go build -v -o build_assets/V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor" -trimpath -ldflags "-X 'github.com/InazumaV/V2bX/cmd.version=$version' -s -w -buildid="
+```bash
+V2bX start      # Start service   | راه‌اندازی سرویس
+V2bX stop       # Stop service    | توقف سرویس
+V2bX restart    # Restart service | راه‌اندازی مجدد
+V2bX log        # View logs       | مشاهده لاگ
+V2bX update     # Update version  | به‌روزرسانی
+V2bX uninstall  # Uninstall       | حذف
+V2bX synctime   # Sync system time| همگام‌سازی زمان
 ```
 
-## 配置文件及详细使用教程
+## Build from Source | ساخت از سورس
 
-[详细使用教程](https://v2bx.v-50.me/)
+```bash
+git clone https://github.com/PoriyaVali/V2bX.git
+cd V2bX
 
-## 免责声明
+# Build with all cores | ساخت با تمام هسته‌ها
+GOEXPERIMENT=jsonv2 go build -v -o V2bX \
+  -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor" \
+  -trimpath -ldflags "-s -w -buildid="
+```
 
-* 此项目用于本人自用，因此本人不能保证向后兼容性。
-* 由于本人能力有限，不能保证所有功能的可用性，如果出现问题请在Issues反馈。
-* 本人不对任何人使用本项目造成的任何后果承担责任。
-* 本人比较多变，因此本项目可能会随想法或思路的变动随性更改项目结构或大规模重构代码，若不能接受请勿使用。
+## Configuration | تنظیمات
 
-## 赞助
+See the [example configs](example/) for reference.
 
-[赞助链接](https://v-50.me/)
+برای مثال‌های تنظیمات به پوشه [example](example/) مراجعه کنید.
 
-## Thanks
+## Disclaimer | سلب مسئولیت
 
-* [Project X](https://github.com/XTLS/)
-* [V2Fly](https://github.com/v2fly)
-* [VNet-V2ray](https://github.com/ProxyPanel/VNet-V2ray)
-* [Air-Universe](https://github.com/crossfw/Air-Universe)
-* [XrayR](https://github.com/XrayR/XrayR)
-* [sing-box](https://github.com/SagerNet/sing-box)
+This project is provided as-is with no warranty. Use at your own risk.
 
-## Stars 增长记录
+این پروژه بدون هیچ ضمانتی ارائه می‌شود. استفاده از آن به عهده کاربر است.
 
-[![Stargazers over time](https://starchart.cc/wyx2685/V2bX.svg)](https://starchart.cc/wyx2685/V2bX)
+## Credits | تشکر
+
+- [wyx2685/V2bX](https://github.com/wyx2685/V2bX) — Original fork
+- [Project X / XTLS](https://github.com/XTLS/)
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box)
+- [apernet/hysteria](https://github.com/apernet/hysteria)
+- [XrayR](https://github.com/XrayR/XrayR)
+- [V2Fly](https://github.com/v2fly)

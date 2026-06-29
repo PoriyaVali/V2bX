@@ -33,17 +33,17 @@ func executeX25519() {
 	var privateKey []byte
 	var publicKey []byte
 	var yes, key string
-	fmt.Println("要基于节点信息生成密钥吗?(Y/n)")
+	fmt.Println("Generate key based on node info? | تولید کلید بر اساس اطلاعات نود؟ (Y/n)")
 	fmt.Scan(&yes)
 	if strings.ToLower(yes) == "y" {
 		var temp string
-		fmt.Println("请输入节点id:")
+		fmt.Println("Enter node ID: | شناسه نود را وارد کنید:")
 		fmt.Scan(&temp)
 		key = temp
-		fmt.Println("请输入节点类型:")
+		fmt.Println("Enter node type: | نوع نود را وارد کنید:")
 		fmt.Scan(&temp)
 		key += strings.ToLower(temp)
-		fmt.Println("请输入Token:")
+		fmt.Println("Enter Token: | توکن را وارد کنید:")
 		fmt.Scan(&temp)
 		key += temp
 		privateKey = crypt.GenX25519Private([]byte(key))
