@@ -2,7 +2,7 @@ module github.com/PoriyaVali/V2bX
 
 go 1.25
 
-toolchain go1.25.0
+toolchain go1.25.11
 
 require (
 	github.com/apernet/hysteria/core/v2 v2.9.3

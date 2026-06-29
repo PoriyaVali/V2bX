@@ -13,4 +13,4 @@ RUN apk --update --no-cache add tzdata ca-certificates \
     && echo "Asia/Tehran" > /etc/timezone
 RUN mkdir -p /etc/V2bX/
 COPY --from=builder /app/V2bX /usr/local/bin/V2bX
-ENTRYPOINT ["V2bX", "server", "--config", "/etc/V2bX/config.json"]
+ENTRYPOINT ["V2bX", "server", "-c", "/etc/V2bX/config.json"]

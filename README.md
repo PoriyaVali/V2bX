@@ -89,7 +89,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/V2bX run -c /etc/V2bX/config.json
+ExecStart=/usr/local/bin/V2bX server -c /etc/V2bX/config.json
 Restart=on-failure
 RestartSec=5s
 
