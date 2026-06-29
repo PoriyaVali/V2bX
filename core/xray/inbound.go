@@ -94,7 +94,7 @@ func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*
 	case panel.Tls:
 		// Normal tls
 		if option.CertConfig == nil {
-			return nil, errors.New("the CertConfig is not vail")
+			return nil, errors.New("the CertConfig is not valid")
 		}
 		switch option.CertConfig.CertMode {
 		case "none", "":

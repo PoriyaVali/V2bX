@@ -198,7 +198,7 @@ setup_openrc() {
 name="V2bX"
 description="V2bX Service"
 command="/usr/local/V2bX/V2bX"
-command_args="run -c /etc/V2bX/config.json"
+command_args="server -c /etc/V2bX/config.json"
 command_background=true
 pidfile="/run/V2bX.pid"
 EOF
