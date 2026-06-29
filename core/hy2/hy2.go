@@ -1,8 +1,8 @@
 package hy2
 
 import (
-	"github.com/InazumaV/V2bX/conf"
-	vCore "github.com/InazumaV/V2bX/core"
+	"github.com/PoriyaVali/V2bX/conf"
+	vCore "github.com/PoriyaVali/V2bX/core"
 	"go.uber.org/zap"
 )
 

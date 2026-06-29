@@ -3,8 +3,8 @@ package limiter
 import (
 	"time"
 
-	"github.com/InazumaV/V2bX/api/panel"
-	"github.com/InazumaV/V2bX/common/format"
+	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/format"
 )
 
 func (l *Limiter) AddDynamicSpeedLimit(tag string, userInfo *panel.UserInfo, limitNum int, expire int64) error {

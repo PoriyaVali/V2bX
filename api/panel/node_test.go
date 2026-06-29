@@ -4,7 +4,7 @@ import (
 	"log"
 	"testing"
 
-	"github.com/InazumaV/V2bX/conf"
+	"github.com/PoriyaVali/V2bX/conf"
 )
 
 var client *Client

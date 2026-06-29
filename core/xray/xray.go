@@ -7,10 +7,10 @@ import (
 
 	"encoding/json/v2"
 
-	"github.com/InazumaV/V2bX/conf"
-	vCore "github.com/InazumaV/V2bX/core"
-	"github.com/InazumaV/V2bX/core/xray/app/dispatcher"
-	_ "github.com/InazumaV/V2bX/core/xray/distro/all"
+	"github.com/PoriyaVali/V2bX/conf"
+	vCore "github.com/PoriyaVali/V2bX/core"
+	"github.com/PoriyaVali/V2bX/core/xray/app/dispatcher"
+	_ "github.com/PoriyaVali/V2bX/core/xray/distro/all"
 	log "github.com/sirupsen/logrus"
 	"github.com/xtls/xray-core/app/proxyman"
 	"github.com/xtls/xray-core/app/stats"

@@ -5,7 +5,7 @@ import (
 
 	"encoding/json"
 
-	conf2 "github.com/InazumaV/V2bX/conf"
+	conf2 "github.com/PoriyaVali/V2bX/conf"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/infra/conf"
 )

@@ -4,9 +4,9 @@ import (
 	"encoding/base64"
 	"errors"
 
-	"github.com/InazumaV/V2bX/api/panel"
-	"github.com/InazumaV/V2bX/common/counter"
-	"github.com/InazumaV/V2bX/core"
+	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/counter"
+	"github.com/PoriyaVali/V2bX/core"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/anytls"
 	"github.com/sagernet/sing-box/protocol/hysteria"

@@ -1,8 +1,8 @@
 package core
 
 import (
-	"github.com/InazumaV/V2bX/api/panel"
-	"github.com/InazumaV/V2bX/conf"
+	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/conf"
 )
 
 type AddUsersParams struct {

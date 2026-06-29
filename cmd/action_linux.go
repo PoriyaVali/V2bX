@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/InazumaV/V2bX/common/exec"
+	"github.com/PoriyaVali/V2bX/common/exec"
 	"github.com/spf13/cobra"
 )
 

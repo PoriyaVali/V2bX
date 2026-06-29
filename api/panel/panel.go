@@ -10,7 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/InazumaV/V2bX/conf"
+	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/go-resty/resty/v2"
 )
 
