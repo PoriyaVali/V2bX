@@ -96,8 +96,8 @@ jobs:
       GOARCH: ${{ matrix.goarch }}
       GOARM: ${{ matrix.goarm }}
       CGO_ENABLED: 0
-      GONOSUMDB: "github.com/wyx2685/*"
-      GONOSUMCHECK: "github.com/wyx2685/*"
+      GONOSUMDB: "*"
+      GONOSUMCHECK: "*"
       GOFLAGS: "-mod=mod"
     steps:
       - name: Checkout codebase
@@ -116,7 +116,7 @@ jobs:
 
       - name: Get project dependencies
         run: |
-          GOEXPERIMENT=jsonv2 go mod tidy
+          go mod download
       - name: Get release version
         if: ${{ github.event_name == 'release' }}
         run: |
