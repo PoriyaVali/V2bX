@@ -49,6 +49,12 @@ A multi-core V2board node server, forked from [wyx2685/V2bX](https://github.com/
 
 ## Installation | نصب
 
+### One-liner Install | نصب با یک دستور
+
+```bash
+wget -N https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh && bash install.sh
+```
+
 ### Download Binary | دانلود باینری
 
 Download the latest release for your platform from:
