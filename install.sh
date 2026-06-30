@@ -253,6 +253,206 @@ uninstall_V2bX() {
 }
 
 # ================================================================
+# Config wizard | راهنمای ساخت config
+# ================================================================
+generate_config() {
+    echo -e "${green}V2bX Config Wizard | راهنمای ساخت تنظیمات${plain}"
+    echo -e "${yellow}Config will be saved to /etc/V2bX/config.json${plain}"
+    echo -e "${yellow}Old config backed up to /etc/V2bX/config.json.bak${plain}"
+    echo ""
+
+    # Core type
+    echo -e "Select core type | نوع هسته را انتخاب کنید:"
+    echo -e "  ${green}1.${plain} sing  (recommended | پیشنهادی)"
+    echo -e "  ${green}2.${plain} xray"
+    echo -e "  ${green}3.${plain} hysteria2"
+    read -rp "Core [1-3, default=1]: " core_choice
+    case "${core_choice}" in
+        2) CORE_TYPE="xray" ;;
+        3) CORE_TYPE="hysteria2" ;;
+        *) CORE_TYPE="sing" ;;
+    esac
+
+    # Panel API
+    read -rp "Panel URL (e.g. https://panel.example.com): " API_HOST
+    read -rp "API Key: " API_KEY
+    read -rp "Node ID: " NODE_ID
+
+    # Node type
+    echo -e "Select node type | نوع نود:"
+    echo -e "  ${green}1.${plain} anytls"
+    echo -e "  ${green}2.${plain} vmess"
+    echo -e "  ${green}3.${plain} vless"
+    echo -e "  ${green}4.${plain} trojan"
+    echo -e "  ${green}5.${plain} shadowsocks"
+    echo -e "  ${green}6.${plain} hysteria2"
+    read -rp "Node type [1-6, default=1]: " node_choice
+    case "${node_choice}" in
+        2) NODE_TYPE="vmess" ;;
+        3) NODE_TYPE="vless" ;;
+        4) NODE_TYPE="trojan" ;;
+        5) NODE_TYPE="shadowsocks" ;;
+        6) NODE_TYPE="hysteria2" ;;
+        *) NODE_TYPE="anytls" ;;
+    esac
+
+    read -rp "Listen IP [default: 0.0.0.0]: " LISTEN_IP
+    LISTEN_IP="${LISTEN_IP:-0.0.0.0}"
+
+    # TLS cert (for sing core with TLS nodes)
+    CERT_BLOCK=""
+    if [[ "${CORE_TYPE}" == "sing" ]] && [[ "${NODE_TYPE}" != "shadowsocks" ]] && [[ "${NODE_TYPE}" != "hysteria2" ]]; then
+        read -rp "Certificate domain (e.g. ff.example.com): " CERT_DOMAIN
+        echo -e "Cert mode | نحوه دریافت سرتیفیکت:"
+        echo -e "  ${green}1.${plain} http  (port 80 must be open)"
+        echo -e "  ${green}2.${plain} self  (self-signed, test only)"
+        echo -e "  ${green}3.${plain} file  (already have cert files)"
+        echo -e "  ${green}4.${plain} none  (no TLS)"
+        read -rp "Cert mode [1-4, default=1]: " cert_choice
+        case "${cert_choice}" in
+            2) CERT_MODE="self" ;;
+            3) CERT_MODE="file" ;;
+            4) CERT_MODE="none" ;;
+            *) CERT_MODE="http" ;;
+        esac
+        CERT_BLOCK=",
+      \"CertConfig\": {
+        \"CertMode\": \"${CERT_MODE}\",
+        \"RejectUnknownSni\": false,
+        \"CertDomain\": \"${CERT_DOMAIN}\",
+        \"CertFile\": \"/etc/V2bX/fullchain.cer\",
+        \"KeyFile\": \"/etc/V2bX/cert.key\"
+      }"
+    fi
+
+    # Blocked countries
+    read -rp "Block countries (comma separated, e.g. ir,cn) [default: ir]: " BLOCKED
+    BLOCKED="${BLOCKED:-ir}"
+    BLOCKED_JSON=$(echo "$BLOCKED" | sed 's/,/","/g')
+
+    # Log level
+    read -rp "Log level (debug/info/warn/error) [default: info]: " LOG_LEVEL
+    LOG_LEVEL="${LOG_LEVEL:-info}"
+
+    # Backup old config
+    [[ -f /etc/V2bX/config.json ]] && cp /etc/V2bX/config.json /etc/V2bX/config.json.bak
+
+    # Decide core block based on type
+    if [[ "${CORE_TYPE}" == "sing" ]]; then
+        CORE_BLOCK="{
+      \"Type\": \"sing\",
+      \"Log\": { \"Level\": \"${LOG_LEVEL}\", \"Timestamp\": true },
+      \"NTP\": { \"Enable\": false, \"Server\": \"time.apple.com\", \"ServerPort\": 0 },
+      \"OriginalPath\": \"/etc/V2bX/sing_origin.json\",
+      \"BlockedCountries\": [\"${BLOCKED_JSON}\"]
+    }"
+    elif [[ "${CORE_TYPE}" == "xray" ]]; then
+        CORE_BLOCK="{
+      \"Type\": \"xray\",
+      \"Log\": { \"Level\": \"${LOG_LEVEL}\" }
+    }"
+    else
+        CORE_BLOCK="{
+      \"Type\": \"hysteria2\"
+    }"
+    fi
+
+    mkdir -p /etc/V2bX
+    cat > /etc/V2bX/config.json << CFGEOF
+{
+  "Log": {
+    "Level": "${LOG_LEVEL}",
+    "Output": ""
+  },
+  "Cores": [
+    ${CORE_BLOCK}
+  ],
+  "Nodes": [
+    {
+      "Core": "${CORE_TYPE}",
+      "ApiHost": "${API_HOST}",
+      "ApiKey": "${API_KEY}",
+      "NodeID": ${NODE_ID},
+      "NodeType": "${NODE_TYPE}",
+      "Timeout": 30,
+      "ListenIP": "${LISTEN_IP}",
+      "SendIP": "0.0.0.0",
+      "DeviceOnlineMinTraffic": 200,
+      "MinReportTraffic": 0,
+      "SingOptions": {
+        "EnableTFO": false,
+        "EnableSniff": true,
+        "SniffOverrideDestination": true,
+        "EnableDNS": false
+      }${CERT_BLOCK}
+    }
+  ]
+}
+CFGEOF
+
+    echo -e "${green}Config saved to /etc/V2bX/config.json${plain}"
+    echo -e "Start service | راه‌اندازی: ${yellow}v2bx start${plain}"
+}
+
+# ================================================================
+# X25519 key generation | تولید کلید X25519
+# ================================================================
+gen_x25519() {
+    if command -v openssl &>/dev/null; then
+        echo -e "${green}Generating X25519 key pair | تولید جفت کلید X25519...${plain}"
+        PRIVATE=$(openssl genpkey -algorithm X25519 2>/dev/null | openssl pkey -noout -text 2>/dev/null | grep "priv:" -A 3 | grep -v "priv:" | tr -d ' \n:' | xxd -r -p 2>/dev/null | base64 -w 0)
+        PUBLIC=$(openssl genpkey -algorithm X25519 2>/dev/null | openssl pkey -pubout 2>/dev/null | openssl pkey -pubin -noout -text 2>/dev/null | grep "pub:" -A 3 | grep -v "pub:" | tr -d ' \n:' | xxd -r -p 2>/dev/null | base64 -w 0)
+        # Simpler method
+        TMPKEY=$(openssl genpkey -algorithm X25519 2>/dev/null)
+        PRIVATE=$(echo "$TMPKEY" | openssl pkey -noout -text 2>/dev/null | awk '/priv:/{found=1; next} found && /pub:/{found=0} found{gsub(/[ :]/,""); printf $0}' | xxd -r -p 2>/dev/null | base64 -w 0)
+        PUBLIC=$(echo "$TMPKEY" | openssl pkey -pubout 2>/dev/null | openssl pkey -pubin -noout -text 2>/dev/null | awk '/pub:/{found=1; next} found{gsub(/[ :]/,""); printf $0}' | xxd -r -p 2>/dev/null | base64 -w 0)
+        echo -e "Private key: ${yellow}${PRIVATE}${plain}"
+        echo -e "Public key:  ${yellow}${PUBLIC}${plain}"
+    else
+        echo -e "${red}openssl not found. Install with: apt install openssl${plain}"
+    fi
+}
+
+# ================================================================
+# Install BBR | نصب BBR
+# ================================================================
+install_bbr() {
+    if [[ x"${release}" == x"alpine" ]]; then
+        echo -e "${red}BBR not supported on Alpine | BBR در Alpine پشتیبانی نمی‌شود${plain}"
+        return
+    fi
+    echo -e "${green}Enabling BBR | فعال‌سازی BBR...${plain}"
+    modprobe tcp_bbr 2>/dev/null
+    echo "tcp_bbr" >> /etc/modules-load.d/modules.conf 2>/dev/null
+    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+    sysctl -p &>/dev/null
+    if sysctl net.ipv4.tcp_congestion_control | grep -q "bbr"; then
+        echo -e "${green}BBR enabled successfully | BBR با موفقیت فعال شد${plain}"
+    else
+        echo -e "${yellow}BBR may require a kernel upgrade. Current kernel: $(uname -r)${plain}"
+    fi
+}
+
+# ================================================================
+# Allow all ports | باز کردن تمام پورت‌ها
+# ================================================================
+allow_all_ports() {
+    echo -e "${green}Opening all ports | باز کردن تمام پورت‌ها...${plain}"
+    if command -v ufw &>/dev/null; then
+        ufw disable 2>/dev/null
+        echo -e "${green}UFW disabled | UFW غیرفعال شد${plain}"
+    fi
+    if command -v iptables &>/dev/null; then
+        iptables -P INPUT ACCEPT
+        iptables -P FORWARD ACCEPT
+        iptables -P OUTPUT ACCEPT
+        iptables -F
+        echo -e "${green}iptables rules cleared | قوانین iptables پاک شدند${plain}"
+    fi
+}
+
+# ================================================================
 # Show status | نمایش وضعیت
 # ================================================================
 show_status() {
@@ -277,24 +477,37 @@ show_status() {
 # Main menu | منوی اصلی
 # ================================================================
 show_menu() {
+    # Show running status in header
+    if systemctl is-active --quiet V2bX 2>/dev/null; then
+        STATUS="${green}Running | در حال اجرا${plain}"
+    else
+        STATUS="${red}Stopped | متوقف${plain}"
+    fi
+
     echo -e "
   ${green}V2bX Management | مدیریت V2bX${plain}
   ${green}GitHub: https://github.com/${GITHUB_REPO}${plain}
+  Status | وضعیت: ${STATUS}
   ————————————————
-  ${green}0.${plain} Exit | خروج
-  ${green}1.${plain} Install V2bX | نصب V2bX
-  ${green}2.${plain} Update V2bX | به‌روزرسانی V2bX
-  ${green}3.${plain} Uninstall V2bX | حذف V2bX
+  ${green}0.${plain}  Exit | خروج
+  ${green}1.${plain}  Install V2bX | نصب V2bX
+  ${green}2.${plain}  Update V2bX | به‌روزرسانی V2bX
+  ${green}3.${plain}  Uninstall V2bX | حذف V2bX
   ————————————————
-  ${green}4.${plain} Start | راه‌اندازی
-  ${green}5.${plain} Stop | توقف
-  ${green}6.${plain} Restart | راه‌اندازی مجدد
-  ${green}7.${plain} Status | وضعیت
-  ${green}8.${plain} View logs | مشاهده لاگ
+  ${green}4.${plain}  Start | راه‌اندازی
+  ${green}5.${plain}  Stop | توقف
+  ${green}6.${plain}  Restart | راه‌اندازی مجدد
+  ${green}7.${plain}  Status | وضعیت
+  ${green}8.${plain}  View logs | مشاهده لاگ
+  ————————————————
+  ${green}9.${plain}  Generate config wizard | راهنمای ساخت تنظیمات
+  ${green}10.${plain} Edit config | ویرایش تنظیمات
+  ${green}11.${plain} Generate X25519 key | تولید کلید X25519
+  ${green}12.${plain} Install BBR | نصب BBR
+  ${green}13.${plain} Allow all ports | باز کردن تمام پورت‌ها
   ————————————————
  "
-    echo -e "Choose | انتخاب [0-8]: "
-    read -r num
+    read -rp "Choose | انتخاب [0-13]: " num
     case "${num}" in
         0) exit 0 ;;
         1)
@@ -318,6 +531,11 @@ show_menu() {
             ;;
         7) show_status ;;
         8) journalctl -u V2bX.service -e --no-pager -f ;;
+        9) generate_config ;;
+        10) nano /etc/V2bX/config.json ;;
+        11) gen_x25519 ;;
+        12) install_bbr ;;
+        13) allow_all_ports ;;
         *) echo -e "${red}Invalid option | گزینه نامعتبر${plain}" ;;
     esac
 }
