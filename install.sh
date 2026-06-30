@@ -61,15 +61,21 @@ fi
 # Architecture detection | تشخیص معماری
 arch=$(uname -m)
 if [[ $arch == "x86_64" || $arch == "x64" || $arch == "amd64" ]]; then
-    arch="linux-amd64"
+    arch="linux-64"
 elif [[ $arch == "aarch64" || $arch == "arm64" ]]; then
     arch="linux-arm64-v8a"
 elif [[ $arch == "s390x" ]]; then
     arch="linux-s390x"
 elif [[ $arch == "armv7l" ]]; then
-    arch="linux-armv7"
+    arch="linux-arm32-v7a"
+elif [[ $arch == "armv6l" ]]; then
+    arch="linux-arm32-v6"
+elif [[ $arch == "armv5l" ]]; then
+    arch="linux-arm32-v5"
+elif [[ $arch == "riscv64" ]]; then
+    arch="linux-riscv64"
 else
-    arch="linux-amd64"
+    arch="linux-64"
     echo -e "${yellow}Architecture not detected, defaulting to amd64 | معماری شناسایی نشد، amd64 انتخاب شد${plain}"
 fi
 
