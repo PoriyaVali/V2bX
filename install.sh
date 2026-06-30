@@ -326,9 +326,14 @@ generate_config() {
     fi
 
     # Blocked countries
-    read -rp "Block countries (comma separated, e.g. ir,cn) [default: ir]: " BLOCKED
+    read -rp "Block countries (comma separated, e.g. ir,cn) [default: ir, enter 'none' to disable]: " BLOCKED
     BLOCKED="${BLOCKED:-ir}"
-    BLOCKED_JSON=$(echo "$BLOCKED" | sed 's/,/","/g')
+    if [[ "${BLOCKED}" == "none" ]]; then
+        BLOCKED_JSON=""
+    else
+        # trim spaces and build JSON array items
+        BLOCKED_JSON=$(echo "$BLOCKED" | tr -d ' ' | sed 's/,/","/g')
+    fi
 
     # Log level
     read -rp "Log level (debug/info/warn/error) [default: info]: " LOG_LEVEL
@@ -339,12 +344,17 @@ generate_config() {
 
     # Decide core block based on type
     if [[ "${CORE_TYPE}" == "sing" ]]; then
+        if [[ -n "${BLOCKED_JSON}" ]]; then
+            BLOCKED_FIELD=",
+      \"BlockedCountries\": [\"${BLOCKED_JSON}\"]"
+        else
+            BLOCKED_FIELD=""
+        fi
         CORE_BLOCK="{
       \"Type\": \"sing\",
       \"Log\": { \"Level\": \"${LOG_LEVEL}\", \"Timestamp\": true },
       \"NTP\": { \"Enable\": false, \"Server\": \"time.apple.com\", \"ServerPort\": 0 },
-      \"OriginalPath\": \"/etc/V2bX/sing_origin.json\",
-      \"BlockedCountries\": [\"${BLOCKED_JSON}\"]
+      \"OriginalPath\": \"/etc/V2bX/sing_origin.json\"${BLOCKED_FIELD}
     }"
     elif [[ "${CORE_TYPE}" == "xray" ]]; then
         CORE_BLOCK="{
@@ -398,19 +408,17 @@ CFGEOF
 # X25519 key generation | تولید کلید X25519
 # ================================================================
 gen_x25519() {
-    if command -v openssl &>/dev/null; then
-        echo -e "${green}Generating X25519 key pair | تولید جفت کلید X25519...${plain}"
-        PRIVATE=$(openssl genpkey -algorithm X25519 2>/dev/null | openssl pkey -noout -text 2>/dev/null | grep "priv:" -A 3 | grep -v "priv:" | tr -d ' \n:' | xxd -r -p 2>/dev/null | base64 -w 0)
-        PUBLIC=$(openssl genpkey -algorithm X25519 2>/dev/null | openssl pkey -pubout 2>/dev/null | openssl pkey -pubin -noout -text 2>/dev/null | grep "pub:" -A 3 | grep -v "pub:" | tr -d ' \n:' | xxd -r -p 2>/dev/null | base64 -w 0)
-        # Simpler method
-        TMPKEY=$(openssl genpkey -algorithm X25519 2>/dev/null)
-        PRIVATE=$(echo "$TMPKEY" | openssl pkey -noout -text 2>/dev/null | awk '/priv:/{found=1; next} found && /pub:/{found=0} found{gsub(/[ :]/,""); printf $0}' | xxd -r -p 2>/dev/null | base64 -w 0)
-        PUBLIC=$(echo "$TMPKEY" | openssl pkey -pubout 2>/dev/null | openssl pkey -pubin -noout -text 2>/dev/null | awk '/pub:/{found=1; next} found{gsub(/[ :]/,""); printf $0}' | xxd -r -p 2>/dev/null | base64 -w 0)
-        echo -e "Private key: ${yellow}${PRIVATE}${plain}"
-        echo -e "Public key:  ${yellow}${PUBLIC}${plain}"
-    else
+    if ! command -v openssl &>/dev/null; then
         echo -e "${red}openssl not found. Install with: apt install openssl${plain}"
+        return
     fi
+    echo -e "${green}Generating X25519 key pair | تولید جفت کلید X25519...${plain}"
+    # Generate once, derive both keys from same pair
+    TMPKEY=$(openssl genpkey -algorithm X25519 2>/dev/null)
+    PRIVATE=$(echo "$TMPKEY" | openssl pkey -outform DER 2>/dev/null | tail -c 32 | base64 -w 0)
+    PUBLIC=$(echo "$TMPKEY"  | openssl pkey -pubout -outform DER 2>/dev/null | tail -c 32 | base64 -w 0)
+    echo -e "Private key | کلید خصوصی: ${yellow}${PRIVATE}${plain}"
+    echo -e "Public key  | کلید عمومی: ${yellow}${PUBLIC}${plain}"
 }
 
 # ================================================================
