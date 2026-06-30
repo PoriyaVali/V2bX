@@ -48,6 +48,11 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	ctx = box.Context(ctx, include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry(), include.DNSTransportRegistry(), include.ServiceRegistry())
 	options := option.Options{}
 	if len(c.SingConfig.OriginalPath) != 0 {
+		if _, statErr := os.Stat(c.SingConfig.OriginalPath); os.IsNotExist(statErr) {
+			if err := os.WriteFile(c.SingConfig.OriginalPath, []byte("{}"), 0644); err != nil {
+				return nil, fmt.Errorf("create original config error: %s", err)
+			}
+		}
 		data, err := os.ReadFile(c.SingConfig.OriginalPath)
 		if err != nil {
 			return nil, fmt.Errorf("read original config error: %s", err)
