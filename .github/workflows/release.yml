@@ -152,13 +152,7 @@ jobs:
             curl -fL "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/${i}.dat" \
               -o ./build_assets/${i}.dat
           done
-          # sing-box geo databases (.db format from SagerNet)
-          echo "Downloading geoip.db for sing-box..."
-          curl -fL "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip.db" \
-            -o ./build_assets/geoip.db
-          echo "Downloading geosite.db for sing-box..."
-          curl -fL "https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db" \
-            -o ./build_assets/geosite.db
+          # sing-box uses remote rule_set (.srs) downloaded on first run — no .db needed
       - name: Create ZIP archive
         shell: bash
         run: |

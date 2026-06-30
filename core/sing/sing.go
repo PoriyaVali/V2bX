@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/sagernet/sing-box/include"
@@ -76,7 +77,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 			ServerPort: c.SingConfig.NtpConfig.ServerPort,
 		},
 	}
-	// GeoIP country blocking — parse rules via JSON to match sing-box's own unmarshalling
+	// GeoIP country blocking via rule_set (sing-box 1.12+ removed legacy geoip field)
 	if len(c.SingConfig.BlockedCountries) > 0 {
 		const blockTag = "block-countries"
 		hasBlock := false
@@ -96,7 +97,19 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 			options.Route = &option.RouteOptions{}
 		}
 		for _, country := range c.SingConfig.BlockedCountries {
-			ruleData := fmt.Sprintf(`{"geoip":["%s"],"outbound":"%s"}`, country, blockTag)
+			country = strings.ToLower(country)
+			tag := "geoip-" + country
+			// Remote rule_set — downloaded and cached by sing-box on first run
+			ruleSetData := fmt.Sprintf(
+				`{"tag":%q,"type":"remote","format":"binary","url":"https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-%s.srs","download_detour":"direct"}`,
+				tag, country,
+			)
+			var ruleSet option.RuleSet
+			if err := json.Unmarshal([]byte(ruleSetData), &ruleSet); err == nil {
+				options.Route.RuleSet = append(options.Route.RuleSet, ruleSet)
+			}
+			// Routing rule: traffic matching rule_set → block
+			ruleData := fmt.Sprintf(`{"rule_set":[%q],"outbound":%q}`, tag, blockTag)
 			var rule option.Rule
 			if err := json.Unmarshal([]byte(ruleData), &rule); err == nil {
 				options.Route.Rules = append([]option.Rule{rule}, options.Route.Rules...)
