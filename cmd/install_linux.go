@@ -16,9 +16,14 @@ var (
 		Use:   "update",
 		Short: "Update V2bX version",
 		Run: func(_ *cobra.Command, _ []string) {
-			exec.RunCommandStd("bash",
-				"<(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh)",
-				targetVersion)
+			script := "bash <(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh) update"
+			if targetVersion != "" {
+				script += " " + targetVersion
+			}
+			_, err := exec.RunCommandByShell(script)
+			if err != nil {
+				fmt.Println(Err("Update failed | به‌روزرسانی ناموفق بود: ", err))
+			}
 		},
 		Args: cobra.NoArgs,
 	}
