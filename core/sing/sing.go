@@ -80,12 +80,21 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	// GeoIP country blocking via rule_set (sing-box 1.12+ removed legacy geoip field)
 	if len(c.SingConfig.BlockedCountries) > 0 {
 		const blockTag = "block-countries"
-		hasBlock := false
+		const directTag = "direct"
+		hasDirect, hasBlock := false, false
 		for _, o := range options.Outbounds {
+			if o.Tag == directTag {
+				hasDirect = true
+			}
 			if o.Tag == blockTag {
 				hasBlock = true
-				break
 			}
+		}
+		if !hasDirect {
+			options.Outbounds = append(options.Outbounds, option.Outbound{
+				Tag:  directTag,
+				Type: directTag,
+			})
 		}
 		if !hasBlock {
 			options.Outbounds = append(options.Outbounds, option.Outbound{
@@ -99,16 +108,16 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		for _, country := range c.SingConfig.BlockedCountries {
 			country = strings.ToLower(country)
 			tag := "geoip-" + country
-			// Remote rule_set — downloaded and cached by sing-box on first run
+			// Remote rule_set — sing-box downloads and caches on first run
 			ruleSetData := fmt.Sprintf(
-				`{"tag":%q,"type":"remote","format":"binary","url":"https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-%s.srs","download_detour":"direct"}`,
-				tag, country,
+				`{"tag":%q,"type":"remote","format":"binary","url":"https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-%s.srs","download_detour":%q}`,
+				tag, country, directTag,
 			)
 			var ruleSet option.RuleSet
 			if err := json.Unmarshal([]byte(ruleSetData), &ruleSet); err == nil {
 				options.Route.RuleSet = append(options.Route.RuleSet, ruleSet)
 			}
-			// Routing rule: traffic matching rule_set → block
+			// Routing rule: source IPs matching rule_set → block outbound
 			ruleData := fmt.Sprintf(`{"rule_set":[%q],"outbound":%q}`, tag, blockTag)
 			var rule option.Rule
 			if err := json.Unmarshal([]byte(ruleData), &rule); err == nil {
