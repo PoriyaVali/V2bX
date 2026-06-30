@@ -15,7 +15,8 @@
         "Server": "time.apple.com",
         "ServerPort": 0
       },
-      "OriginalPath": "/etc/V2bX/sing_origin.json"
+      "OriginalPath": "/etc/V2bX/sing_origin.json",
+      "BlockedCountries": ["ir", "cn"]
     }
   ],
   "Nodes": [
@@ -30,8 +31,12 @@
       "SendIP": "0.0.0.0",
       "DeviceOnlineMinTraffic": 200,
       "MinReportTraffic": 0,
-      "TCPFastOpen": false,
-      "SniffEnabled": true,
+      "SingOptions": {
+        "EnableTFO": false,
+        "EnableSniff": true,
+        "SniffOverrideDestination": true,
+        "EnableDNS": false
+      },
       "CertConfig": {
         "CertMode": "self",
         "RejectUnknownSni": false,

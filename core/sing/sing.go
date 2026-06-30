@@ -76,6 +76,34 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 			ServerPort: c.SingConfig.NtpConfig.ServerPort,
 		},
 	}
+	// GeoIP country blocking — parse rules via JSON to match sing-box's own unmarshalling
+	if len(c.SingConfig.BlockedCountries) > 0 {
+		const blockTag = "block-countries"
+		hasBlock := false
+		for _, o := range options.Outbounds {
+			if o.Tag == blockTag {
+				hasBlock = true
+				break
+			}
+		}
+		if !hasBlock {
+			options.Outbounds = append(options.Outbounds, option.Outbound{
+				Tag:  blockTag,
+				Type: "block",
+			})
+		}
+		if options.Route == nil {
+			options.Route = &option.RouteOptions{}
+		}
+		for _, country := range c.SingConfig.BlockedCountries {
+			ruleData := fmt.Sprintf(`{"geoip":["%s"],"outbound":"%s"}`, country, blockTag)
+			var rule option.Rule
+			if err := json.Unmarshal([]byte(ruleData), &rule); err == nil {
+				options.Route.Rules = append([]option.Rule{rule}, options.Route.Rules...)
+			}
+		}
+	}
+
 	os.Setenv("SING_DNS_PATH", "")
 	b, err := box.New(box.Options{
 		Context: ctx,

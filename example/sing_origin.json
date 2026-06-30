@@ -1,0 +1,23 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "local",
+        "address": "local"
+      }
+    ]
+  },
+  "route": {
+    "rules": []
+  },
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ]
+}

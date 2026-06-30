@@ -26,6 +26,7 @@ type Controller struct {
 	renewCertPeriodic         *task.Task
 	dynamicSpeedLimitPeriodic *task.Task
 	onlineIpReportPeriodic    *task.Task
+	statusReportPeriodic      *task.Task
 	*conf.Options
 }
 

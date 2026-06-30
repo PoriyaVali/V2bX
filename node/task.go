@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/serverstatus"
 	"github.com/PoriyaVali/V2bX/common/task"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	"github.com/PoriyaVali/V2bX/limiter"
@@ -39,6 +40,13 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 			_ = c.renewCertPeriodic.Start(true)
 		}
 	}
+	// report server status every 60s
+	c.statusReportPeriodic = &task.Task{
+		Interval: time.Second * 60,
+		Execute:  c.reportNodeStatusTask,
+	}
+	_ = c.statusReportPeriodic.Start(false)
+
 	if c.LimitConfig.EnableDynamicSpeedLimit {
 		c.traffic = make(map[string]int64)
 		c.dynamicSpeedLimitPeriodic = &task.Task{
@@ -223,6 +231,17 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	if len(added)+len(deleted) != 0 {
 		log.WithField("tag", c.tag).
 			Infof("%d user deleted, %d user added", len(deleted), len(added))
+	}
+	return nil
+}
+
+func (c *Controller) reportNodeStatusTask() error {
+	status, err := serverstatus.GetSystemStatus()
+	if err != nil {
+		return nil
+	}
+	if err := c.apiClient.ReportNodeStatus(status); err != nil {
+		log.WithField("tag", c.tag).WithError(err).Warn("Report node status failed")
 	}
 	return nil
 }
