@@ -290,6 +290,22 @@ generate_config() {
     read -rp "Log level (debug/info/warn/error) [default: info]: " LOG_LEVEL
     LOG_LEVEL="${LOG_LEVEL:-info}"
 
+    # ── Multiplexing (smux) — vmess/vless/trojan/shadowsocks only ─
+    echo -e "Enable multiplexing (smux)? | فعال کردن مالتی‌پلکس؟"
+    echo -e "  ${yellow}Works on: vmess, vless, trojan, shadowsocks${plain}"
+    echo -e "  ${yellow}anytls/hysteria2 have built-in mux — not needed${plain}"
+    read -rp "Enable? [y/N]: " mux_choice
+    if [[ "${mux_choice,,}" == "y" ]]; then
+        MULTIPLEX_BLOCK=",
+        \"MultiplexConfig\": {
+          \"Enable\": true,
+          \"Padding\": false,
+          \"Brutal\": { \"Enable\": false, \"UpMbps\": 0, \"DownMbps\": 0 }
+        }"
+    else
+        MULTIPLEX_BLOCK=""
+    fi
+
     # ── Build core block ──────────────────────────────────────────
     if [[ "${CORE_TYPE}" == "sing" ]]; then
         if [[ -n "${BLOCKED_JSON}" ]]; then
@@ -388,7 +404,7 @@ generate_config() {
         \"EnableTFO\": false,
         \"EnableSniff\": true,
         \"SniffOverrideDestination\": true,
-        \"EnableDNS\": false
+        \"EnableDNS\": false${MULTIPLEX_BLOCK}
       }${NODE_CERT_BLOCK}
     }"
 

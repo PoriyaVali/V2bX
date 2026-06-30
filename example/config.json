@@ -35,7 +35,12 @@
         "EnableTFO": false,
         "EnableSniff": true,
         "SniffOverrideDestination": true,
-        "EnableDNS": false
+        "EnableDNS": false,
+        "MultiplexConfig": {
+          "Enable": true,
+          "Padding": false,
+          "Brutal": { "Enable": false, "UpMbps": 0, "DownMbps": 0 }
+        }
       },
       "CertConfig": {
         "CertMode": "self",
