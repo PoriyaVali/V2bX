@@ -146,14 +146,19 @@ jobs:
           cp ${GITHUB_WORKSPACE}/README.md ./build_assets/README.md
           cp ${GITHUB_WORKSPACE}/LICENSE ./build_assets/LICENSE
           cp ${GITHUB_WORKSPACE}/example/*.json ./build_assets/
-          LIST=('geoip' 'geosite')
-          for i in "${LIST[@]}"
-          do
-            DOWNLOAD_URL="https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/${i}.dat"
-            FILE_NAME="${i}.dat"
-            echo -e "Downloading ${DOWNLOAD_URL}..."
-            curl -L "${DOWNLOAD_URL}" -o ./build_assets/${FILE_NAME}
+          # xray-core / hysteria2 geo databases (.dat format)
+          for i in geoip geosite; do
+            echo "Downloading ${i}.dat from Loyalsoldier..."
+            curl -fL "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/${i}.dat" \
+              -o ./build_assets/${i}.dat
           done
+          # sing-box geo databases (.db format from SagerNet)
+          echo "Downloading geoip.db for sing-box..."
+          curl -fL "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip.db" \
+            -o ./build_assets/geoip.db
+          echo "Downloading geosite.db for sing-box..."
+          curl -fL "https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db" \
+            -o ./build_assets/geosite.db
       - name: Create ZIP archive
         shell: bash
         run: |
