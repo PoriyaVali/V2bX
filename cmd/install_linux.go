@@ -13,19 +13,26 @@ var targetVersion string
 
 var (
 	updateCommand = cobra.Command{
-		Use:   "update",
-		Short: "Update V2bX version",
-		Run: func(_ *cobra.Command, _ []string) {
+		Use:   "update [version]",
+		Short: "Update V2bX to latest (or specified) version",
+		Run: func(_ *cobra.Command, args []string) {
+			fmt.Printf("Current version | نسخه فعلی: %s%s%s\n", yellow, version, plain)
+			target := targetVersion
+			if len(args) > 0 {
+				target = args[0]
+			}
 			script := "bash <(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh) update"
-			if targetVersion != "" {
-				script += " " + targetVersion
+			if target != "" {
+				script += " " + target
+				fmt.Printf("Target version  | نسخه هدف: %s%s%s\n", yellow, target, plain)
+			} else {
+				fmt.Println(Warn("Fetching latest version | دریافت آخرین نسخه..."))
 			}
 			_, err := exec.RunCommandByShell(script)
 			if err != nil {
 				fmt.Println(Err("Update failed | به‌روزرسانی ناموفق بود: ", err))
 			}
 		},
-		Args: cobra.NoArgs,
 	}
 	uninstallCommand = cobra.Command{
 		Use:   "uninstall",

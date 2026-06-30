@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var logLines int
+
 var (
 	startCommand = cobra.Command{
 		Use:   "start",
@@ -26,14 +28,21 @@ var (
 	}
 	logCommand = cobra.Command{
 		Use:   "log",
-		Short: "Output V2bX log",
+		Short: "Output V2bX log (follows live by default)",
 		Run: func(_ *cobra.Command, _ []string) {
-			exec.RunCommandStd("journalctl", "-u", "V2bX.service", "-e", "--no-pager", "-f")
+			if logLines > 0 {
+				exec.RunCommandStd("journalctl", "-u", "V2bX.service",
+					"--no-pager", "-n", fmt.Sprintf("%d", logLines))
+			} else {
+				exec.RunCommandStd("journalctl", "-u", "V2bX.service",
+					"-e", "--no-pager", "-f")
+			}
 		},
 	}
 )
 
 func init() {
+	logCommand.PersistentFlags().IntVar(&logLines, "lines", 0, "show last N lines instead of following live")
 	command.AddCommand(&startCommand)
 	command.AddCommand(&stopCommand)
 	command.AddCommand(&restartCommand)
@@ -91,12 +100,14 @@ func stopHandle(_ *cobra.Command, _ []string) {
 }
 
 func restartHandle(_ *cobra.Command, _ []string) {
+	fmt.Println(Warn("Restarting V2bX... | در حال راه‌اندازی مجدد..."))
 	_, err := exec.RunCommandByShell("systemctl restart V2bX.service")
 	if err != nil {
 		fmt.Println(Err("exec restart cmd error: ", err))
 		fmt.Println(Err("V2bX restart failed | راه‌اندازی مجدد V2bX ناموفق بود"))
 		return
 	}
+	time.Sleep(2 * time.Second)
 	r, err := checkRunning()
 	if err != nil {
 		fmt.Println(Err("check status error: ", err))
@@ -104,8 +115,11 @@ func restartHandle(_ *cobra.Command, _ []string) {
 		return
 	}
 	if !r {
-		fmt.Println(Err("V2bX may have failed to start. Check logs with: V2bX log | V2bX ممکن است راه‌اندازی نشده باشد، لاگ را بررسی کنید: V2bX log"))
+		fmt.Println(Err("V2bX failed to start. Recent logs | لاگ اخیر:"))
+		exec.RunCommandStd("journalctl", "-u", "V2bX.service", "--no-pager", "-n", "20")
 		return
 	}
 	fmt.Println(Ok("V2bX restarted successfully | V2bX با موفقیت مجدداً راه‌اندازی شد"))
+	fmt.Println(Warn("\n--- Recent logs | لاگ اخیر ---"))
+	exec.RunCommandStd("journalctl", "-u", "V2bX.service", "--no-pager", "-n", "10")
 }
