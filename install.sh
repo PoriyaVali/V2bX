@@ -261,8 +261,8 @@ generate_config() {
     echo -e "${yellow}Old config backed up to /etc/V2bX/config.json.bak${plain}"
     echo ""
 
-    # Core type
-    echo -e "Select core type | نوع هسته را انتخاب کنید:"
+    # ── Core type (shared for all nodes) ──────────────────────────
+    echo -e "Select core type | نوع هسته:"
     echo -e "  ${green}1.${plain} sing  (recommended | پیشنهادی)"
     echo -e "  ${green}2.${plain} xray"
     echo -e "  ${green}3.${plain} hysteria2"
@@ -273,76 +273,24 @@ generate_config() {
         *) CORE_TYPE="sing" ;;
     esac
 
-    # Panel API
+    # ── Panel API (shared for all nodes — same panel, different IDs) ──
     read -rp "Panel URL (e.g. https://panel.example.com): " API_HOST
     read -rp "API Key: " API_KEY
-    read -rp "Node ID: " NODE_ID
 
-    # Node type
-    echo -e "Select node type | نوع نود:"
-    echo -e "  ${green}1.${plain} anytls"
-    echo -e "  ${green}2.${plain} vmess"
-    echo -e "  ${green}3.${plain} vless"
-    echo -e "  ${green}4.${plain} trojan"
-    echo -e "  ${green}5.${plain} shadowsocks"
-    echo -e "  ${green}6.${plain} hysteria2"
-    read -rp "Node type [1-6, default=1]: " node_choice
-    case "${node_choice}" in
-        2) NODE_TYPE="vmess" ;;
-        3) NODE_TYPE="vless" ;;
-        4) NODE_TYPE="trojan" ;;
-        5) NODE_TYPE="shadowsocks" ;;
-        6) NODE_TYPE="hysteria2" ;;
-        *) NODE_TYPE="anytls" ;;
-    esac
-
-    read -rp "Listen IP [default: 0.0.0.0]: " LISTEN_IP
-    LISTEN_IP="${LISTEN_IP:-0.0.0.0}"
-
-    # TLS cert (for sing core with TLS nodes)
-    CERT_BLOCK=""
-    if [[ "${CORE_TYPE}" == "sing" ]] && [[ "${NODE_TYPE}" != "shadowsocks" ]] && [[ "${NODE_TYPE}" != "hysteria2" ]]; then
-        read -rp "Certificate domain (e.g. ff.example.com): " CERT_DOMAIN
-        echo -e "Cert mode | نحوه دریافت سرتیفیکت:"
-        echo -e "  ${green}1.${plain} http  (port 80 must be open)"
-        echo -e "  ${green}2.${plain} self  (self-signed, test only)"
-        echo -e "  ${green}3.${plain} file  (already have cert files)"
-        echo -e "  ${green}4.${plain} none  (no TLS)"
-        read -rp "Cert mode [1-4, default=1]: " cert_choice
-        case "${cert_choice}" in
-            2) CERT_MODE="self" ;;
-            3) CERT_MODE="file" ;;
-            4) CERT_MODE="none" ;;
-            *) CERT_MODE="http" ;;
-        esac
-        CERT_BLOCK=",
-      \"CertConfig\": {
-        \"CertMode\": \"${CERT_MODE}\",
-        \"RejectUnknownSni\": false,
-        \"CertDomain\": \"${CERT_DOMAIN}\",
-        \"CertFile\": \"/etc/V2bX/fullchain.cer\",
-        \"KeyFile\": \"/etc/V2bX/cert.key\"
-      }"
-    fi
-
-    # Blocked countries
-    read -rp "Block countries (comma separated, e.g. ir,cn) [default: ir, enter 'none' to disable]: " BLOCKED
+    # ── Blocked countries (core-level, applies to all nodes) ──────
+    read -rp "Block countries (comma separated, e.g. ir,cn) [default: ir, 'none' to disable]: " BLOCKED
     BLOCKED="${BLOCKED:-ir}"
     if [[ "${BLOCKED}" == "none" ]]; then
         BLOCKED_JSON=""
     else
-        # trim spaces and build JSON array items
         BLOCKED_JSON=$(echo "$BLOCKED" | tr -d ' ' | sed 's/,/","/g')
     fi
 
-    # Log level
+    # ── Log level ─────────────────────────────────────────────────
     read -rp "Log level (debug/info/warn/error) [default: info]: " LOG_LEVEL
     LOG_LEVEL="${LOG_LEVEL:-info}"
 
-    # Backup old config
-    [[ -f /etc/V2bX/config.json ]] && cp /etc/V2bX/config.json /etc/V2bX/config.json.bak
-
-    # Decide core block based on type
+    # ── Build core block ──────────────────────────────────────────
     if [[ "${CORE_TYPE}" == "sing" ]]; then
         if [[ -n "${BLOCKED_JSON}" ]]; then
             BLOCKED_FIELD=",
@@ -367,7 +315,99 @@ generate_config() {
     }"
     fi
 
+    # ── Node loop — each node gets its own domain & cert ─────────
+    NODES_BLOCK=""
+    NODE_NUM=0
+    while true; do
+        NODE_NUM=$((NODE_NUM + 1))
+        echo ""
+        echo -e "${green}━━━ Node ${NODE_NUM} | نود ${NODE_NUM} ━━━${plain}"
+
+        read -rp "Node ID: " NODE_ID
+
+        echo -e "Node type | نوع نود:"
+        echo -e "  ${green}1.${plain} anytls"
+        echo -e "  ${green}2.${plain} vmess"
+        echo -e "  ${green}3.${plain} vless"
+        echo -e "  ${green}4.${plain} trojan"
+        echo -e "  ${green}5.${plain} shadowsocks"
+        echo -e "  ${green}6.${plain} hysteria2"
+        read -rp "Node type [1-6, default=1]: " node_choice
+        case "${node_choice}" in
+            2) NODE_TYPE="vmess" ;;
+            3) NODE_TYPE="vless" ;;
+            4) NODE_TYPE="trojan" ;;
+            5) NODE_TYPE="shadowsocks" ;;
+            6) NODE_TYPE="hysteria2" ;;
+            *) NODE_TYPE="anytls" ;;
+        esac
+
+        read -rp "Listen IP [default: 0.0.0.0]: " LISTEN_IP
+        LISTEN_IP="${LISTEN_IP:-0.0.0.0}"
+
+        # TLS cert — each node gets its own domain → own cert files
+        NODE_CERT_BLOCK=""
+        if [[ "${CORE_TYPE}" == "sing" ]] && [[ "${NODE_TYPE}" != "shadowsocks" ]] && [[ "${NODE_TYPE}" != "hysteria2" ]]; then
+            read -rp "Certificate domain (e.g. ff.example.com): " CERT_DOMAIN
+            echo -e "Cert mode | نحوه دریافت سرتیفیکت:"
+            echo -e "  ${green}1.${plain} http  (port 80 must be open)"
+            echo -e "  ${green}2.${plain} self  (self-signed, test only)"
+            echo -e "  ${green}3.${plain} file  (already have cert files)"
+            echo -e "  ${green}4.${plain} none  (no TLS)"
+            read -rp "Cert mode [1-4, default=1]: " cert_choice
+            case "${cert_choice}" in
+                2) CERT_MODE="self" ;;
+                3) CERT_MODE="file" ;;
+                4) CERT_MODE="none" ;;
+                *) CERT_MODE="http" ;;
+            esac
+            # Cert path includes domain name — avoids conflicts between nodes
+            NODE_CERT_BLOCK=",
+        \"CertConfig\": {
+          \"CertMode\": \"${CERT_MODE}\",
+          \"RejectUnknownSni\": false,
+          \"CertDomain\": \"${CERT_DOMAIN}\",
+          \"CertFile\": \"/etc/V2bX/${CERT_DOMAIN}.cer\",
+          \"KeyFile\": \"/etc/V2bX/${CERT_DOMAIN}.key\"
+        }"
+        fi
+
+        # Build this node's JSON
+        ONE_NODE="{
+      \"Core\": \"${CORE_TYPE}\",
+      \"ApiHost\": \"${API_HOST}\",
+      \"ApiKey\": \"${API_KEY}\",
+      \"NodeID\": ${NODE_ID},
+      \"NodeType\": \"${NODE_TYPE}\",
+      \"Timeout\": 30,
+      \"ListenIP\": \"${LISTEN_IP}\",
+      \"SendIP\": \"0.0.0.0\",
+      \"DeviceOnlineMinTraffic\": 200,
+      \"MinReportTraffic\": 0,
+      \"SingOptions\": {
+        \"EnableTFO\": false,
+        \"EnableSniff\": true,
+        \"SniffOverrideDestination\": true,
+        \"EnableDNS\": false
+      }${NODE_CERT_BLOCK}
+    }"
+
+        if [[ -n "${NODES_BLOCK}" ]]; then
+            NODES_BLOCK="${NODES_BLOCK},
+    ${ONE_NODE}"
+        else
+            NODES_BLOCK="    ${ONE_NODE}"
+        fi
+
+        echo ""
+        read -rp "Add another node? | نود دیگری اضافه کنید؟ [y/N]: " add_more
+        [[ "${add_more,,}" != "y" ]] && break
+    done
+
+    # ── Write config ──────────────────────────────────────────────
     mkdir -p /etc/V2bX
+    [[ -f /etc/V2bX/config.json ]] && cp /etc/V2bX/config.json /etc/V2bX/config.json.bak
+
     cat > /etc/V2bX/config.json << CFGEOF
 {
   "Log": {
@@ -378,30 +418,15 @@ generate_config() {
     ${CORE_BLOCK}
   ],
   "Nodes": [
-    {
-      "Core": "${CORE_TYPE}",
-      "ApiHost": "${API_HOST}",
-      "ApiKey": "${API_KEY}",
-      "NodeID": ${NODE_ID},
-      "NodeType": "${NODE_TYPE}",
-      "Timeout": 30,
-      "ListenIP": "${LISTEN_IP}",
-      "SendIP": "0.0.0.0",
-      "DeviceOnlineMinTraffic": 200,
-      "MinReportTraffic": 0,
-      "SingOptions": {
-        "EnableTFO": false,
-        "EnableSniff": true,
-        "SniffOverrideDestination": true,
-        "EnableDNS": false
-      }${CERT_BLOCK}
-    }
+${NODES_BLOCK}
   ]
 }
 CFGEOF
 
-    echo -e "${green}Config saved to /etc/V2bX/config.json${plain}"
-    echo -e "Start service | راه‌اندازی: ${yellow}v2bx start${plain}"
+    echo ""
+    echo -e "${green}Config saved | تنظیمات ذخیره شد: /etc/V2bX/config.json${plain}"
+    echo -e "Nodes configured | تعداد نودها: ${yellow}${NODE_NUM}${plain}"
+    echo -e "Restart to apply | اعمال تغییرات: ${yellow}v2bx restart${plain}"
 }
 
 # ================================================================
