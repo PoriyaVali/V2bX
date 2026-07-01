@@ -4,28 +4,45 @@
 [![Build](https://img.shields.io/github/actions/workflow/status/PoriyaVali/V2bX/release.yml?label=Build)](https://github.com/PoriyaVali/V2bX/actions)
 [![License](https://img.shields.io/github/license/PoriyaVali/V2bX)](LICENSE)
 
-A multi-core V2board node server, forked from [wyx2685/V2bX](https://github.com/wyx2685/V2bX) with updated cores and bilingual (English/Persian) interface.
+A multi-core V2board node server with updated cores and a bilingual (English/Persian) menu. Forked from [wyx2685/V2bX](https://github.com/wyx2685/V2bX).
+
+یک سرویس نود چند هسته‌ای برای V2board با هسته‌های به‌روز و منوی دوزبانه (انگلیسی/فارسی). منشعب از [wyx2685/V2bX](https://github.com/wyx2685/V2bX).
 
 ---
 
-یک سرویس نود چند هسته‌ای برای V2board، منشعب از [wyx2685/V2bX](https://github.com/wyx2685/V2bX) با هسته‌های به‌روز و رابط دوزبانه (انگلیسی/فارسی).
+## 🚀 One-Click Install / Update | نصب و آپدیت با یک کلیک
+
+Auto-detects your server: **updates** if V2bX is already installed, otherwise does a **fresh install**.
+
+خودش تشخیص می‌دهد: اگر V2bX نصب باشد **آپدیت** می‌کند، وگرنه **نصب کامل** انجام می‌دهد.
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh) setup
+```
+
+Then open the management menu anytime with | سپس هر زمان منوی مدیریت را باز کنید با:
+
+```bash
+v2bx menu
+```
+
+The menu covers install, update, uninstall, start/stop/restart, logs, config wizard, X25519 key, and BBR.
+
+منو شامل نصب، آپدیت، حذف، استارت/استاپ/ری‌استارت، لاگ، ویزارد کانفیگ، کلید X25519 و BBR است.
 
 ---
 
-## Features | ویژگی‌ها
+## ✨ Features | ویژگی‌ها
 
-- Permanently open source and free | همیشه متن‌باز و رایگان
-- Supports Vmess/Vless, Trojan, Shadowsocks, Hysteria2 | پشتیبانی از پروتکل‌های Vmess/Vless، Trojan، Shadowsocks، Hysteria2
-- Supports Vless + XTLS and Reality | پشتیبانی از Vless، XTLS و Reality
-- Single instance, multiple nodes — no restart needed | یک نمونه برای چندین نود بدون نیاز به راه‌اندازی مجدد
-- Online IP limit per user | محدودیت تعداد IP آنلاین
-- TCP connection limit | محدودیت تعداد اتصال TCP
-- Node-level and user-level speed limit | محدودیت سرعت در سطح نود و کاربر
-- Simple configuration | پیکربندی ساده
+- Vmess/Vless, Trojan, Shadowsocks, Hysteria2 | پشتیبانی از پروتکل‌های Vmess/Vless، Trojan، Shadowsocks، Hysteria2
+- Vless + XTLS and Reality | پشتیبانی از Vless، XTLS و Reality
+- One instance, multiple nodes — no restart needed | یک نمونه برای چندین نود بدون راه‌اندازی مجدد
+- Per-user online IP limit, TCP connection limit | محدودیت IP آنلاین و اتصال TCP در هر کاربر
+- Node- and user-level speed limit | محدودیت سرعت در سطح نود و کاربر
+- Auto TLS certificate + renewal | صدور و تمدید خودکار گواهی TLS
 - Auto-restart on config change | راه‌اندازی مجدد خودکار پس از تغییر تنظیمات
-- Multi-core support, easy to extend | پشتیبانی از چند هسته، قابل گسترش
 
-## Core Versions | نسخه هسته‌ها
+## 🧩 Core Versions | نسخه هسته‌ها
 
 | Core | Version |
 |------|---------|
@@ -33,116 +50,38 @@ A multi-core V2board node server, forked from [wyx2685/V2bX](https://github.com/
 | sing-box | v1.13.0-alpha.5 (wyx2685 fork) |
 | hysteria2 | v2.9.3 |
 
-## Feature Matrix | جدول قابلیت‌ها
-
-| Feature | v2ray | trojan | shadowsocks | hysteria2 |
-|---------|-------|--------|-------------|-----------|
-| Auto TLS certificate | ✓ | ✓ | ✓ | ✓ |
-| Auto TLS renewal | ✓ | ✓ | ✓ | ✓ |
-| Online user stats | ✓ | ✓ | ✓ | ✓ |
-| Audit rules | ✓ | ✓ | ✓ | ✓ |
-| Custom DNS | ✓ | ✓ | ✓ | ✓ |
-| Online IP limit | ✓ | ✓ | ✓ | ✓ |
-| Connection limit | ✓ | ✓ | ✓ | ✓ |
-| Cross-node IP limit | ✓ | ✓ | ✓ | ✓ |
-| Per-user speed limit | ✓ | ✓ | ✓ | ✓ |
-
-## Installation | نصب
-
-### One-liner Install | نصب با یک دستور
+## ⌨️ CLI Commands | دستورات
 
 ```bash
-wget -N https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh && bash install.sh
+v2bx menu       # Management menu | منوی مدیریت
+v2bx start      # Start service   | راه‌اندازی سرویس
+v2bx stop       # Stop service    | توقف سرویس
+v2bx restart    # Restart service | راه‌اندازی مجدد
+v2bx log        # View logs       | مشاهده لاگ
+v2bx update     # Update version  | به‌روزرسانی
+v2bx uninstall  # Uninstall       | حذف
+v2bx synctime   # Sync system time| همگام‌سازی زمان
 ```
 
-### Download Binary | دانلود باینری
-
-Download the latest release for your platform from:
-
-آخرین نسخه برای پلتفرم خود را از اینجا دانلود کنید:
-
-**[https://github.com/PoriyaVali/V2bX/releases](https://github.com/PoriyaVali/V2bX/releases)**
-
-### Manual Install (Linux) | نصب دستی (لینوکس)
+## 🔧 Build from Source | ساخت از سورس
 
 ```bash
-# Download latest release for linux amd64
-# دانلود آخرین نسخه برای linux amd64
-wget -O V2bX.zip https://github.com/PoriyaVali/V2bX/releases/latest/download/V2bX-linux-amd64.zip
-unzip V2bX.zip -d V2bX-linux-amd64
-cp V2bX-linux-amd64/V2bX /usr/local/bin/V2bX
-chmod +x /usr/local/bin/V2bX
-
-# Set up config directory | ایجاد دایرکتوری تنظیمات
-mkdir -p /etc/V2bX
-cp V2bX-linux-amd64/*.json /etc/V2bX/
-```
-
-### Service Setup | راه‌اندازی سرویس
-
-```bash
-# Create systemd service | ایجاد سرویس systemd
-cat > /etc/systemd/system/V2bX.service << EOF
-[Unit]
-Description=V2bX Service
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/V2bX server -c /etc/V2bX/config.json
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable V2bX
-systemctl start V2bX
-```
-
-### CLI Commands | دستورات
-
-```bash
-V2bX start      # Start service   | راه‌اندازی سرویس
-V2bX stop       # Stop service    | توقف سرویس
-V2bX restart    # Restart service | راه‌اندازی مجدد
-V2bX log        # View logs       | مشاهده لاگ
-V2bX update     # Update version  | به‌روزرسانی
-V2bX uninstall  # Uninstall       | حذف
-V2bX synctime   # Sync system time| همگام‌سازی زمان
-```
-
-## Build from Source | ساخت از سورس
-
-```bash
-git clone https://github.com/PoriyaVali/V2bX.git
-cd V2bX
-
-# Build with all cores | ساخت با تمام هسته‌ها
+git clone https://github.com/PoriyaVali/V2bX.git && cd V2bX
 GOEXPERIMENT=jsonv2 go build -v -o V2bX \
   -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor" \
   -trimpath -ldflags "-s -w -buildid="
 ```
 
-## Configuration | تنظیمات
+## ⚙️ Configuration | تنظیمات
 
-See the [example configs](example/) for reference.
+Use the built-in config wizard (`v2bx menu` → option 9) or see the [example configs](example/).
 
-برای مثال‌های تنظیمات به پوشه [example](example/) مراجعه کنید.
-
-## Disclaimer | سلب مسئولیت
-
-This project is provided as-is with no warranty. Use at your own risk.
-
-این پروژه بدون هیچ ضمانتی ارائه می‌شود. استفاده از آن به عهده کاربر است.
+از ویزارد داخلی (`v2bx menu` → گزینه ۹) استفاده کنید یا به پوشه [example](example/) مراجعه کنید.
 
 ## Credits | تشکر
 
-- [wyx2685/V2bX](https://github.com/wyx2685/V2bX) — Original fork
-- [Project X / XTLS](https://github.com/XTLS/)
-- [SagerNet/sing-box](https://github.com/SagerNet/sing-box)
-- [apernet/hysteria](https://github.com/apernet/hysteria)
-- [XrayR](https://github.com/XrayR/XrayR)
-- [V2Fly](https://github.com/v2fly)
+[wyx2685/V2bX](https://github.com/wyx2685/V2bX) · [XTLS](https://github.com/XTLS/) · [sing-box](https://github.com/SagerNet/sing-box) · [hysteria](https://github.com/apernet/hysteria) · [XrayR](https://github.com/XrayR/XrayR) · [V2Fly](https://github.com/v2fly)
+
+## Disclaimer | سلب مسئولیت
+
+Provided as-is with no warranty. Use at your own risk. | بدون هیچ ضمانتی ارائه می‌شود؛ استفاده به عهده کاربر است.
