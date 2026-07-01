@@ -21,6 +21,7 @@ type Controller struct {
 	userList                  []panel.UserInfo
 	aliveMap                  map[int]int
 	info                      *panel.NodeInfo
+	reportAccum               map[int][2]int64 // UID -> [up,down] carried over below node_report_min_traffic
 	nodeInfoMonitorPeriodic   *task.Task
 	userReportPeriodic        *task.Task
 	renewCertPeriodic         *task.Task

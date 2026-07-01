@@ -25,8 +25,12 @@ type NodeInfo struct {
 	Security     int
 	PushInterval time.Duration
 	PullInterval time.Duration
-	RawDNS       RawDNS
-	Rules        Rules
+	// Node-side thresholds pushed by the panel (0 = disabled/unset).
+	// Units: kilobytes (multiplied by 1000 when compared to byte counters).
+	NodeReportMinTraffic   int64
+	DeviceOnlineMinTraffic int64
+	RawDNS                 RawDNS
+	Rules                  Rules
 
 	// origin
 	VAllss      *VAllssNode
@@ -54,8 +58,10 @@ type Route struct {
 	ActionValue string      `json:"action_value"`
 }
 type BaseConfig struct {
-	PushInterval any `json:"push_interval"`
-	PullInterval any `json:"pull_interval"`
+	PushInterval           any `json:"push_interval"`
+	PullInterval           any `json:"pull_interval"`
+	NodeReportMinTraffic   any `json:"node_report_min_traffic"`
+	DeviceOnlineMinTraffic any `json:"device_online_min_traffic"`
 }
 
 // VAllssNode is vmess and vless node info
@@ -307,6 +313,9 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	// set interval
 	node.PushInterval = intervalToTime(cm.BaseConfig.PushInterval)
 	node.PullInterval = intervalToTime(cm.BaseConfig.PullInterval)
+	// Optional thresholds — nil/absent on older panels → 0 (feature disabled).
+	node.NodeReportMinTraffic = anyToInt64(cm.BaseConfig.NodeReportMinTraffic)
+	node.DeviceOnlineMinTraffic = anyToInt64(cm.BaseConfig.DeviceOnlineMinTraffic)
 
 	node.Common = cm
 	// clear
@@ -314,6 +323,27 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	cm.BaseConfig = nil
 
 	return node, nil
+}
+
+// anyToInt64 converts a msgpack/json-decoded number (int/uint/float/string)
+// to int64. Returns 0 for nil so panels that don't send the field are safe.
+func anyToInt64(i interface{}) int64 {
+	if i == nil {
+		return 0
+	}
+	switch reflect.TypeOf(i).Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return reflect.ValueOf(i).Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return int64(reflect.ValueOf(i).Uint())
+	case reflect.Float64, reflect.Float32:
+		return int64(reflect.ValueOf(i).Float())
+	case reflect.String:
+		v, _ := strconv.Atoi(i.(string))
+		return int64(v)
+	default:
+		return 0
+	}
 }
 
 func intervalToTime(i interface{}) time.Duration {
