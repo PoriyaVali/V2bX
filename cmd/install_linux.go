@@ -28,10 +28,9 @@ var (
 			} else {
 				fmt.Println(Warn("Fetching latest version | دریافت آخرین نسخه..."))
 			}
-			_, err := exec.RunCommandByShell(script)
-			if err != nil {
-				fmt.Println(Err("Update failed | به‌روزرسانی ناموفق بود: ", err))
-			}
+			// Stream the installer output live to the terminal so the user
+			// can see download/build progress instead of a silent update.
+			exec.RunCommandStd("bash", "-c", script)
 		},
 	}
 	uninstallCommand = cobra.Command{
@@ -39,12 +38,21 @@ var (
 		Short: "Uninstall V2bX",
 		Run:   uninstallHandle,
 	}
+	menuCommand = cobra.Command{
+		Use:   "menu",
+		Short: "Open the interactive management menu | باز کردن منوی مدیریت",
+		Run: func(_ *cobra.Command, _ []string) {
+			script := "bash <(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh)"
+			exec.RunCommandStd("bash", "-c", script)
+		},
+	}
 )
 
 func init() {
 	updateCommand.PersistentFlags().StringVar(&targetVersion, "version", "", "update target version")
 	command.AddCommand(&updateCommand)
 	command.AddCommand(&uninstallCommand)
+	command.AddCommand(&menuCommand)
 }
 
 func uninstallHandle(_ *cobra.Command, _ []string) {
