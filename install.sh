@@ -287,8 +287,13 @@ generate_config() {
     fi
 
     # ── Log level ─────────────────────────────────────────────────
-    read -rp "Log level (debug/info/warn/error) [default: info]: " LOG_LEVEL
+    # LOG_LEVEL controls V2bX's own operational logs (user reports, limits…).
+    read -rp "V2bX log level (debug/info/warn/error) [default: info]: " LOG_LEVEL
     LOG_LEVEL="${LOG_LEVEL:-info}"
+    # Core (sing/xray) logs every connection at info → floods the journal.
+    # Default the core to warn; set it equal to LOG_LEVEL only for debugging.
+    read -rp "Core connection-log level [default: warn]: " CORE_LOG_LEVEL
+    CORE_LOG_LEVEL="${CORE_LOG_LEVEL:-warn}"
 
     # ── Multiplexing (smux) — vmess/vless/trojan/shadowsocks only ─
     echo -e "Enable multiplexing (smux)? | فعال کردن مالتی‌پلکس؟"
@@ -316,14 +321,14 @@ generate_config() {
         fi
         CORE_BLOCK="{
       \"Type\": \"sing\",
-      \"Log\": { \"Level\": \"${LOG_LEVEL}\", \"Timestamp\": true },
+      \"Log\": { \"Level\": \"${CORE_LOG_LEVEL}\", \"Timestamp\": true },
       \"NTP\": { \"Enable\": false, \"Server\": \"time.apple.com\", \"ServerPort\": 0 },
       \"OriginalPath\": \"/etc/V2bX/sing_origin.json\"${BLOCKED_FIELD}
     }"
     elif [[ "${CORE_TYPE}" == "xray" ]]; then
         CORE_BLOCK="{
       \"Type\": \"xray\",
-      \"Log\": { \"Level\": \"${LOG_LEVEL}\" }
+      \"Log\": { \"Level\": \"${CORE_LOG_LEVEL}\" }
     }"
     else
         CORE_BLOCK="{
@@ -533,6 +538,60 @@ allow_all_ports() {
 }
 
 # ================================================================
+# Auth-failure protection (fail2ban) | محافظت در برابر تلاش ناموفق
+# ================================================================
+install_fail2ban() {
+    echo -e "${green}Installing auth-failure protection (fail2ban)...${plain}"
+    echo -e "${yellow}Note: bans an IP after many failed auths. On CGNAT/shared IPs this"
+    echo -e "can affect several users, so the threshold is high (30 fails / 5 min).${plain}"
+    if [[ x"${release}" == x"alpine" ]]; then
+        echo -e "${red}Not supported on Alpine | در Alpine پشتیبانی نمی‌شود${plain}"
+        return
+    fi
+    if ! command -v fail2ban-client &>/dev/null; then
+        if command -v apt &>/dev/null; then
+            apt update -y >/dev/null 2>&1 && apt install -y fail2ban
+        elif command -v dnf &>/dev/null; then
+            dnf install -y fail2ban
+        elif command -v yum &>/dev/null; then
+            yum install -y epel-release >/dev/null 2>&1; yum install -y fail2ban
+        fi
+    fi
+    if ! command -v fail2ban-client &>/dev/null; then
+        echo -e "${red}fail2ban install failed | نصب ناموفق${plain}"
+        return
+    fi
+    mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d
+    cat > /etc/fail2ban/filter.d/v2bx.conf <<'FEOF'
+[Definition]
+# V2bX/sing-box auth failure: a client presented an unknown user password.
+failregex = process connection from <HOST>:\d+: unknown user password
+ignoreregex =
+FEOF
+    cat > /etc/fail2ban/jail.d/v2bx.conf <<'JEOF'
+[v2bx]
+enabled  = true
+backend  = systemd
+filter   = v2bx
+journalmatch = _SYSTEMD_UNIT=V2bX.service
+maxretry = 30
+findtime = 300
+bantime  = 3600
+JEOF
+    systemctl enable fail2ban >/dev/null 2>&1
+    systemctl restart fail2ban
+    sleep 1
+    if fail2ban-client status v2bx >/dev/null 2>&1; then
+        echo -e "${green}fail2ban active for V2bX | فعال شد${plain}"
+        echo -e "  Status | وضعیت:  ${yellow}fail2ban-client status v2bx${plain}"
+        echo -e "  Unban  | رفع بن:  ${yellow}fail2ban-client set v2bx unbanip <IP>${plain}"
+        echo -e "  Tune   | تنظیم:   ${yellow}/etc/fail2ban/jail.d/v2bx.conf${plain}"
+    else
+        echo -e "${yellow}Installed, but jail not confirmed — check: fail2ban-client status${plain}"
+    fi
+}
+
+# ================================================================
 # Show status | نمایش وضعیت
 # ================================================================
 show_status() {
@@ -586,9 +645,10 @@ show_menu() {
   ${green}12.${plain} Install BBR | نصب BBR
   ${green}13.${plain} Allow all ports | باز کردن تمام پورت‌ها
   ${green}14.${plain} Certificate expiry | انقضای گواهی‌ها
+  ${green}15.${plain} Auth-failure protection (fail2ban) | محافظت ضد تلاش ناموفق
   ————————————————
  "
-    read -rp "Choose | انتخاب [0-14]: " num
+    read -rp "Choose | انتخاب [0-15]: " num
     case "${num}" in
         0) exit 0 ;;
         1)
@@ -618,6 +678,7 @@ show_menu() {
         12) install_bbr ;;
         13) allow_all_ports ;;
         14) V2bX cert ;;
+        15) install_fail2ban ;;
         *) echo -e "${red}Invalid option | گزینه نامعتبر${plain}" ;;
     esac
 }

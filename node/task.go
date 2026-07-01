@@ -1,6 +1,7 @@
 package node
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
@@ -87,6 +88,13 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			"err": err,
 		}).Error("Get alive list failed")
 		return nil
+	}
+	// Hot path: if only thresholds/intervals changed, apply them in place and
+	// treat the node as unchanged so we skip the disruptive DelNode/re-add
+	// (which would drop every active connection). Users/alive still update.
+	if newN != nil && c.info != nil && onlyHotFieldsChanged(c.info, newN) {
+		c.applyHotConfig(newN)
+		newN = nil
 	}
 	if newN != nil {
 		c.info = newN
@@ -260,4 +268,40 @@ func (c *Controller) SpeedChecker() error {
 		}
 	}
 	return nil
+}
+
+// onlyHotFieldsChanged reports whether newN differs from cur only in the
+// "hot" fields that can be applied live (report/device thresholds and the
+// push/pull intervals). If every other field is identical, we can update
+// those in place instead of tearing the node down. reflect.DeepEqual is
+// exact, so a cold-field change can never be mistaken for hot-only.
+func onlyHotFieldsChanged(cur, newN *panel.NodeInfo) bool {
+	x, y := *cur, *newN // shallow copies; pointers are followed by DeepEqual
+	x.NodeReportMinTraffic, y.NodeReportMinTraffic = 0, 0
+	x.DeviceOnlineMinTraffic, y.DeviceOnlineMinTraffic = 0, 0
+	x.PushInterval, y.PushInterval = 0, 0
+	x.PullInterval, y.PullInterval = 0, 0
+	return reflect.DeepEqual(x, y)
+}
+
+// applyHotConfig updates the live thresholds and (if changed) the task
+// intervals without reloading the node, so active connections are untouched.
+func (c *Controller) applyHotConfig(newN *panel.NodeInfo) {
+	c.info.NodeReportMinTraffic = newN.NodeReportMinTraffic
+	c.info.DeviceOnlineMinTraffic = newN.DeviceOnlineMinTraffic
+	if c.nodeInfoMonitorPeriodic != nil && newN.PullInterval != 0 &&
+		c.nodeInfoMonitorPeriodic.Interval != newN.PullInterval {
+		c.info.PullInterval = newN.PullInterval
+		c.nodeInfoMonitorPeriodic.Interval = newN.PullInterval
+		c.nodeInfoMonitorPeriodic.Close()
+		_ = c.nodeInfoMonitorPeriodic.Start(false)
+	}
+	if c.userReportPeriodic != nil && newN.PushInterval != 0 &&
+		c.userReportPeriodic.Interval != newN.PushInterval {
+		c.info.PushInterval = newN.PushInterval
+		c.userReportPeriodic.Interval = newN.PushInterval
+		c.userReportPeriodic.Close()
+		_ = c.userReportPeriodic.Start(false)
+	}
+	log.WithField("tag", c.tag).Info("Applied hot config (thresholds/intervals) without node reload")
 }
