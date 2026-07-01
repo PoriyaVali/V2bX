@@ -555,9 +555,10 @@ show_menu() {
   ${green}11.${plain} Generate X25519 key | تولید کلید X25519
   ${green}12.${plain} Install BBR | نصب BBR
   ${green}13.${plain} Allow all ports | باز کردن تمام پورت‌ها
+  ${green}14.${plain} Certificate expiry | انقضای گواهی‌ها
   ————————————————
  "
-    read -rp "Choose | انتخاب [0-13]: " num
+    read -rp "Choose | انتخاب [0-14]: " num
     case "${num}" in
         0) exit 0 ;;
         1)
@@ -586,6 +587,7 @@ show_menu() {
         11) gen_x25519 ;;
         12) install_bbr ;;
         13) allow_all_ports ;;
+        14) V2bX cert ;;
         *) echo -e "${red}Invalid option | گزینه نامعتبر${plain}" ;;
     esac
 }

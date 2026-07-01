@@ -32,7 +32,10 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 		case "none", "", "file", "self":
 		default:
 			c.renewCertPeriodic = &task.Task{
-				Interval: time.Hour * 24,
+				// Check every 6h (cheap: only reads/parses the cert; hits
+				// ACME only when <30 days remain). Gives up to 4 renewal
+				// retries/day if one fails near expiry.
+				Interval: time.Hour * 6,
 				Execute:  c.renewCertTask,
 			}
 			log.WithField("tag", c.tag).Info("Start renew cert")

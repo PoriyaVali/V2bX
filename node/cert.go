@@ -18,12 +18,14 @@ import (
 func (c *Controller) renewCertTask() error {
 	l, err := NewLego(c.CertConfig)
 	if err != nil {
-		log.WithField("tag", c.tag).Info("new lego error: ", err)
+		log.WithField("tag", c.tag).Warn("new lego error: ", err)
 		return nil
 	}
 	err = l.RenewCert()
 	if err != nil {
-		log.WithField("tag", c.tag).Info("renew cert error: ", err)
+		// ERROR level so a failing renewal is visible in `v2bx log`;
+		// the 6h task interval retries soon rather than waiting a day.
+		log.WithField("tag", c.tag).Error("renew cert error: ", err)
 		return nil
 	}
 	return nil
