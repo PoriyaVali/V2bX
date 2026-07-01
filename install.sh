@@ -358,8 +358,9 @@ generate_config() {
             *) NODE_TYPE="anytls" ;;
         esac
 
-        read -rp "Listen IP [default: 0.0.0.0]: " LISTEN_IP
-        LISTEN_IP="${LISTEN_IP:-0.0.0.0}"
+        # "::" = dual-stack (IPv4+IPv6). Use 0.0.0.0 to force IPv4-only.
+        read -rp "Listen IP [default: :: (IPv4+IPv6), or 0.0.0.0 for IPv4-only]: " LISTEN_IP
+        LISTEN_IP="${LISTEN_IP:-::}"
 
         # TLS cert — each node gets its own domain → own cert files
         NODE_CERT_BLOCK=""
@@ -397,7 +398,7 @@ generate_config() {
       \"NodeType\": \"${NODE_TYPE}\",
       \"Timeout\": 30,
       \"ListenIP\": \"${LISTEN_IP}\",
-      \"SendIP\": \"0.0.0.0\",
+      \"SendIP\": \"\",
       \"DeviceOnlineMinTraffic\": 200,
       \"MinReportTraffic\": 0,
       \"SingOptions\": {

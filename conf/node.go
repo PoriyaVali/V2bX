@@ -86,8 +86,11 @@ func (n *NodeConfig) UnmarshalJSON(data []byte) (err error) {
 	}
 
 	n.Options = Options{
-		ListenIP:   "0.0.0.0",
-		SendIP:     "0.0.0.0",
+		// Dual-stack by default: "::" accepts both IPv4 and IPv6 inbound
+		// (Linux bindv6only=0). Empty SendIP leaves the outbound source
+		// unbound so xray/freedom can reach IPv6 destinations too.
+		ListenIP:   "::",
+		SendIP:     "",
 		CertConfig: NewCertConfig(),
 	}
 	if len(rn.OptRaw) > 0 {
