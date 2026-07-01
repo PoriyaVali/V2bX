@@ -368,16 +368,46 @@ generate_config() {
             read -rp "Certificate domain (e.g. ff.example.com): " CERT_DOMAIN
             echo -e "Cert mode | نحوه دریافت سرتیفیکت:"
             echo -e "  ${green}1.${plain} http  (port 80 must be open)"
-            echo -e "  ${green}2.${plain} self  (self-signed, test only)"
-            echo -e "  ${green}3.${plain} file  (already have cert files)"
-            echo -e "  ${green}4.${plain} none  (no TLS)"
-            read -rp "Cert mode [1-4, default=1]: " cert_choice
+            echo -e "  ${green}2.${plain} dns   (no port needed — needs DNS API token) | بدون نیاز به پورت"
+            echo -e "  ${green}3.${plain} self  (self-signed, test only)"
+            echo -e "  ${green}4.${plain} file  (already have cert files)"
+            echo -e "  ${green}5.${plain} none  (no TLS)"
+            read -rp "Cert mode [1-5, default=1]: " cert_choice
+            CERT_EXTRA=""
             case "${cert_choice}" in
-                2) CERT_MODE="self" ;;
-                3) CERT_MODE="file" ;;
-                4) CERT_MODE="none" ;;
+                2) CERT_MODE="dns" ;;
+                3) CERT_MODE="self" ;;
+                4) CERT_MODE="file" ;;
+                5) CERT_MODE="none" ;;
                 *) CERT_MODE="http" ;;
             esac
+            # DNS-01 challenge: no port needed, survives closed/blocked port 80,
+            # works behind CDN. Needs the DNS provider's API credentials.
+            if [[ "${CERT_MODE}" == "dns" ]]; then
+                read -rp "DNS provider [default: cloudflare]: " DNS_PROVIDER
+                DNS_PROVIDER="${DNS_PROVIDER:-cloudflare}"
+                read -rp "ACME email (e.g. you@example.com): " ACME_EMAIL
+                if [[ "${DNS_PROVIDER}" == "cloudflare" ]]; then
+                    read -rp "Cloudflare API Token (Zone.DNS: Edit): " CF_TOKEN
+                    DNS_ENV_JSON="\"CLOUDFLARE_DNS_API_TOKEN\": \"${CF_TOKEN}\""
+                else
+                    echo -e "Enter DNS env vars as KEY=VALUE, comma separated (see go-acme/lego docs)"
+                    read -rp "DNS env: " DNS_ENV_RAW
+                    DNS_ENV_RAW="${DNS_ENV_RAW//, /,}"
+                    DNS_ENV_JSON=""
+                    IFS=',' read -ra _pairs <<< "${DNS_ENV_RAW}"
+                    for _p in "${_pairs[@]}"; do
+                        [[ -z "${_p}" ]] && continue
+                        _k="${_p%%=*}"; _v="${_p#*=}"
+                        [[ -n "${DNS_ENV_JSON}" ]] && DNS_ENV_JSON="${DNS_ENV_JSON}, "
+                        DNS_ENV_JSON="${DNS_ENV_JSON}\"${_k}\": \"${_v}\""
+                    done
+                fi
+                CERT_EXTRA=",
+          \"Provider\": \"${DNS_PROVIDER}\",
+          \"Email\": \"${ACME_EMAIL}\",
+          \"DNSEnv\": { ${DNS_ENV_JSON} }"
+            fi
             # Cert path includes domain name — avoids conflicts between nodes
             NODE_CERT_BLOCK=",
         \"CertConfig\": {
@@ -385,7 +415,7 @@ generate_config() {
           \"RejectUnknownSni\": false,
           \"CertDomain\": \"${CERT_DOMAIN}\",
           \"CertFile\": \"/etc/V2bX/${CERT_DOMAIN}.cer\",
-          \"KeyFile\": \"/etc/V2bX/${CERT_DOMAIN}.key\"
+          \"KeyFile\": \"/etc/V2bX/${CERT_DOMAIN}.key\"${CERT_EXTRA}
         }"
         fi
 
