@@ -590,6 +590,28 @@ show_menu() {
 }
 
 # ================================================================
+# Smart setup | نصب/آپدیت هوشمند
+# ================================================================
+# If V2bX is already installed -> update, otherwise -> fresh install
+# اگر V2bX نصب باشد آپدیت می‌شود، در غیر این صورت نصب می‌شود
+smart_setup() {
+    if [[ -f /usr/local/V2bX/V2bX ]]; then
+        echo -e "${green}V2bX is already installed, updating... | V2bX نصب است، در حال به‌روزرسانی...${plain}"
+        update_V2bX "$1"
+    else
+        echo -e "${green}V2bX is not installed, installing... | V2bX نصب نیست، در حال نصب...${plain}"
+        install_base
+        get_version "$1"
+        install_V2bX
+        if [[ x"${release}" != x"alpine" ]]; then
+            systemctl enable V2bX >/dev/null 2>&1
+            systemctl start V2bX
+        fi
+        show_status
+    fi
+}
+
+# ================================================================
 # Entry point | نقطه ورود
 # ================================================================
 # If called with argument, use it as target version
@@ -604,6 +626,9 @@ if [[ $# -ge 1 ]]; then
             ;;
         update)
             update_V2bX "$2"
+            ;;
+        setup|auto)
+            smart_setup "$2"
             ;;
         uninstall)
             uninstall_V2bX
