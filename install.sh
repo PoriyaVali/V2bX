@@ -266,10 +266,12 @@ generate_config() {
     echo -e "  ${green}1.${plain} sing  (recommended | پیشنهادی)"
     echo -e "  ${green}2.${plain} xray"
     echo -e "  ${green}3.${plain} hysteria2"
-    read -rp "Core [1-3, default=1]: " core_choice
+    echo -e "  ${green}4.${plain} mdns  (DNS-tunnel anti-censorship | تونل DNS ضدسانسور)"
+    read -rp "Core [1-4, default=1]: " core_choice
     case "${core_choice}" in
         2) CORE_TYPE="xray" ;;
         3) CORE_TYPE="hysteria2" ;;
+        4) CORE_TYPE="mdns" ;;
         *) CORE_TYPE="sing" ;;
     esac
 
@@ -330,6 +332,12 @@ generate_config() {
       \"Type\": \"xray\",
       \"Log\": { \"Level\": \"${CORE_LOG_LEVEL}\" }
     }"
+    elif [[ "${CORE_TYPE}" == "mdns" ]]; then
+        # mdns core takes no core-level config; every param (domain, UDP port,
+        # encryption, node secret) is delivered per-node by the panel.
+        CORE_BLOCK="{
+      \"Type\": \"mdns\"
+    }"
     else
         CORE_BLOCK="{
       \"Type\": \"hysteria2\"
@@ -346,22 +354,28 @@ generate_config() {
 
         read -rp "Node ID: " NODE_ID
 
-        echo -e "Node type | نوع نود:"
-        echo -e "  ${green}1.${plain} anytls"
-        echo -e "  ${green}2.${plain} vmess"
-        echo -e "  ${green}3.${plain} vless"
-        echo -e "  ${green}4.${plain} trojan"
-        echo -e "  ${green}5.${plain} shadowsocks"
-        echo -e "  ${green}6.${plain} hysteria2"
-        read -rp "Node type [1-6, default=1]: " node_choice
-        case "${node_choice}" in
-            2) NODE_TYPE="vmess" ;;
-            3) NODE_TYPE="vless" ;;
-            4) NODE_TYPE="trojan" ;;
-            5) NODE_TYPE="shadowsocks" ;;
-            6) NODE_TYPE="hysteria2" ;;
-            *) NODE_TYPE="anytls" ;;
-        esac
+        if [[ "${CORE_TYPE}" == "mdns" ]]; then
+            # mdns core serves only mdns nodes — no type menu needed.
+            NODE_TYPE="mdns"
+            echo -e "Node type | نوع نود: ${yellow}mdns${plain}"
+        else
+            echo -e "Node type | نوع نود:"
+            echo -e "  ${green}1.${plain} anytls"
+            echo -e "  ${green}2.${plain} vmess"
+            echo -e "  ${green}3.${plain} vless"
+            echo -e "  ${green}4.${plain} trojan"
+            echo -e "  ${green}5.${plain} shadowsocks"
+            echo -e "  ${green}6.${plain} hysteria2"
+            read -rp "Node type [1-6, default=1]: " node_choice
+            case "${node_choice}" in
+                2) NODE_TYPE="vmess" ;;
+                3) NODE_TYPE="vless" ;;
+                4) NODE_TYPE="trojan" ;;
+                5) NODE_TYPE="shadowsocks" ;;
+                6) NODE_TYPE="hysteria2" ;;
+                *) NODE_TYPE="anytls" ;;
+            esac
+        fi
 
         # "::" = dual-stack (IPv4+IPv6). Use 0.0.0.0 to force IPv4-only.
         read -rp "Listen IP [default: :: (IPv4+IPv6), or 0.0.0.0 for IPv4-only]: " LISTEN_IP
@@ -425,7 +439,23 @@ generate_config() {
         fi
 
         # Build this node's JSON
-        ONE_NODE="{
+        if [[ "${CORE_TYPE}" == "mdns" ]]; then
+            # mdns node: no SingOptions/cert — the DNS-tunnel params (domain,
+            # UDP port, encryption, node secret) arrive from the panel.
+            ONE_NODE="{
+      \"Core\": \"mdns\",
+      \"ApiHost\": \"${API_HOST}\",
+      \"ApiKey\": \"${API_KEY}\",
+      \"NodeID\": ${NODE_ID},
+      \"NodeType\": \"mdns\",
+      \"Timeout\": 30,
+      \"ListenIP\": \"${LISTEN_IP}\",
+      \"SendIP\": \"\",
+      \"DeviceOnlineMinTraffic\": 200,
+      \"MinReportTraffic\": 0
+    }"
+        else
+            ONE_NODE="{
       \"Core\": \"${CORE_TYPE}\",
       \"ApiHost\": \"${API_HOST}\",
       \"ApiKey\": \"${API_KEY}\",
@@ -443,6 +473,7 @@ generate_config() {
         \"EnableDNS\": false${MULTIPLEX_BLOCK}
       }${NODE_CERT_BLOCK}
     }"
+        fi
 
         if [[ -n "${NODES_BLOCK}" ]]; then
             NODES_BLOCK="${NODES_BLOCK},
