@@ -26,6 +26,8 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
+require github.com/BurntSushi/toml v1.5.0 // indirect
+
 require (
 	cloud.google.com/go/auth v0.16.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
@@ -161,7 +163,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/k0kubun/go-ansi v0.0.0-20180517002512-3bf9e2903213 // indirect
 	github.com/keybase/go-keychain v0.0.1 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kolo/xmlrpc v0.0.0-20220921171641-a4b6fa1dd06b // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -210,7 +212,7 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/peterhellberg/link v1.2.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.21 // indirect
+	github.com/pierrec/lz4/v4 v4.1.26 // indirect
 	github.com/pires/go-proxyproto v0.8.1 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -331,8 +333,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gvisor.dev/gvisor v0.0.0-20250428193742-2d800c3129d5 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
+	masterdnsvpn-go v0.0.0-20260703065436-a15a163160ee
 )
 
 replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.14-v2bx.2
 
 replace github.com/xtls/xray-core v1.251202.0 => github.com/wyx2685/xray-core v0.0.0-20251202200223-63db1dc9e9e2
+
+replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260703065436-a15a163160ee

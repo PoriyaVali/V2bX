@@ -38,6 +38,7 @@ type NodeInfo struct {
 	Trojan      *TrojanNode
 	Tuic        *TuicNode
 	AnyTls      *AnyTlsNode
+	Mdns        *MdnsNode
 	Hysteria    *HysteriaNode
 	Hysteria2   *Hysteria2Node
 	Common      *CommonNode
@@ -127,6 +128,16 @@ type TuicNode struct {
 type AnyTlsNode struct {
 	CommonNode
 	PaddingScheme []string `json:"padding_scheme,omitempty"`
+}
+
+// MdnsNode is a MasterDnsVPN (DNS-tunnel) node. server_port is the UDP
+// listener; the rest are tunnel specifics the panel sends for this type.
+type MdnsNode struct {
+	CommonNode
+	Domain           []string `json:"domain"`
+	EncryptionMethod int      `json:"encryption_method"`
+	EncryptionKey    string   `json:"encryption_key"`
+	NodeSecret       string   `json:"node_secret"`
 }
 
 type HysteriaNode struct {
@@ -250,6 +261,15 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		cm = &rsp.CommonNode
 		node.AnyTls = rsp
 		node.Security = Tls
+	case "mdns":
+		rsp := &MdnsNode{}
+		err = json.Unmarshal(r.Body(), rsp)
+		if err != nil {
+			return nil, fmt.Errorf("decode mdns params error: %s", err)
+		}
+		cm = &rsp.CommonNode
+		node.Mdns = rsp
+		node.Security = None
 	case "hysteria":
 		rsp := &HysteriaNode{}
 		err = json.Unmarshal(r.Body(), rsp)
