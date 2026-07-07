@@ -333,11 +333,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gvisor.dev/gvisor v0.0.0-20250428193742-2d800c3129d5 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
-	masterdnsvpn-go v0.0.0-20260703065436-a15a163160ee
+	masterdnsvpn-go v0.0.0-20260707155520-295de16bc4db
 )
 
 replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.14-v2bx.2
 
 replace github.com/xtls/xray-core v1.251202.0 => github.com/wyx2685/xray-core v0.0.0-20251202200223-63db1dc9e9e2
 
-replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260703065436-a15a163160ee
+replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260707155520-295de16bc4db
