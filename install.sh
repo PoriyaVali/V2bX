@@ -261,19 +261,9 @@ generate_config() {
     echo -e "${yellow}Old config backed up to /etc/V2bX/config.json.bak${plain}"
     echo ""
 
-    # ── Core type (shared for all nodes) ──────────────────────────
-    echo -e "Select core type | نوع هسته:"
-    echo -e "  ${green}1.${plain} sing  (recommended | پیشنهادی)"
-    echo -e "  ${green}2.${plain} xray"
-    echo -e "  ${green}3.${plain} hysteria2"
-    echo -e "  ${green}4.${plain} mdns  (DNS-tunnel anti-censorship | تونل DNS ضدسانسور)"
-    read -rp "Core [1-4, default=1]: " core_choice
-    case "${core_choice}" in
-        2) CORE_TYPE="xray" ;;
-        3) CORE_TYPE="hysteria2" ;;
-        4) CORE_TYPE="mdns" ;;
-        *) CORE_TYPE="sing" ;;
-    esac
+    # NOTE: the core is chosen PER NODE inside the loop below, so one config can
+    # mix cores (e.g. a sing anytls node + an mdns node + an xray vless node).
+    # Each distinct core is added to the "Cores" array once (deduplicated).
 
     # ── Panel API (shared for all nodes — same panel, different IDs) ──
     read -rp "Panel URL (e.g. https://panel.example.com): " API_HOST
@@ -313,39 +303,43 @@ generate_config() {
         MULTIPLEX_BLOCK=""
     fi
 
-    # ── Build core block ──────────────────────────────────────────
-    if [[ "${CORE_TYPE}" == "sing" ]]; then
-        if [[ -n "${BLOCKED_JSON}" ]]; then
-            BLOCKED_FIELD=",
+    # ── Core-block builder (sets CB for a given core type) ────────
+    build_core_block() {
+        case "$1" in
+            sing)
+                local BLOCKED_FIELD=""
+                if [[ -n "${BLOCKED_JSON}" ]]; then
+                    BLOCKED_FIELD=",
       \"BlockedCountries\": [\"${BLOCKED_JSON}\"]"
-        else
-            BLOCKED_FIELD=""
-        fi
-        CORE_BLOCK="{
+                fi
+                CB="{
       \"Type\": \"sing\",
       \"Log\": { \"Level\": \"${CORE_LOG_LEVEL}\", \"Timestamp\": true },
       \"NTP\": { \"Enable\": false, \"Server\": \"time.apple.com\", \"ServerPort\": 0 },
       \"OriginalPath\": \"/etc/V2bX/sing_origin.json\"${BLOCKED_FIELD}
-    }"
-    elif [[ "${CORE_TYPE}" == "xray" ]]; then
-        CORE_BLOCK="{
+    }" ;;
+            xray)
+                CB="{
       \"Type\": \"xray\",
       \"Log\": { \"Level\": \"${CORE_LOG_LEVEL}\" }
-    }"
-    elif [[ "${CORE_TYPE}" == "mdns" ]]; then
-        # mdns core takes no core-level config; every param (domain, UDP port,
-        # encryption, node secret) is delivered per-node by the panel.
-        CORE_BLOCK="{
+    }" ;;
+            mdns)
+                # mdns core takes no core-level config; every param (domain, UDP
+                # port, encryption, node secret) is delivered per-node by the panel.
+                CB="{
       \"Type\": \"mdns\"
-    }"
-    else
-        CORE_BLOCK="{
+    }" ;;
+            *)
+                CB="{
       \"Type\": \"hysteria2\"
-    }"
-    fi
+    }" ;;
+        esac
+    }
 
-    # ── Node loop — each node gets its own domain & cert ─────────
+    # ── Node loop — each node picks its own CORE, type, domain & cert ──
     NODES_BLOCK=""
+    CORES_BLOCK=""
+    CORES_SEEN=" "
     NODE_NUM=0
     while true; do
         NODE_NUM=$((NODE_NUM + 1))
@@ -354,10 +348,54 @@ generate_config() {
 
         read -rp "Node ID: " NODE_ID
 
+        # ── Core for THIS node ────────────────────────────────────
+        echo -e "Core for this node | هستهٔ این نود:"
+        echo -e "  ${green}1.${plain} sing  (recommended | پیشنهادی)"
+        echo -e "  ${green}2.${plain} xray"
+        echo -e "  ${green}3.${plain} hysteria2"
+        echo -e "  ${green}4.${plain} mdns  (DNS-tunnel anti-censorship | تونل DNS ضدسانسور)"
+        read -rp "Core [1-4, default=1]: " core_choice
+        case "${core_choice}" in
+            2) CORE_TYPE="xray" ;;
+            3) CORE_TYPE="hysteria2" ;;
+            4) CORE_TYPE="mdns" ;;
+            *) CORE_TYPE="sing" ;;
+        esac
+
+        # Add this core to the "Cores" array once (V2bX keys cores by Type, so a
+        # duplicate would collide — one block per distinct core is enough; every
+        # node of that core references it by "Core": "<type>").
+        if [[ "${CORES_SEEN}" != *" ${CORE_TYPE} "* ]]; then
+            build_core_block "${CORE_TYPE}"
+            if [[ -n "${CORES_BLOCK}" ]]; then
+                CORES_BLOCK="${CORES_BLOCK},
+    ${CB}"
+            else
+                CORES_BLOCK="    ${CB}"
+            fi
+            CORES_SEEN="${CORES_SEEN}${CORE_TYPE} "
+        fi
+
+        # ── Node type — the menu depends on the chosen core ───────
         if [[ "${CORE_TYPE}" == "mdns" ]]; then
-            # mdns core serves only mdns nodes — no type menu needed.
             NODE_TYPE="mdns"
             echo -e "Node type | نوع نود: ${yellow}mdns${plain}"
+        elif [[ "${CORE_TYPE}" == "hysteria2" ]]; then
+            NODE_TYPE="hysteria2"
+            echo -e "Node type | نوع نود: ${yellow}hysteria2${plain}"
+        elif [[ "${CORE_TYPE}" == "xray" ]]; then
+            echo -e "Node type | نوع نود:"
+            echo -e "  ${green}1.${plain} vless"
+            echo -e "  ${green}2.${plain} vmess"
+            echo -e "  ${green}3.${plain} trojan"
+            echo -e "  ${green}4.${plain} shadowsocks"
+            read -rp "Node type [1-4, default=1]: " node_choice
+            case "${node_choice}" in
+                2) NODE_TYPE="vmess" ;;
+                3) NODE_TYPE="trojan" ;;
+                4) NODE_TYPE="shadowsocks" ;;
+                *) NODE_TYPE="vless" ;;
+            esac
         else
             echo -e "Node type | نوع نود:"
             echo -e "  ${green}1.${plain} anytls"
@@ -381,9 +419,10 @@ generate_config() {
         read -rp "Listen IP [default: :: (IPv4+IPv6), or 0.0.0.0 for IPv4-only]: " LISTEN_IP
         LISTEN_IP="${LISTEN_IP:-::}"
 
-        # TLS cert — each node gets its own domain → own cert files
+        # TLS cert — each TLS node type (anytls/vmess/vless/trojan, on sing or
+        # xray) gets its own domain → own cert files. ss/hysteria2/mdns skip it.
         NODE_CERT_BLOCK=""
-        if [[ "${CORE_TYPE}" == "sing" ]] && [[ "${NODE_TYPE}" != "shadowsocks" ]] && [[ "${NODE_TYPE}" != "hysteria2" ]]; then
+        if [[ "${NODE_TYPE}" == "anytls" || "${NODE_TYPE}" == "vmess" || "${NODE_TYPE}" == "vless" || "${NODE_TYPE}" == "trojan" ]]; then
             read -rp "Certificate domain (e.g. ff.example.com): " CERT_DOMAIN
             echo -e "Cert mode | نحوه دریافت سرتیفیکت:"
             echo -e "  ${green}1.${plain} http  (port 80 must be open)"
@@ -498,7 +537,7 @@ generate_config() {
     "Output": ""
   },
   "Cores": [
-    ${CORE_BLOCK}
+${CORES_BLOCK}
   ],
   "Nodes": [
 ${NODES_BLOCK}
