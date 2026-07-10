@@ -35,7 +35,14 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	}
 	taguuid := format.UserTag(m.Inbound, m.User)
 	ip := m.Source.Addr.String()
-	if b, r := l.CheckLimit(taguuid, ip, true, true); r {
+	// A source that is one of this node's own addresses is not a user device,
+	// so it must not be registered as an online IP nor checked against the
+	// device limit — speed limits and access rules below still apply.
+	countDevice := !isNodeOwnedIP(m.Source.Addr)
+	if !countDevice {
+		warnNodeOwnedSource(m.Inbound, ip)
+	}
+	if b, r := l.CheckLimit(taguuid, ip, true, countDevice); r {
 		conn.Close()
 		log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
 		return conn
