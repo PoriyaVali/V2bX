@@ -79,27 +79,17 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	}
 	// GeoIP country blocking via rule_set (sing-box 1.12+ removed legacy geoip field)
 	if len(c.SingConfig.BlockedCountries) > 0 {
-		const blockTag = "block-countries"
 		const directTag = "direct"
-		hasDirect, hasBlock := false, false
+		hasDirect := false
 		for _, o := range options.Outbounds {
 			if o.Tag == directTag {
 				hasDirect = true
-			}
-			if o.Tag == blockTag {
-				hasBlock = true
 			}
 		}
 		if !hasDirect {
 			options.Outbounds = append(options.Outbounds, option.Outbound{
 				Tag:  directTag,
 				Type: directTag,
-			})
-		}
-		if !hasBlock {
-			options.Outbounds = append(options.Outbounds, option.Outbound{
-				Tag:  blockTag,
-				Type: "block",
 			})
 		}
 		if options.Route == nil {
@@ -117,8 +107,12 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 			if err := json.Unmarshal([]byte(ruleSetData), &ruleSet); err == nil {
 				options.Route.RuleSet = append(options.Route.RuleSet, ruleSet)
 			}
-			// Routing rule: source IPs matching rule_set → block outbound
-			ruleData := fmt.Sprintf(`{"rule_set":[%q],"outbound":%q}`, tag, blockTag)
+			// Reject matching destinations at the route level with method
+			// "drop" (silent). A reject action — not a block outbound — avoids
+			// sing-box logging a per-connection ERROR ("open connection ...
+			// using outbound/block: operation not permitted") for every blocked
+			// attempt, which floods the journal when a client retries.
+			ruleData := fmt.Sprintf(`{"rule_set":[%q],"action":"reject","method":"drop"}`, tag)
 			var rule option.Rule
 			if err := json.Unmarshal([]byte(ruleData), &rule); err == nil {
 				options.Route.Rules = append([]option.Rule{rule}, options.Route.Rules...)
