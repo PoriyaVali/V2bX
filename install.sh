@@ -633,53 +633,87 @@ show_status() {
 # ================================================================
 setup_tunnel() {
     local HEDIOUM_INSTALL="https://raw.githubusercontent.com/PoriyaVali/Hedioum-Pool-Tunnel/main/install.sh"
-    echo -e "${green}=== Iran Relay Tunnel (Hedioum front) | تونل رله ایران ===${plain}"
-    echo -e "${yellow}Run this on the FOREIGN V2bX node. It hides your inbounds behind a clean Iran IP."
-    echo -e "روی نودِ خارج اجرا کنید؛ inboundها پشتِ یک IP تمیزِ ایران پنهان می‌شوند.${plain}"
-    echo ""
+    local LOG="/etc/V2bX/tunnel-setup.log"
+    local INFO="/etc/V2bX/tunnel-info.txt"
+    mkdir -p /etc/V2bX 2>/dev/null
+
+    # tlog: print to screen AND append a clean (color-stripped) timestamped line to $LOG
+    tlog() {
+        echo -e "$1"
+        echo "[$(date '+%F %T')] $(echo -e "$1" | sed 's/\x1b\[[0-9;]*m//g')" >> "$LOG"
+    }
+
+    echo "===================== tunnel setup $(date '+%F %T') =====================" >> "$LOG"
+    tlog "${green}=== Iran Relay Tunnel (Hedioum front) | تونل رله ایران ===${plain}"
+    tlog "${yellow}Run on the FOREIGN V2bX node. Everything is logged to ${LOG}${plain}"
+    tlog ""
 
     # 1) Auto-detect the V2bX inbound ports (the ports V2bX is listening on)
     if ! systemctl is-active --quiet V2bX 2>/dev/null; then
-        echo -e "${yellow}[!] V2bX is not running — start it first so ports can be auto-detected.${plain}"
+        tlog "${yellow}[!] V2bX is not running — start it first so ports can be auto-detected.${plain}"
     fi
     local PORTS
     PORTS=$(ss -tlnpH 2>/dev/null | awk '/V2bX/{n=split($4,a,":"); print a[n]}' | sort -un | paste -sd, -)
     if [ -z "$PORTS" ]; then
         read -rp "Could not auto-detect inbound ports. Enter comma-separated ports: " PORTS
     fi
-    [ -z "$PORTS" ] && { echo -e "${red}No inbound ports. Aborting.${plain}"; return; }
-    echo -e "${green}[✓] Detected V2bX inbound ports: ${PORTS}${plain}"
+    [ -z "$PORTS" ] && { tlog "${red}[x] No inbound ports. Aborting.${plain}"; return; }
+    tlog "${green}[✓] Detected V2bX inbound ports: ${PORTS}${plain}"
 
     # 2) Tunnel (border-crossing) port the Iran relay connects to — keep SSH safe
     local TPORT
     read -rp "Tunnel listen port on THIS server (Iran relay connects here) [2222]: " TPORT
     TPORT=${TPORT:-2222}
+    tlog "[i] Tunnel (border) port: ${TPORT}"
 
     # 3) Public IPv4 of this foreign node
     local PUBIP IPIN
     PUBIP=$(curl -s4 --max-time 8 https://api.ipify.org 2>/dev/null || curl -s4 --max-time 8 https://ifconfig.me 2>/dev/null)
     read -rp "Public IPv4 of THIS server [${PUBIP}]: " IPIN
     PUBIP=${IPIN:-$PUBIP}
-    [ -z "$PUBIP" ] && { echo -e "${red}No public IP. Aborting.${plain}"; return; }
+    [ -z "$PUBIP" ] && { tlog "${red}[x] No public IP. Aborting.${plain}"; return; }
+    tlog "[i] Foreign public IP: ${PUBIP}"
 
     # 4) Shared secret for both ends
     local TOKEN
     TOKEN=$(openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    tlog "[i] Shared token generated (stored in ${INFO})"
 
-    # 5) Install + provision Hedioum (foreign role) on this node
-    echo -e "${green}[*] Installing & provisioning Hedioum (foreign) on this node...${plain}"
-    bash <(curl -s "$HEDIOUM_INSTALL") setup -role foreign -forward-host 127.0.0.1 -listen-port "$TPORT" -token "$TOKEN"
+    # 5) Install + provision Hedioum (foreign role); tee its full output into the log
+    tlog "${green}[*] Installing & provisioning Hedioum (foreign) ...${plain}"
+    bash <(curl -s "$HEDIOUM_INSTALL") setup -role foreign -forward-host 127.0.0.1 -listen-port "$TPORT" -token "$TOKEN" 2>&1 | tee -a "$LOG"
 
-    # 6) Print the one-line command to run on the Iran relay
-    echo ""
-    echo -e "${green}==================================================${plain}"
-    echo -e "${green} FOREIGN side ready. Run THIS on your IRAN relay:${plain}"
-    echo -e "${green}==================================================${plain}"
-    echo -e "${yellow}bash <(curl -s ${HEDIOUM_INSTALL}) setup -role iran -foreign-ip ${PUBIP} -foreign-port ${TPORT} -token ${TOKEN} -ports ${PORTS}${plain}"
-    echo -e "${green}==================================================${plain}"
-    echo -e "Then in the panel set this node's ${green}host = your Iran relay IP${plain} (keep the same port)."
-    echo -e "سپس در پنل، ${green}host این نود = IP رله ایران${plain} (پورت ثابت می‌ماند)."
-    echo -e "${green}==================================================${plain}"
+    # 6) Build the Iran one-liner (double quotes keep <(...) literal, not executed)
+    local IRAN_CMD="bash <(curl -s ${HEDIOUM_INSTALL}) setup -role iran -foreign-ip ${PUBIP} -foreign-port ${TPORT} -token ${TOKEN} -ports ${PORTS}"
+
+    # 7) Persist all tunnel info so it can be retrieved later (not just printed once)
+    cat > "$INFO" <<INFOEOF
+# V2bX <-> Hedioum tunnel   ($(date '+%F %T'))
+foreign_public_ip = ${PUBIP}
+tunnel_port       = ${TPORT}
+inbound_ports     = ${PORTS}
+auth_token        = ${TOKEN}
+forward           = 127.0.0.1:<port>  (port-preserving, all TCP inbounds)
+
+# Run this on the IRAN relay:
+${IRAN_CMD}
+
+# In the panel: set this node's  host = <Iran relay IP>  (keep the same port).
+
+# Live tunnel logs (both servers):  journalctl -u hedioum -f
+# Setup log (this server):          ${LOG}
+INFOEOF
+    chmod 600 "$INFO" 2>/dev/null
+
+    tlog ""
+    tlog "${green}==================================================${plain}"
+    tlog "${green} FOREIGN side ready. Run THIS on your IRAN relay:${plain}"
+    tlog "${green}==================================================${plain}"
+    tlog "${yellow}${IRAN_CMD}${plain}"
+    tlog "${green}==================================================${plain}"
+    tlog "Saved to ${green}${INFO}${plain}  |  Setup log: ${green}${LOG}${plain}"
+    tlog "Live tunnel logs: ${green}journalctl -u hedioum -f${plain}"
+    tlog "Then in the panel set this node's ${green}host = Iran relay IP${plain} (keep the port)."
 }
 
 show_menu() {
