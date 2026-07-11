@@ -631,6 +631,57 @@ show_status() {
 # ================================================================
 # Main menu | منوی اصلی
 # ================================================================
+setup_tunnel() {
+    local HEDIOUM_INSTALL="https://raw.githubusercontent.com/PoriyaVali/Hedioum-Pool-Tunnel/main/install.sh"
+    echo -e "${green}=== Iran Relay Tunnel (Hedioum front) | تونل رله ایران ===${plain}"
+    echo -e "${yellow}Run this on the FOREIGN V2bX node. It hides your inbounds behind a clean Iran IP."
+    echo -e "روی نودِ خارج اجرا کنید؛ inboundها پشتِ یک IP تمیزِ ایران پنهان می‌شوند.${plain}"
+    echo ""
+
+    # 1) Auto-detect the V2bX inbound ports (the ports V2bX is listening on)
+    if ! systemctl is-active --quiet V2bX 2>/dev/null; then
+        echo -e "${yellow}[!] V2bX is not running — start it first so ports can be auto-detected.${plain}"
+    fi
+    local PORTS
+    PORTS=$(ss -tlnpH 2>/dev/null | awk '/V2bX/{n=split($4,a,":"); print a[n]}' | sort -un | paste -sd, -)
+    if [ -z "$PORTS" ]; then
+        read -rp "Could not auto-detect inbound ports. Enter comma-separated ports: " PORTS
+    fi
+    [ -z "$PORTS" ] && { echo -e "${red}No inbound ports. Aborting.${plain}"; return; }
+    echo -e "${green}[✓] Detected V2bX inbound ports: ${PORTS}${plain}"
+
+    # 2) Tunnel (border-crossing) port the Iran relay connects to — keep SSH safe
+    local TPORT
+    read -rp "Tunnel listen port on THIS server (Iran relay connects here) [2222]: " TPORT
+    TPORT=${TPORT:-2222}
+
+    # 3) Public IPv4 of this foreign node
+    local PUBIP IPIN
+    PUBIP=$(curl -s4 --max-time 8 https://api.ipify.org 2>/dev/null || curl -s4 --max-time 8 https://ifconfig.me 2>/dev/null)
+    read -rp "Public IPv4 of THIS server [${PUBIP}]: " IPIN
+    PUBIP=${IPIN:-$PUBIP}
+    [ -z "$PUBIP" ] && { echo -e "${red}No public IP. Aborting.${plain}"; return; }
+
+    # 4) Shared secret for both ends
+    local TOKEN
+    TOKEN=$(openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+
+    # 5) Install + provision Hedioum (foreign role) on this node
+    echo -e "${green}[*] Installing & provisioning Hedioum (foreign) on this node...${plain}"
+    bash <(curl -s "$HEDIOUM_INSTALL") setup -role foreign -forward-host 127.0.0.1 -listen-port "$TPORT" -token "$TOKEN"
+
+    # 6) Print the one-line command to run on the Iran relay
+    echo ""
+    echo -e "${green}==================================================${plain}"
+    echo -e "${green} FOREIGN side ready. Run THIS on your IRAN relay:${plain}"
+    echo -e "${green}==================================================${plain}"
+    echo -e "${yellow}bash <(curl -s ${HEDIOUM_INSTALL}) setup -role iran -foreign-ip ${PUBIP} -foreign-port ${TPORT} -token ${TOKEN} -ports ${PORTS}${plain}"
+    echo -e "${green}==================================================${plain}"
+    echo -e "Then in the panel set this node's ${green}host = your Iran relay IP${plain} (keep the same port)."
+    echo -e "سپس در پنل، ${green}host این نود = IP رله ایران${plain} (پورت ثابت می‌ماند)."
+    echo -e "${green}==================================================${plain}"
+}
+
 show_menu() {
     # Show running status in header
     if systemctl is-active --quiet V2bX 2>/dev/null; then
@@ -661,9 +712,10 @@ show_menu() {
   ${green}12.${plain} Install BBR | نصب BBR
   ${green}13.${plain} Allow all ports | باز کردن تمام پورت‌ها
   ${green}14.${plain} Certificate expiry | انقضای گواهی‌ها
+  ${green}15.${plain} Setup Iran tunnel | راه‌اندازی تونل ایران
   ————————————————
  "
-    read -rp "Choose | انتخاب [0-14]: " num
+    read -rp "Choose | انتخاب [0-15]: " num
     case "${num}" in
         0) exit 0 ;;
         1)
@@ -693,6 +745,7 @@ show_menu() {
         12) install_bbr ;;
         13) allow_all_ports ;;
         14) V2bX cert ;;
+        15) setup_tunnel ;;
         *) echo -e "${red}Invalid option | گزینه نامعتبر${plain}" ;;
     esac
 }
