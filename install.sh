@@ -716,6 +716,25 @@ INFOEOF
     tlog "Then in the panel set this node's ${green}host = Iran relay IP${plain} (keep the port)."
 }
 
+stop_tunnel() {
+    echo -e "${green}=== Stop tunnel (go direct) | توقف تونل (اتصال مستقیم) ===${plain}"
+    if systemctl list-unit-files 2>/dev/null | grep -q '^hedioum\.service'; then
+        systemctl stop hedioum 2>/dev/null
+        systemctl disable hedioum 2>/dev/null   # persists across reboot
+        echo -e "${green}[✓] Hedioum tunnel stopped & disabled on THIS node (won't start on reboot).${plain}"
+        echo -e "${green}[✓] هستهٔ تونل روی این نود متوقف و غیرفعال شد (بعد از ری‌استارت هم خاموش می‌ماند).${plain}"
+    else
+        echo -e "${yellow}[!] No hedioum service on this node.${plain}"
+    fi
+    echo ""
+    echo -e "${yellow}To fully go direct, ALSO do these two (order matters):${plain}"
+    echo -e "  ${green}1)${plain} In the panel, revert this node's ${green}host${plain} back to its own domain/IP."
+    echo -e "  ${green}2)${plain} On the IRAN relay:  ${green}systemctl disable --now hedioum${plain}"
+    [ -f /etc/V2bX/tunnel-info.txt ] && echo -e "  (tunnel details: /etc/V2bX/tunnel-info.txt)"
+    echo ""
+    echo -e "Re-enable the tunnel later:  ${green}systemctl enable --now hedioum${plain}  (or menu 15 to reconfigure)."
+}
+
 show_menu() {
     # Show running status in header
     if systemctl is-active --quiet V2bX 2>/dev/null; then
@@ -747,9 +766,10 @@ show_menu() {
   ${green}13.${plain} Allow all ports | باز کردن تمام پورت‌ها
   ${green}14.${plain} Certificate expiry | انقضای گواهی‌ها
   ${green}15.${plain} Setup Iran tunnel | راه‌اندازی تونل ایران
+  ${green}16.${plain} Stop tunnel (go direct) | توقف تونل
   ————————————————
  "
-    read -rp "Choose | انتخاب [0-15]: " num
+    read -rp "Choose | انتخاب [0-16]: " num
     case "${num}" in
         0) exit 0 ;;
         1)
@@ -780,6 +800,7 @@ show_menu() {
         13) allow_all_ports ;;
         14) V2bX cert ;;
         15) setup_tunnel ;;
+        16) stop_tunnel ;;
         *) echo -e "${red}Invalid option | گزینه نامعتبر${plain}" ;;
     esac
 }

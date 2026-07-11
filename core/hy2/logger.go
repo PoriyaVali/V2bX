@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/PoriyaVali/V2bX/common/format"
+	"github.com/PoriyaVali/V2bX/common/localip"
 	"github.com/PoriyaVali/V2bX/limiter"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -51,7 +52,7 @@ func (l *serverLogger) Connect(addr net.Addr, uuid string, tx uint64) {
 	if err != nil {
 		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
 	}
-	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", true); r {
+	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
 			userLimit.(*limiter.UserLimitInfo).OverLimit = true
 		}
@@ -72,7 +73,7 @@ func (l *serverLogger) TCPRequest(addr net.Addr, uuid, reqAddr string) {
 	if err != nil {
 		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
 	}
-	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", true); r {
+	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
 			userLimit.(*limiter.UserLimitInfo).OverLimit = true
 		}
@@ -97,7 +98,7 @@ func (l *serverLogger) UDPRequest(addr net.Addr, uuid string, sessionId uint32, 
 	if err != nil {
 		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
 	}
-	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", true); r {
+	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
 			userLimit.(*limiter.UserLimitInfo).OverLimit = true
 		}

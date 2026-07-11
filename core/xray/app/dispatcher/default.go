@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/PoriyaVali/V2bX/common/counter"
+	"github.com/PoriyaVali/V2bX/common/localip"
 	"github.com/PoriyaVali/V2bX/common/rate"
 	"github.com/PoriyaVali/V2bX/limiter"
 
@@ -185,7 +186,7 @@ func (d *DefaultDispatcher) getLink(ctx context.Context, network net.Network) (*
 		w, reject := limit.CheckLimit(user.Email,
 			sessionInbound.Source.Address.IP().String(),
 			network == net.Network_TCP,
-			sessionInbound.Source.Network == net.Network_TCP)
+			sessionInbound.Source.Network == net.Network_TCP && !localip.IsNodeOwned(sessionInbound.Source.Address.IP().String()))
 		if reject {
 			errors.LogInfo(ctx, "Limited ", user.Email, " by conn or ip")
 			common.Close(outboundLink.Writer)
@@ -381,7 +382,7 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 		w, reject := limit.CheckLimit(user.Email,
 			sessionInbound.Source.Address.IP().String(),
 			destination.Network == net.Network_TCP,
-			sessionInbound.Source.Network == net.Network_TCP)
+			sessionInbound.Source.Network == net.Network_TCP && !localip.IsNodeOwned(sessionInbound.Source.Address.IP().String()))
 		if reject {
 			errors.LogInfo(ctx, "Limited ", user.Email, " by conn or ip")
 			common.Close(outbound.Writer)
