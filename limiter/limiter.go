@@ -163,14 +163,22 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 		return nil, true
 	}
 	if noSSUDP {
-		// Store online user for device limit
-		newipMap := new(sync.Map)
-		newipMap.Store(ip, uid)
 		l.aliveMu.RLock()
 		aliveIp := l.AliveList[uid]
 		l.aliveMu.RUnlock()
+		// The user's online-IP map usually already exists (returning device), so
+		// look it up first and only allocate a sync.Map the first time — this
+		// avoids a throwaway allocation on every connection. `loaded` keeps the
+		// same meaning as the original LoadOrStore: true = an existing map was
+		// used, false = we just created the entry for this user.
+		v, loaded := l.UserOnlineIP.Load(taguuid)
+		if !loaded {
+			newipMap := new(sync.Map)
+			newipMap.Store(ip, uid)
+			v, loaded = l.UserOnlineIP.LoadOrStore(taguuid, newipMap)
+		}
 		// If any device is online
-		if v, loaded := l.UserOnlineIP.LoadOrStore(taguuid, newipMap); loaded {
+		if loaded {
 			oldipMap := v.(*sync.Map)
 			// If this is a new ip
 			if _, loaded := oldipMap.LoadOrStore(ip, uid); !loaded {
