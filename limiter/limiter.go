@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
@@ -31,6 +32,9 @@ type Limiter struct {
 	SpeedLimiter  *sync.Map      // key: TagUUID, value: *ratelimit.Bucket
 	AliveList     map[int]int    // Key: Uid, value: alive_ip
 	aliveMu       sync.RWMutex   // guards AliveList (read per-connection, replaced by the node task)
+
+	checks  atomic.Int64 // total CheckLimit calls (for metrics)
+	rejects atomic.Int64 // CheckLimit calls that rejected (device/ip limit)
 }
 
 type UserLimitInfo struct {
@@ -88,6 +92,40 @@ func DeleteLimiter(tag string) {
 	limitLock.Unlock()
 }
 
+// NodeStat is a point-in-time metrics snapshot for one node's limiter.
+type NodeStat struct {
+	Tag       string
+	Users     int
+	OnlineIPs int
+	Checks    int64
+	Rejects   int64
+}
+
+// Snapshot returns metrics for every active node limiter. Intended for a
+// periodic metrics scrape, so the O(users) counting cost is acceptable.
+func Snapshot() []NodeStat {
+	limitLock.RLock()
+	defer limitLock.RUnlock()
+	out := make([]NodeStat, 0, len(limiter))
+	for tag, l := range limiter {
+		users := 0
+		l.UserLimitInfo.Range(func(_, _ any) bool { users++; return true })
+		online := 0
+		l.UserOnlineIP.Range(func(_, v any) bool {
+			v.(*sync.Map).Range(func(_, _ any) bool { online++; return true })
+			return true
+		})
+		out = append(out, NodeStat{
+			Tag:       tag,
+			Users:     users,
+			OnlineIPs: online,
+			Checks:    l.checks.Load(),
+			Rejects:   l.rejects.Load(),
+		})
+	}
+	return out
+}
+
 func (l *Limiter) UpdateUser(tag string, added []panel.UserInfo, deleted []panel.UserInfo) {
 	for i := range deleted {
 		l.UserLimitInfo.Delete(format.UserTag(tag, deleted[i].Uuid))
@@ -136,6 +174,12 @@ func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire ti
 }
 
 func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool) (Bucket *ratelimit.Bucket, Reject bool) {
+	l.checks.Add(1)
+	defer func() {
+		if Reject {
+			l.rejects.Add(1)
+		}
+	}()
 	// check if ipv4 mapped ipv6
 	ip = strings.TrimPrefix(ip, "::ffff:")
 

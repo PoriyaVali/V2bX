@@ -11,9 +11,16 @@ import (
 )
 
 type Conf struct {
-	LogConfig   LogConfig    `json:"Log"`
-	CoresConfig []CoreConfig `json:"Cores"`
-	NodeConfig  []NodeConfig `json:"Nodes"`
+	LogConfig     LogConfig     `json:"Log"`
+	CoresConfig   []CoreConfig  `json:"Cores"`
+	NodeConfig    []NodeConfig  `json:"Nodes"`
+	MetricsConfig MetricsConfig `json:"Metrics"`
+}
+
+// MetricsConfig enables the optional Prometheus-text metrics endpoint. Leave
+// Listen empty to disable.
+type MetricsConfig struct {
+	Listen string `json:"Listen"` // e.g. "127.0.0.1:11111"; empty = disabled
 }
 
 func New() *Conf {
