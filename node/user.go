@@ -10,6 +10,20 @@ import (
 func (c *Controller) reportUserTrafficTask() (err error) {
 	userTraffic, _ := c.server.GetUserTrafficSlice(c.tag, true)
 
+	// Feed the dynamic speed-limit accumulator with this cycle's raw per-user
+	// traffic (keyed by UID). SpeedChecker consumes and resets it on its own
+	// interval; the map is shared across goroutines, so guard it.
+	if c.LimitConfig.EnableDynamicSpeedLimit && len(userTraffic) > 0 {
+		c.trafficMu.Lock()
+		if c.traffic == nil {
+			c.traffic = make(map[int]int64)
+		}
+		for i := range userTraffic {
+			c.traffic[userTraffic[i].UID] += userTraffic[i].Upload + userTraffic[i].Download
+		}
+		c.trafficMu.Unlock()
+	}
+
 	// node_report_min_traffic (panel): only report users whose accumulated
 	// traffic passes the threshold; the rest is carried over. Device counting
 	// below still uses the raw per-cycle userTraffic, so keep it separate.

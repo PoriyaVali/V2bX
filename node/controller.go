@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/task"
@@ -17,7 +18,9 @@ type Controller struct {
 	apiClient                 *panel.Client
 	tag                       string
 	limiter                   *limiter.Limiter
-	traffic                   map[string]int64
+	traffic                   map[int]int64  // UID -> bytes accumulated in the current dynamic-speed window
+	uidToUUID                 map[int]string // UID -> UUID snapshot, so SpeedChecker can resolve users without touching userList
+	trafficMu                 sync.Mutex     // guards traffic + uidToUUID (accessed by the report and speed-checker goroutines)
 	userList                  []panel.UserInfo
 	aliveMap                  map[int]int
 	info                      *panel.NodeInfo
@@ -39,6 +42,24 @@ func NewController(server vCore.Core, api *panel.Client, config *conf.Options) *
 		apiClient: api,
 	}
 	return controller
+}
+
+// syncUIDIndex rebuilds the UID->UUID lookup that SpeedChecker uses to resolve
+// a user without racing on userList (which only the nodeInfoMonitor goroutine
+// owns). It is a no-op unless dynamic speed limiting is enabled, so nodes that
+// don't use the feature pay nothing. Callers must already own the userList
+// (i.e. run on the nodeInfoMonitor goroutine or during Start).
+func (c *Controller) syncUIDIndex() {
+	if !c.LimitConfig.EnableDynamicSpeedLimit {
+		return
+	}
+	m := make(map[int]string, len(c.userList))
+	for i := range c.userList {
+		m[c.userList[i].Id] = c.userList[i].Uuid
+	}
+	c.trafficMu.Lock()
+	c.uidToUUID = m
+	c.trafficMu.Unlock()
 }
 
 // Start implement the Start() function of the service interface
@@ -95,6 +116,7 @@ func (c *Controller) Start() error {
 	}
 	log.WithField("tag", c.tag).Infof("Added %d new users", added)
 	c.info = node
+	c.syncUIDIndex()
 	c.startTasks(node)
 	return nil
 }

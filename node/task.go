@@ -52,7 +52,7 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 	_ = c.statusReportPeriodic.Start(false)
 
 	if c.LimitConfig.EnableDynamicSpeedLimit {
-		c.traffic = make(map[string]int64)
+		c.traffic = make(map[int]int64)
 		c.dynamicSpeedLimitPeriodic = &task.Task{
 			Interval: time.Duration(c.LimitConfig.DynamicSpeedLimitConfig.Periodic) * time.Second,
 			Execute:  c.SpeedChecker,
@@ -101,8 +101,13 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		// nodeInfo changed
 		if newU != nil {
 			c.userList = newU
+			c.syncUIDIndex()
 		}
-		c.traffic = make(map[string]int64)
+		if c.LimitConfig.EnableDynamicSpeedLimit {
+			c.trafficMu.Lock()
+			c.traffic = make(map[int]int64)
+			c.trafficMu.Unlock()
+		}
 		// Remove old node
 		log.WithField("tag", c.tag).Info("Node changed, reload")
 		err = c.server.DelNode(c.tag)
@@ -242,12 +247,15 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 		// clear traffic record
 		if c.LimitConfig.EnableDynamicSpeedLimit {
+			c.trafficMu.Lock()
 			for i := range deleted {
-				delete(c.traffic, deleted[i].Uuid)
+				delete(c.traffic, deleted[i].Id)
 			}
+			c.trafficMu.Unlock()
 		}
 	}
 	c.userList = newU
+	c.syncUIDIndex()
 	if len(added)+len(deleted) != 0 {
 		log.WithField("tag", c.tag).
 			Infof("%d user deleted, %d user added", len(deleted), len(added))
@@ -266,16 +274,30 @@ func (c *Controller) reportNodeStatusTask() error {
 	return nil
 }
 
+// SpeedChecker runs every DynamicSpeedLimitConfig.Periodic seconds. It throttles
+// any user whose traffic accumulated by reportUserTrafficTask during this window
+// crossed the configured threshold, then resets the accumulator so the next
+// window measures the rate afresh (rather than lifetime totals). The accumulator
+// is keyed by UID; UID->UUID comes from the lock-protected snapshot so we never
+// touch userList (owned by the nodeInfoMonitor goroutine) from here.
 func (c *Controller) SpeedChecker() error {
-	for u, t := range c.traffic {
+	expire := time.Now().Add(time.Duration(c.LimitConfig.DynamicSpeedLimitConfig.ExpireTime) * time.Minute)
+	c.trafficMu.Lock()
+	defer c.trafficMu.Unlock()
+	for uid, t := range c.traffic {
 		if t >= c.LimitConfig.DynamicSpeedLimitConfig.Traffic {
-			err := c.limiter.UpdateDynamicSpeedLimit(c.tag, u,
-				c.LimitConfig.DynamicSpeedLimitConfig.SpeedLimit,
-				time.Now().Add(time.Duration(c.LimitConfig.DynamicSpeedLimitConfig.ExpireTime)*time.Minute))
-			log.WithField("err", err).Error("Update dynamic speed limit failed")
-			delete(c.traffic, u)
+			uuid, ok := c.uidToUUID[uid]
+			if !ok {
+				continue
+			}
+			if err := c.limiter.UpdateDynamicSpeedLimit(c.tag, uuid,
+				c.LimitConfig.DynamicSpeedLimitConfig.SpeedLimit, expire); err != nil {
+				log.WithField("err", err).Error("Update dynamic speed limit failed")
+			}
 		}
 	}
+	// Reset for the next window.
+	c.traffic = make(map[int]int64)
 	return nil
 }
 
