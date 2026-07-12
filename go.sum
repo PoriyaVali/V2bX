@@ -104,8 +104,8 @@ github.com/OpenDNS/vegadns2client v0.0.0-20180418235048-a3fa4a771d87 h1:xPMsUicZ
 github.com/OpenDNS/vegadns2client v0.0.0-20180418235048-a3fa4a771d87/go.mod h1:iGLljf5n9GjT6kc0HBvyI1nOKnGQbNB66VzSNbK5iks=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260707155520-295de16bc4db h1:vJem8MSWbaJRFMDTqTqrHmSLhRuScquPIKzuC+N6wF4=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260707155520-295de16bc4db/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
-github.com/PoriyaVali/Xray-core v0.0.0-20251202135308-e403abe360ff h1:Adc/LU3ezsz5lOuScF8nIRmPedZ07ok4eXxr/yXOINQ=
-github.com/PoriyaVali/Xray-core v0.0.0-20251202135308-e403abe360ff/go.mod h1:kclzboEF0g6VBrp9/NXm8C0Aj64SDBt52OfthH1LSr4=
+github.com/PoriyaVali/Xray-core v1.251202.1 h1:JIgTTWHOHT9vP9w/mC8FslQomUu1jXo+CstDvzDXovA=
+github.com/PoriyaVali/Xray-core v1.251202.1/go.mod h1:kclzboEF0g6VBrp9/NXm8C0Aj64SDBt52OfthH1LSr4=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.2 h1:TLjmPz3iKjdMTsj7j4D6Ndd4mPqH3paEUZK66nCq/hU=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.2/go.mod h1:Bh3B7QDfevBhkc3NQTSywIk8dan6EIxTlBK4hmKRFYI=
 github.com/Shopify/sarama v1.19.0/go.mod h1:FVkBWblsNy7DGZRfXLU0O9RCGt5g3g3yEuWXgklEdEo=
