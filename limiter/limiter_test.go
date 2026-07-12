@@ -85,6 +85,59 @@ func TestGetOnlineDevice_ReturnsRegisteredIPs(t *testing.T) {
 	}
 }
 
+// TestCheckLimit_RejectedFirstConnection_LeavesNoOnlineEntry is the core of the
+// self-heal fix: when a user is at/over their device limit with no locally
+// registered IP yet (e.g. right after a restart, while the panel's alive count
+// is still stale), the rejected connection must NOT leave a transient online-IP
+// entry. Otherwise the periodic report keeps re-reporting the locked-out user,
+// pinning the panel's alive count and deadlocking a legitimate single device.
+func TestCheckLimit_RejectedFirstConnection_LeavesNoOnlineEntry(t *testing.T) {
+	l, tag := newTestLimiter(1, 1) // limit 1, alive already 1 (stale after restart)
+	if _, reject := l.CheckLimit(tag, "5.5.5.5", true, true); !reject {
+		t.Fatal("first ip at device limit must be rejected")
+	}
+	if n := onlineIPCount(l, tag); n != 0 {
+		t.Fatalf("rejected connection must leave no online-IP entry, got %d", n)
+	}
+	online, _ := l.GetOnlineDevice()
+	if len(*online) != 0 {
+		t.Fatalf("locked-out user must not be reported online, got %d", len(*online))
+	}
+}
+
+// TestCheckLimit_SelfHealsWhenAliveDrops verifies recovery: a single device that
+// was wrongly locked out (stale alive=1) is admitted again as soon as the panel's
+// alive count decays to 0 — no manual cache clearing needed.
+func TestCheckLimit_SelfHealsWhenAliveDrops(t *testing.T) {
+	l, tag := newTestLimiter(1, 1)
+	if _, reject := l.CheckLimit(tag, "5.5.5.5", true, true); !reject {
+		t.Fatal("must be rejected while alive is stale-high")
+	}
+	l.SetAliveList(map[int]int{1: 0}) // panel count decayed
+	if _, reject := l.CheckLimit(tag, "5.5.5.5", true, true); reject {
+		t.Fatal("single device must be admitted once alive drops to 0")
+	}
+	if n := onlineIPCount(l, tag); n != 1 {
+		t.Fatalf("admitted ip must be registered, got %d", n)
+	}
+}
+
+// TestCheckLimit_RejectedSecondIP_KeepsFirst ensures rejecting a genuine second
+// device does not disturb the first device's registration.
+func TestCheckLimit_RejectedSecondIP_KeepsFirst(t *testing.T) {
+	l, tag := newTestLimiter(1, 0)
+	if _, reject := l.CheckLimit(tag, "1.1.1.1", true, true); reject {
+		t.Fatal("first device must be admitted")
+	}
+	l.SetAliveList(map[int]int{1: 1}) // panel now counts the first device
+	if _, reject := l.CheckLimit(tag, "2.2.2.2", true, true); !reject {
+		t.Fatal("second device over limit must be rejected")
+	}
+	if n := onlineIPCount(l, tag); n != 1 {
+		t.Fatalf("first device must stay registered and the rejected ip must not be added, got %d", n)
+	}
+}
+
 // BenchmarkCheckLimit_ReturningUser exercises the hot path where the user's
 // online-IP map already exists (the common case) — this is what the allocation
 // optimization targets.

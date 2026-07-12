@@ -173,6 +173,26 @@ func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire ti
 	return nil
 }
 
+// admitNewIP decides whether a not-yet-registered source IP may be admitted for
+// a user, WITHOUT registering anything or otherwise mutating UserOnlineIP. A
+// recently-online IP (grace list) is always admitted and consumed; otherwise it
+// is admitted only while the user is still under their device limit. Keeping the
+// decision side-effect-free lets CheckLimit reject cleanly, so a locked-out user
+// leaves no transient online-IP entry for the report to catch — which is what
+// used to pin their alive count and deadlock a single device after a restart.
+func (l *Limiter) admitNewIP(ip string, uid, deviceLimit, aliveIp int) bool {
+	if v, ok := l.OldUserOnline.Load(ip); ok {
+		if v.(int) == uid {
+			l.OldUserOnline.Delete(ip)
+		}
+		return true
+	}
+	if deviceLimit > 0 && deviceLimit <= aliveIp {
+		return false
+	}
+	return true
+}
+
 func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool) (Bucket *ratelimit.Bucket, Reject bool) {
 	l.checks.Add(1)
 	defer func() {
@@ -210,43 +230,29 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 		l.aliveMu.RLock()
 		aliveIp := l.AliveList[uid]
 		l.aliveMu.RUnlock()
-		// The user's online-IP map usually already exists (returning device), so
-		// look it up first and only allocate a sync.Map the first time — this
-		// avoids a throwaway allocation on every connection. `loaded` keeps the
-		// same meaning as the original LoadOrStore: true = an existing map was
-		// used, false = we just created the entry for this user.
-		v, loaded := l.UserOnlineIP.Load(taguuid)
-		if !loaded {
-			newipMap := new(sync.Map)
-			newipMap.Store(ip, uid)
-			v, loaded = l.UserOnlineIP.LoadOrStore(taguuid, newipMap)
-		}
-		// If any device is online
-		if loaded {
+		// Decide BEFORE registering the IP so a rejected connection never leaves a
+		// throwaway entry in UserOnlineIP. Otherwise the periodic online report can
+		// catch that transient entry and keep re-reporting a user who is actually
+		// locked out — pinning the panel's alive count and permanently deadlocking a
+		// legitimate single device after a restart (the device_limit=1 lockout).
+		if v, loaded := l.UserOnlineIP.Load(taguuid); loaded {
 			oldipMap := v.(*sync.Map)
-			// If this is a new ip
-			if _, loaded := oldipMap.LoadOrStore(ip, uid); !loaded {
-				if v, loaded := l.OldUserOnline.Load(ip); loaded {
-					if v.(int) == uid {
-						l.OldUserOnline.Delete(ip)
-					}
-				} else if deviceLimit > 0 {
-					if deviceLimit <= aliveIp {
-						oldipMap.Delete(ip)
-						return nil, true
-					}
-				}
-			}
-		} else if v, ok := l.OldUserOnline.Load(ip); ok {
-			if v.(int) == uid {
-				l.OldUserOnline.Delete(ip)
-			}
-		} else {
-			if deviceLimit > 0 {
-				if deviceLimit <= aliveIp {
-					l.UserOnlineIP.Delete(taguuid)
+			// Already counted for this user → same device, not a new one → allow.
+			if _, exists := oldipMap.Load(ip); !exists {
+				if !l.admitNewIP(ip, uid, deviceLimit, aliveIp) {
 					return nil, true
 				}
+				oldipMap.Store(ip, uid)
+			}
+		} else {
+			if !l.admitNewIP(ip, uid, deviceLimit, aliveIp) {
+				return nil, true
+			}
+			newipMap := new(sync.Map)
+			newipMap.Store(ip, uid)
+			// A concurrent call may have created the user's map first; merge into it.
+			if actual, ok := l.UserOnlineIP.LoadOrStore(taguuid, newipMap); ok {
+				actual.(*sync.Map).Store(ip, uid)
 			}
 		}
 	}
