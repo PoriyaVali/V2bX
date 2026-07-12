@@ -30,6 +30,7 @@ type Limiter struct {
 	UserLimitInfo *sync.Map      // Key: TagUUID value: UserLimitInfo
 	SpeedLimiter  *sync.Map      // key: TagUUID, value: *ratelimit.Bucket
 	AliveList     map[int]int    // Key: Uid, value: alive_ip
+	aliveMu       sync.RWMutex   // guards AliveList (read per-connection, replaced by the node task)
 }
 
 type UserLimitInfo struct {
@@ -93,7 +94,9 @@ func (l *Limiter) UpdateUser(tag string, added []panel.UserInfo, deleted []panel
 		l.UserOnlineIP.Delete(format.UserTag(tag, deleted[i].Uuid))
 		l.SpeedLimiter.Delete(format.UserTag(tag, deleted[i].Uuid))
 		delete(l.UUIDtoUID, deleted[i].Uuid)
+		l.aliveMu.Lock()
 		delete(l.AliveList, deleted[i].Id)
+		l.aliveMu.Unlock()
 	}
 	for i := range added {
 		userLimit := &UserLimitInfo{
@@ -110,6 +113,15 @@ func (l *Limiter) UpdateUser(tag string, added []panel.UserInfo, deleted []panel
 		l.UserLimitInfo.Store(format.UserTag(tag, added[i].Uuid), userLimit)
 		l.UUIDtoUID[added[i].Uuid] = added[i].Id
 	}
+}
+
+// SetAliveList atomically replaces the per-user alive-IP counts. Called from the
+// periodic node task; guarded because CheckLimit reads AliveList on every
+// connection (concurrent map access would otherwise crash the process).
+func (l *Limiter) SetAliveList(aliveList map[int]int) {
+	l.aliveMu.Lock()
+	l.AliveList = aliveList
+	l.aliveMu.Unlock()
 }
 
 func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire time.Time) error {
@@ -154,7 +166,9 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 		// Store online user for device limit
 		newipMap := new(sync.Map)
 		newipMap.Store(ip, uid)
+		l.aliveMu.RLock()
 		aliveIp := l.AliveList[uid]
+		l.aliveMu.RUnlock()
 		// If any device is online
 		if v, loaded := l.UserOnlineIP.LoadOrStore(taguuid, newipMap); loaded {
 			oldipMap := v.(*sync.Map)
@@ -185,18 +199,18 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 		}
 	}
 
-	limit := int64(determineSpeedLimit(nodeLimit, userLimit)) * 1000000 / 8 // If you need the Speed limit
-	if limit > 0 {
-		Bucket = ratelimit.NewBucketWithQuantum(time.Second, limit, limit) // Byte/s
-		if v, ok := l.SpeedLimiter.LoadOrStore(taguuid, Bucket); ok {
-			return v.(*ratelimit.Bucket), false
-		} else {
-			l.SpeedLimiter.Store(taguuid, Bucket)
-			return Bucket, false
-		}
-	} else {
+	limit := int64(determineSpeedLimit(nodeLimit, userLimit)) * 1000000 / 8 // Byte/s
+	if limit <= 0 {
 		return nil, false
 	}
+	// Reuse the cached bucket; only build one the first time so a hot
+	// connection path doesn't allocate a NewBucketWithQuantum on every call.
+	if v, ok := l.SpeedLimiter.Load(taguuid); ok {
+		return v.(*ratelimit.Bucket), false
+	}
+	Bucket = ratelimit.NewBucketWithQuantum(time.Second, limit, limit)
+	actual, _ := l.SpeedLimiter.LoadOrStore(taguuid, Bucket)
+	return actual.(*ratelimit.Bucket), false
 }
 
 func (l *Limiter) GetOnlineDevice() (*[]panel.OnlineUser, error) {

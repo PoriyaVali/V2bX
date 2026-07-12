@@ -125,7 +125,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 		// update alive list
 		if newA != nil {
-			c.limiter.AliveList = newA
+			c.limiter.SetAliveList(newA)
 		}
 		// Update rule
 		err = c.limiter.UpdateRule(&newN.Rules)
