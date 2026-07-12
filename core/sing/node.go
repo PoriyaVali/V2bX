@@ -67,6 +67,10 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 			SniffOverrideDestination: c.SingOptions.SniffOverrideDestination,
 			DomainStrategy:           c.SingOptions.DomainStrategy,
 		},
+		// Recover the real client IP behind the Hedioum tunnel via PROXY protocol.
+		// AcceptNoHeader keeps direct (non-tunnel) connections working.
+		ProxyProtocol:               c.SingOptions.ProxyProtocol,
+		ProxyProtocolAcceptNoHeader: c.SingOptions.ProxyProtocol,
 	}
 	var multiplex *option.InboundMultiplexOptions
 	if c.SingOptions.Multiplex != nil {

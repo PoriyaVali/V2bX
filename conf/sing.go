@@ -40,6 +40,11 @@ type SingOptions struct {
 	DomainStrategy           option.DomainStrategy  `json:"DomainStrategy"`
 	FallBackConfigs          *FallBackConfigForSing `json:"FallBackConfigs"`
 	Multiplex                *MultiplexConfig       `json:"MultiplexConfig"`
+	// ProxyProtocol makes the inbound accept a HAProxy PROXY-protocol header so
+	// the real client IP is recovered when the node sits behind the Hedioum
+	// tunnel (which arrives from 127.0.0.1). It also accepts connections without
+	// a header, so direct (non-tunnel) users keep working — safe to leave on.
+	ProxyProtocol bool `json:"ProxyProtocol"`
 }
 
 type SingNtpConfig struct {
