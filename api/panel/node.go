@@ -166,6 +166,16 @@ type Rules struct {
 	Protocol []string
 }
 
+// ResetNodeCache clears the cached node ETag/body hash so the next GetNodeInfo
+// re-fetches the full node config instead of returning "unchanged". Used to
+// force a retry after a node reload failed partway through — otherwise the node
+// would look unchanged on the next poll and stay broken until the panel config
+// actually changes.
+func (c *Client) ResetNodeCache() {
+	c.nodeEtag = ""
+	c.responseBodyHash = ""
+}
+
 func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	const path = "/api/v1/server/UniProxy/config"
 	r, err := c.client.

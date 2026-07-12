@@ -110,7 +110,10 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			log.WithFields(log.Fields{
 				"tag": c.tag,
 				"err": err,
-			}).Panic("Delete node failed")
+			}).Error("Delete node failed")
+			// Don't crash the whole process (all other nodes) over one node's
+			// reload failure; force a re-fetch so this node retries next cycle.
+			c.apiClient.ResetNodeCache()
 			return nil
 		}
 
@@ -134,6 +137,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				"tag": c.tag,
 				"err": err,
 			}).Error("Update Rule failed")
+			c.apiClient.ResetNodeCache()
 			return nil
 		}
 
@@ -145,6 +149,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 					"tag": c.tag,
 					"err": err,
 				}).Error("Request cert failed")
+				c.apiClient.ResetNodeCache()
 				return nil
 			}
 		}
@@ -154,7 +159,10 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			log.WithFields(log.Fields{
 				"tag": c.tag,
 				"err": err,
-			}).Panic("Add node failed")
+			}).Error("Add node failed")
+			// Graceful: keep other nodes alive and retry this node next cycle
+			// (the old node was already removed above, so it's down until retry).
+			c.apiClient.ResetNodeCache()
 			return nil
 		}
 		_, err = c.server.AddUsers(&vCore.AddUsersParams{
@@ -167,6 +175,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				"tag": c.tag,
 				"err": err,
 			}).Error("Add users failed")
+			c.apiClient.ResetNodeCache()
 			return nil
 		}
 		// Check interval
