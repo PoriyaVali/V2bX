@@ -45,7 +45,9 @@ jobs:
       # correctness bug: CheckLimit runs on every connection while the node's
       # poll and speed-checker goroutines mutate the same per-user state. Run it
       # under the race detector so a regression there fails here, not in prod.
+      # -timeout 5m so a test that hangs fails fast instead of burning ten
+      # minutes of runner time before the default deadline kills it.
       - name: Test (race detector)
         env:
           GOEXPERIMENT: jsonv2
-        run: go test -race -count=1 ./limiter/... ./node/... ./conf/... ./common/...
+        run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/...
