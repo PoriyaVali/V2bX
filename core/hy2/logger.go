@@ -54,11 +54,11 @@ func (l *serverLogger) Connect(addr net.Addr, uuid string, tx uint64) {
 	}
 	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit = true
+			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(true)
 		}
 	} else {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit = false
+			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(false)
 		}
 	}
 	l.logger.Info("client connected", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.Uint64("tx", tx))
@@ -75,11 +75,11 @@ func (l *serverLogger) TCPRequest(addr net.Addr, uuid, reqAddr string) {
 	}
 	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit = true
+			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(true)
 		}
 	} else {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit = false
+			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(false)
 		}
 	}
 	l.logger.Debug("TCP request", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.String("reqAddr", reqAddr))
@@ -100,11 +100,11 @@ func (l *serverLogger) UDPRequest(addr net.Addr, uuid string, sessionId uint32, 
 	}
 	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit = true
+			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(true)
 		}
 	} else {
 		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit = false
+			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(false)
 		}
 	}
 	l.logger.Debug("UDP request", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.Uint32("sessionId", sessionId), zap.String("reqAddr", reqAddr))

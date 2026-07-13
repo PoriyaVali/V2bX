@@ -25,25 +25,38 @@ type Limiter struct {
 	DomainRules   []*regexp.Regexp
 	ProtocolRules []string
 	SpeedLimit    int
-	UserOnlineIP  *sync.Map      // Key: TagUUID, value: {Key: Ip, value: Uid}
-	OldUserOnline *sync.Map      // Key: Ip, value: Uid
-	UUIDtoUID     map[string]int // Key: UUID, value: Uid
-	UserLimitInfo *sync.Map      // Key: TagUUID value: UserLimitInfo
-	SpeedLimiter  *sync.Map      // key: TagUUID, value: *ratelimit.Bucket
-	AliveList     map[int]int    // Key: Uid, value: alive_ip
-	aliveMu       sync.RWMutex   // guards AliveList (read per-connection, replaced by the node task)
+	UserOnlineIP  *sync.Map    // Key: TagUUID, value: {Key: Ip, value: Uid}
+	OldUserOnline *sync.Map    // Key: Ip, value: Uid
+	UserLimitInfo *sync.Map    // Key: TagUUID value: *UserLimitInfo
+	SpeedLimiter  *sync.Map    // key: TagUUID, value: *ratelimit.Bucket
+	AliveList     map[int]int  // Key: Uid, value: alive_ip
+	aliveMu       sync.RWMutex // guards AliveList (read per-connection, replaced by the node task)
 
 	checks  atomic.Int64 // total CheckLimit calls (for metrics)
 	rejects atomic.Int64 // CheckLimit calls that rejected (device/ip limit)
 }
 
+// UserLimitInfo holds the limits enforced for one user on one node.
+//
+// Every field except UID is written by the node's poll / speed-checker
+// goroutines while CheckLimit reads them on every single connection, so they
+// are atomic: the enclosing sync.Map guards the map, NOT the struct it points
+// at. Plain fields here were a data race (confirmed by the race detector:
+// UpdateDynamicSpeedLimit writing ExpireTime against CheckLimit reading it).
 type UserLimitInfo struct {
-	UID               int
-	SpeedLimit        int
-	DeviceLimit       int
-	DynamicSpeedLimit int
-	ExpireTime        int64
-	OverLimit         bool
+	UID               int // immutable after construction
+	SpeedLimit        atomic.Int64
+	DeviceLimit       atomic.Int64
+	DynamicSpeedLimit atomic.Int64
+	ExpireTime        atomic.Int64
+	OverLimit         atomic.Bool
+}
+
+func newUserLimitInfo(u *panel.UserInfo) *UserLimitInfo {
+	info := &UserLimitInfo{UID: u.Id}
+	info.SpeedLimit.Store(int64(u.SpeedLimit))
+	info.DeviceLimit.Store(int64(u.DeviceLimit))
+	return info
 }
 
 func AddLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveList map[int]int) *Limiter {
@@ -55,21 +68,9 @@ func AddLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveLi
 		AliveList:     aliveList,
 		OldUserOnline: new(sync.Map),
 	}
-	uuidmap := make(map[string]int)
 	for i := range users {
-		uuidmap[users[i].Uuid] = users[i].Id
-		userLimit := &UserLimitInfo{}
-		userLimit.UID = users[i].Id
-		if users[i].SpeedLimit != 0 {
-			userLimit.SpeedLimit = users[i].SpeedLimit
-		}
-		if users[i].DeviceLimit != 0 {
-			userLimit.DeviceLimit = users[i].DeviceLimit
-		}
-		userLimit.OverLimit = false
-		info.UserLimitInfo.Store(format.UserTag(tag, users[i].Uuid), userLimit)
+		info.UserLimitInfo.Store(format.UserTag(tag, users[i].Uuid), newUserLimitInfo(&users[i]))
 	}
-	info.UUIDtoUID = uuidmap
 	limitLock.Lock()
 	limiter[tag] = info
 	limitLock.Unlock()
@@ -126,30 +127,47 @@ func Snapshot() []NodeStat {
 	return out
 }
 
+// UpdateUser applies node *membership* changes: users that joined or left this
+// node's group. It does not carry limit changes — see UpdateUserLimits.
 func (l *Limiter) UpdateUser(tag string, added []panel.UserInfo, deleted []panel.UserInfo) {
 	for i := range deleted {
 		l.UserLimitInfo.Delete(format.UserTag(tag, deleted[i].Uuid))
 		l.UserOnlineIP.Delete(format.UserTag(tag, deleted[i].Uuid))
 		l.SpeedLimiter.Delete(format.UserTag(tag, deleted[i].Uuid))
-		delete(l.UUIDtoUID, deleted[i].Uuid)
 		l.aliveMu.Lock()
 		delete(l.AliveList, deleted[i].Id)
 		l.aliveMu.Unlock()
 	}
 	for i := range added {
-		userLimit := &UserLimitInfo{
-			UID: added[i].Id,
+		l.UserLimitInfo.Store(format.UserTag(tag, added[i].Uuid), newUserLimitInfo(&added[i]))
+	}
+}
+
+// UpdateUserLimits refreshes the speed/device limits of users that are already
+// registered, in place. Membership stays with UpdateUser on purpose: that path
+// is driven by compareUserList, which also tears the user out of the core's
+// inbound (DelUsers/AddUsers) and so drops their live connections. A limit edit
+// must never disconnect anybody, and it doesn't have to: the cores never read
+// SpeedLimit/DeviceLimit — only the limiter does.
+//
+// Before this existed, a device_limit change made in the panel never reached the
+// limiter at all (compareUserList keyed users on uuid+speed_limit, so a
+// device-limit-only change looked like "nothing changed"), which meant raising a
+// locked-out user's limit to rescue them did nothing until the node reloaded.
+func (l *Limiter) UpdateUserLimits(tag string, users []panel.UserInfo) {
+	for i := range users {
+		key := format.UserTag(tag, users[i].Uuid)
+		v, ok := l.UserLimitInfo.Load(key)
+		if !ok {
+			continue // not registered yet — UpdateUser adds them
 		}
-		if added[i].SpeedLimit != 0 {
-			userLimit.SpeedLimit = added[i].SpeedLimit
-			userLimit.ExpireTime = 0
+		u := v.(*UserLimitInfo)
+		u.DeviceLimit.Store(int64(users[i].DeviceLimit))
+		if old := u.SpeedLimit.Swap(int64(users[i].SpeedLimit)); old != int64(users[i].SpeedLimit) {
+			// The bucket is cached per user, not per rate, and is never rebuilt on
+			// its own — drop it so the next connection builds one at the new rate.
+			l.SpeedLimiter.Delete(key)
 		}
-		if added[i].DeviceLimit != 0 {
-			userLimit.DeviceLimit = added[i].DeviceLimit
-		}
-		userLimit.OverLimit = false
-		l.UserLimitInfo.Store(format.UserTag(tag, added[i].Uuid), userLimit)
-		l.UUIDtoUID[added[i].Uuid] = added[i].Id
 	}
 }
 
@@ -163,13 +181,17 @@ func (l *Limiter) SetAliveList(aliveList map[int]int) {
 }
 
 func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire time.Time) error {
-	if v, ok := l.UserLimitInfo.Load(format.UserTag(tag, uuid)); ok {
-		info := v.(*UserLimitInfo)
-		info.DynamicSpeedLimit = limit
-		info.ExpireTime = expire.Unix()
-	} else {
+	key := format.UserTag(tag, uuid)
+	v, ok := l.UserLimitInfo.Load(key)
+	if !ok {
 		return errors.New("not found")
 	}
+	info := v.(*UserLimitInfo)
+	info.DynamicSpeedLimit.Store(int64(limit))
+	info.ExpireTime.Store(expire.Unix())
+	// Drop the cached bucket: it is keyed by user only, so a stale one would keep
+	// serving the old rate and the throttle would silently never take effect.
+	l.SpeedLimiter.Delete(key)
 	return nil
 }
 
@@ -181,10 +203,11 @@ func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire ti
 // leaves no transient online-IP entry for the report to catch — which is what
 // used to pin their alive count and deadlock a single device after a restart.
 func (l *Limiter) admitNewIP(ip string, uid, deviceLimit, aliveIp int) bool {
-	if v, ok := l.OldUserOnline.Load(ip); ok {
-		if v.(int) == uid {
-			l.OldUserOnline.Delete(ip)
-		}
+	// The grace list is keyed by IP alone, so it must be matched back to this
+	// user: admitting on a bare IP hit let a DIFFERENT user in over their device
+	// limit whenever the two shared a public address — routine behind CGNAT.
+	if v, ok := l.OldUserOnline.Load(ip); ok && v.(int) == uid {
+		l.OldUserOnline.Delete(ip)
 		return true
 	}
 	if deviceLimit > 0 && deviceLimit <= aliveIp {
@@ -210,19 +233,22 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 	var uid int
 	if v, ok := l.UserLimitInfo.Load(taguuid); ok {
 		u := v.(*UserLimitInfo)
-		deviceLimit = u.DeviceLimit
 		uid = u.UID
-		if u.ExpireTime < time.Now().Unix() && u.ExpireTime != 0 {
-			if u.SpeedLimit != 0 {
-				userLimit = u.SpeedLimit
-				u.DynamicSpeedLimit = 0
-				u.ExpireTime = 0
-			} else {
-				l.UserLimitInfo.Delete(taguuid)
+		deviceLimit = int(u.DeviceLimit.Load())
+		dynamic := int(u.DynamicSpeedLimit.Load())
+		// The dynamic-limit window is over: clear it and fall back to the user's
+		// own limit. This used to Delete the whole UserLimitInfo whenever the user
+		// had no personal speed limit — which sent their NEXT connection into the
+		// unknown-user branch below and rejected it forever: a permanent ban for
+		// exactly the common case (speed_limit = 0, i.e. unlimited).
+		if exp := u.ExpireTime.Load(); exp != 0 && exp < time.Now().Unix() {
+			if u.ExpireTime.CompareAndSwap(exp, 0) { // exactly one goroutine wins
+				u.DynamicSpeedLimit.Store(0)
+				l.SpeedLimiter.Delete(taguuid) // drop the throttled bucket so the limit actually lifts
 			}
-		} else {
-			userLimit = determineSpeedLimit(u.SpeedLimit, u.DynamicSpeedLimit)
+			dynamic = 0
 		}
+		userLimit = determineSpeedLimit(int(u.SpeedLimit.Load()), dynamic)
 	} else {
 		return nil, true
 	}

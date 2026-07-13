@@ -1,20 +1,8 @@
 package limiter
 
-import (
-	"time"
-
-	"github.com/PoriyaVali/V2bX/api/panel"
-	"github.com/PoriyaVali/V2bX/common/format"
-)
-
-func (l *Limiter) AddDynamicSpeedLimit(tag string, userInfo *panel.UserInfo, limitNum int, expire int64) error {
-	userLimit := &UserLimitInfo{
-		DynamicSpeedLimit: limitNum,
-		ExpireTime:        time.Now().Add(time.Duration(expire) * time.Second).Unix(),
-	}
-	l.UserLimitInfo.Store(format.UserTag(tag, userInfo.Uuid), userLimit)
-	return nil
-}
+// AddDynamicSpeedLimit was removed: it had no callers, and it *replaced* the
+// user's whole UserLimitInfo with a fresh struct, silently zeroing their UID and
+// DeviceLimit. UpdateDynamicSpeedLimit mutates the existing entry instead.
 
 // determineSpeedLimit returns the minimum non-zero rate
 func determineSpeedLimit(limit1, limit2 int) (limit int) {

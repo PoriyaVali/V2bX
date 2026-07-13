@@ -11,13 +11,13 @@ import (
 )
 
 // dynLimit reads back the DynamicSpeedLimit the limiter stored for a user.
-func dynLimit(t *testing.T, lim *limiter.Limiter, tag, uuid string) int {
+func dynLimit(t *testing.T, lim *limiter.Limiter, tag, uuid string) int64 {
 	t.Helper()
 	v, ok := lim.UserLimitInfo.Load(format.UserTag(tag, uuid))
 	if !ok {
 		t.Fatalf("no UserLimitInfo for %s", uuid)
 	}
-	return v.(*limiter.UserLimitInfo).DynamicSpeedLimit
+	return v.(*limiter.UserLimitInfo).DynamicSpeedLimit.Load()
 }
 
 // TestSpeedCheckerThrottlesAndResets verifies the restored dynamic speed limit:

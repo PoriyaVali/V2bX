@@ -37,9 +37,9 @@ func (h *HookServer) LogTraffic(id string, tx, rx uint64) (ok bool) {
 
 	userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(h.Tag, id))
 	if ok {
-		userlimitInfo := userLimit.(*limiter.UserLimitInfo)
-		if userlimitInfo.OverLimit {
-			userlimitInfo.OverLimit = false
+		// Atomic test-and-clear: the flag is set from the connection loggers on
+		// other goroutines, so read-then-write would be a lost update.
+		if userLimit.(*limiter.UserLimitInfo).OverLimit.Swap(false) {
 			return false
 		}
 	}
