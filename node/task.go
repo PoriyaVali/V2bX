@@ -236,15 +236,8 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 	}
 	if len(added) > 0 || len(deleted) > 0 {
-		// update Limiter
+		// update Limiter membership
 		c.limiter.UpdateUser(c.tag, added, deleted)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Error("limiter users failed")
-			return nil
-		}
 		// clear traffic record
 		if c.LimitConfig.EnableDynamicSpeedLimit {
 			c.trafficMu.Lock()
@@ -254,6 +247,11 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			c.trafficMu.Unlock()
 		}
 	}
+	// Speed/device limits can change without membership changing, and the panel
+	// pushes them on every /user poll — sync them in place so an admin's edit
+	// lands within one pull interval instead of waiting for a node reload. Cheap
+	// (one sync.Map load per user) and it never disturbs a live connection.
+	c.limiter.UpdateUserLimits(c.tag, newU)
 	c.userList = newU
 	c.syncUIDIndex()
 	if len(added)+len(deleted) != 0 {

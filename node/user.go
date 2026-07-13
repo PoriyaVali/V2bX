@@ -1,8 +1,6 @@
 package node
 
 import (
-	"strconv"
-
 	"github.com/PoriyaVali/V2bX/api/panel"
 	log "github.com/sirupsen/logrus"
 )
@@ -53,17 +51,27 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		if c.info != nil && c.info.DeviceOnlineMinTraffic > 0 {
 			deviceMin = c.info.DeviceOnlineMinTraffic
 		}
-		var result []panel.OnlineUser
-		var nocountUID = make(map[int]struct{})
-		for _, traffic := range userTraffic {
-			total := traffic.Upload + traffic.Download
-			if total < deviceMin*1000 {
-				nocountUID[traffic.UID] = struct{}{}
+		result := *onlineDevice
+		if deviceMin > 0 {
+			// Report a user's devices only when we hold a traffic sample for them
+			// that reaches the threshold. This used to be phrased as a deny-set
+			// ("skip users whose traffic is below it"), which inverted the gate at
+			// the zero-byte edge: a user with no sample at all — the core omits
+			// users with 0 bytes from the slice — was never added to the deny-set
+			// and so WAS reported, while a genuinely active user just under the
+			// threshold was not. A dead connection consumed a device slot; a live,
+			// lightly-used device did not.
+			countUID := make(map[int]struct{}, len(userTraffic))
+			for _, traffic := range userTraffic {
+				if traffic.Upload+traffic.Download >= deviceMin*1000 {
+					countUID[traffic.UID] = struct{}{}
+				}
 			}
-		}
-		for _, online := range *onlineDevice {
-			if _, ok := nocountUID[online.UID]; !ok {
-				result = append(result, online)
+			result = nil
+			for _, online := range *onlineDevice {
+				if _, ok := countUID[online.UID]; ok {
+					result = append(result, online)
+				}
 			}
 		}
 		data := make(map[int][]string)
@@ -86,19 +94,26 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	return nil
 }
 
+// compareUserList reports pure *membership* changes: who joined this node's
+// group and who left. It keys on the UUID alone.
+//
+// It deliberately ignores the users' limits. The added/deleted sets it returns
+// drive DelUsers/AddUsers on the core, which tears the user out of the inbound
+// and drops their live connections — so folding a limit change in here would
+// disconnect a user every time an admin adjusted their plan. Limits are carried
+// separately by limiter.UpdateUserLimits, which updates them in place; no core
+// involvement is needed because the cores never read them.
 func compareUserList(old, new []panel.UserInfo) (deleted, added []panel.UserInfo) {
-	oldMap := make(map[string]int)
+	oldMap := make(map[string]int, len(old))
 	for i, user := range old {
-		key := user.Uuid + strconv.Itoa(user.SpeedLimit)
-		oldMap[key] = i
+		oldMap[user.Uuid] = i
 	}
 
 	for _, user := range new {
-		key := user.Uuid + strconv.Itoa(user.SpeedLimit)
-		if _, exists := oldMap[key]; !exists {
+		if _, exists := oldMap[user.Uuid]; !exists {
 			added = append(added, user)
 		} else {
-			delete(oldMap, key)
+			delete(oldMap, user.Uuid)
 		}
 	}
 
