@@ -29,7 +29,19 @@ func init() {
 	}
 }
 
+// requireACME skips unless the caller opted in. These two exercise the real
+// Let's Encrypt ACME API with the placeholder Cloudflare token above, so they
+// can only ever fail — and they hammer a rate-limited production endpoint while
+// doing it. Opt in with V2BX_ACME_E2E=1 and a real CF_DNS_API_TOKEN.
+func requireACME(t *testing.T) {
+	t.Helper()
+	if os.Getenv("V2BX_ACME_E2E") == "" {
+		t.Skip("live ACME test: set V2BX_ACME_E2E=1 (and a real CF_DNS_API_TOKEN) to run")
+	}
+}
+
 func TestLego_CreateCertByDns(t *testing.T) {
+	requireACME(t)
 	err := l.CreateCert()
 	if err != nil {
 		t.Error(err)
@@ -37,5 +49,6 @@ func TestLego_CreateCertByDns(t *testing.T) {
 }
 
 func TestLego_RenewCert(t *testing.T) {
+	requireACME(t)
 	log.Println(l.RenewCert())
 }

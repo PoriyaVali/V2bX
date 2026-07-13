@@ -1,0 +1,51 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+      - dev_new
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/test.yml"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: vet + race tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Vet
+        env:
+          GOEXPERIMENT: jsonv2
+        run: go vet ./limiter/... ./node/... ./conf/... ./api/... ./common/...
+
+      # The limiter is the one place where a data race is not a nuisance but a
+      # correctness bug: CheckLimit runs on every connection while the node's
+      # poll and speed-checker goroutines mutate the same per-user state. Run it
+      # under the race detector so a regression there fails here, not in prod.
+      - name: Test (race detector)
+        env:
+          GOEXPERIMENT: jsonv2
+        run: go test -race -count=1 ./limiter/... ./node/... ./conf/... ./common/...
