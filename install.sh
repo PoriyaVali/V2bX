@@ -679,12 +679,28 @@ setup_tunnel() {
     TOKEN=$(openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
     tlog "[i] Shared token generated (stored in ${INFO})"
 
+    # 4b) Multi-foreign relay: if this foreign will sit behind an Iran relay that
+    # ALREADY fronts other foreign nodes, the relay command must MERGE (-add) into
+    # that relay's config instead of overwriting it. Each foreign then needs a
+    # UNIQUE public port on the relay (the relay binds each port once and rejects
+    # a clash). A readable alias distinguishes this node in the relay config/logs.
+    local ADDFLAG="" ALIAS MULTI
+    ALIAS=$(hostname -s 2>/dev/null | tr -cd 'A-Za-z0-9._-')
+    ALIAS=${ALIAS:-fr-${PUBIP//./-}}
+    read -rp "Additional foreign behind a relay that already tunnels other nodes? [y/N]: " MULTI
+    case "$MULTI" in
+        [yY]*)
+            ADDFLAG=" -add"
+            tlog "${yellow}[i] Multi-foreign: the relay command will use -add (merge). Make sure THIS node's inbound ports (${PORTS}) do NOT clash with the other foreigns already on that relay, or the relay will reject them.${plain}"
+            ;;
+    esac
+
     # 5) Install + provision Hedioum (foreign role); tee its full output into the log
     tlog "${green}[*] Installing & provisioning Hedioum (foreign) ...${plain}"
     bash <(curl -s "$HEDIOUM_INSTALL") setup -role foreign -forward-host 127.0.0.1 -listen-port "$TPORT" -token "$TOKEN" 2>&1 | tee -a "$LOG"
 
     # 6) Build the Iran one-liner (double quotes keep <(...) literal, not executed)
-    local IRAN_CMD="bash <(curl -s ${HEDIOUM_INSTALL}) setup -role iran -foreign-ip ${PUBIP} -foreign-port ${TPORT} -token ${TOKEN} -ports ${PORTS}"
+    local IRAN_CMD="bash <(curl -s ${HEDIOUM_INSTALL}) setup -role iran -foreign-ip ${PUBIP} -foreign-port ${TPORT} -token ${TOKEN} -ports ${PORTS} -alias ${ALIAS}${ADDFLAG}"
 
     # 7) Persist all tunnel info so it can be retrieved later (not just printed once)
     cat > "$INFO" <<INFOEOF
@@ -698,7 +714,11 @@ forward           = 127.0.0.1:<port>  (port-preserving, all TCP inbounds)
 # Run this on the IRAN relay:
 ${IRAN_CMD}
 
-# In the panel: set this node's  host = <Iran relay IP>  (keep the same port).
+# In the panel: set this node's host = <Iran relay IP>.
+#   single foreign per relay  -> keep the same port.
+#   multiple foreigns / relay -> each foreign needs a UNIQUE port: give this
+#                                node a distinct panel port (port & server_port);
+#                                V2bX binds it from the panel automatically.
 
 # Live tunnel logs (both servers):  journalctl -u hedioum -f
 # Setup log (this server):          ${LOG}
@@ -713,7 +733,8 @@ INFOEOF
     tlog "${green}==================================================${plain}"
     tlog "Saved to ${green}${INFO}${plain}  |  Setup log: ${green}${LOG}${plain}"
     tlog "Live tunnel logs: ${green}journalctl -u hedioum -f${plain}"
-    tlog "Then in the panel set this node's ${green}host = Iran relay IP${plain} (keep the port)."
+    tlog "Then in the panel set this node's ${green}host = Iran relay IP${plain}."
+    tlog "  ${yellow}single foreign/relay: keep the port. multiple foreigns/relay: give each a UNIQUE port.${plain}"
 }
 
 stop_tunnel() {
