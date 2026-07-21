@@ -92,11 +92,6 @@ func (c *trackedConn) WriterReplaceable() bool { return true }
 // Declaring the upstream replaceable hands reads and writes back to the
 // counter untouched. Close still belongs to this type, which is all the
 // tracking needs.
-func (c *trackedConn) Upstream() any { return c.Conn }
-
-func (c *trackedConn) ReaderReplaceable() bool { return true }
-
-func (c *trackedConn) WriterReplaceable() bool { return true }
 
 type trackedPacketConn struct {
 	N.PacketConn
@@ -123,11 +118,6 @@ func (c *trackedPacketConn) WriterReplaceable() bool { return true }
 
 // Same reasoning as trackedConn: PacketConnCounter carries the packet unwrap
 // protocol, and hiding it would silently stop UDP being counted.
-func (c *trackedPacketConn) Upstream() any { return c.PacketConn }
-
-func (c *trackedPacketConn) ReaderReplaceable() bool { return true }
-
-func (c *trackedPacketConn) WriterReplaceable() bool { return true }
 
 func (h *HookServer) register(key string, c io.Closer) (func(), bool) {
 	v, _ := h.conns.LoadOrStore(key, &userConns{m: make(map[io.Closer]struct{})})
