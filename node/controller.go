@@ -1,7 +1,6 @@
 package node
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
@@ -75,8 +74,19 @@ func (c *Controller) Start() error {
 	if err != nil {
 		return fmt.Errorf("get user list error: %s", err)
 	}
+	// An empty user list is a legitimate state, not a startup failure. A node
+	// can legitimately have nobody on it: a tier nobody has bought yet, or one
+	// whose members are all currently ineligible (expired, out of data, or - for
+	// a metered tier - out of balance). Treating that as fatal meant the LAST
+	// eligible user leaving took the node down, and because one process serves
+	// several nodes it took the unrelated ones with it: a paid tier emptying out
+	// cost 340 users on a different node ~28 minutes of downtime.
+	//
+	// Start with nobody instead; nodeInfoMonitor adds users as soon as the panel
+	// returns any. AddUsers over an empty slice is a no-op in every core.
 	if len(c.userList) == 0 {
-		return errors.New("add users error: not have any user")
+		log.WithField("tag", c.buildNodeTag(node)).
+			Info("No eligible users yet; starting the node empty and waiting for the panel")
 	}
 	c.aliveMap, err = c.apiClient.GetUserAlive()
 	if err != nil {
