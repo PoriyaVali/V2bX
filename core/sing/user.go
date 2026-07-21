@@ -3,6 +3,7 @@ package sing
 import (
 	"encoding/base64"
 	"errors"
+	"github.com/sagernet/sing-box/log"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/counter"
@@ -213,6 +214,15 @@ func (b *Sing) DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo
 	err := del.DelUsers(uuids)
 	if err != nil {
 		return err
+	}
+	// Removing them from the inbound only refuses the next handshake. Whatever
+	// they already have open would carry on to its natural end, which on a
+	// metered tier means a user whose credit ran out still finishes the
+	// transfer in progress.
+	if b.hookServer != nil {
+		if n := b.hookServer.CloseUserConns(tag, uuids); n > 0 {
+			log.Info("closed ", n, " live connection(s) for ", len(uuids), " removed user(s) on ", tag)
+		}
 	}
 	return nil
 }
