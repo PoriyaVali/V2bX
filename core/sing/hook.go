@@ -3,6 +3,7 @@ package sing
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 
@@ -21,6 +22,99 @@ var _ adapter.ConnectionTracker = (*HookServer)(nil)
 
 type HookServer struct {
 	counter sync.Map //map[string]*counter.TrafficCounter
+	conns   sync.Map //map[string]*userConns, keyed by format.UserTag
+}
+
+// userConns holds the connections a single user currently has open on one
+// inbound, so they can be torn down the moment the panel stops listing them.
+//
+// Removing a user from the inbound only stops the NEXT handshake; anything
+// already established keeps running until it ends on its own. On a metered
+// tier that is the difference between "your credit ran out" and "your credit
+// ran out but the download you started finishes anyway".
+type userConns struct {
+	mu     sync.Mutex
+	m      map[io.Closer]struct{}
+	closed bool // set once the user is gone, so a racing registration is refused
+}
+
+// trackedConn removes itself from its user's set as soon as it closes, however
+// it closes. Without that the set only ever grows and the node leaks memory for
+// the lifetime of the process - far worse than the billing gap being fixed.
+type trackedConn struct {
+	net.Conn
+	release func()
+	once    sync.Once
+}
+
+func (c *trackedConn) Close() error {
+	c.once.Do(func() {
+		if c.release != nil {
+			c.release()
+		}
+	})
+	return c.Conn.Close()
+}
+
+type trackedPacketConn struct {
+	N.PacketConn
+	release func()
+	once    sync.Once
+}
+
+func (c *trackedPacketConn) Close() error {
+	c.once.Do(func() {
+		if c.release != nil {
+			c.release()
+		}
+	})
+	return c.PacketConn.Close()
+}
+
+func (h *HookServer) register(key string, c io.Closer) (func(), bool) {
+	v, _ := h.conns.LoadOrStore(key, &userConns{m: make(map[io.Closer]struct{})})
+	uc := v.(*userConns)
+	uc.mu.Lock()
+	if uc.closed {
+		uc.mu.Unlock()
+		return nil, false
+	}
+	uc.m[c] = struct{}{}
+	uc.mu.Unlock()
+	return func() {
+		uc.mu.Lock()
+		delete(uc.m, c)
+		uc.mu.Unlock()
+	}, true
+}
+
+// CloseUserConns drops every connection these users still have open on the
+// inbound. Returns how many were closed.
+func (h *HookServer) CloseUserConns(inbound string, uuids []string) int {
+	closed := 0
+	for _, uuid := range uuids {
+		v, ok := h.conns.LoadAndDelete(format.UserTag(inbound, uuid))
+		if !ok {
+			continue
+		}
+		uc := v.(*userConns)
+		// Collect under the lock but close OUTSIDE it: Close() runs the
+		// release func, which takes this same mutex, so closing while holding
+		// it would deadlock the node.
+		uc.mu.Lock()
+		uc.closed = true
+		list := make([]io.Closer, 0, len(uc.m))
+		for c := range uc.m {
+			list = append(list, c)
+		}
+		uc.m = nil
+		uc.mu.Unlock()
+		for _, c := range list {
+			_ = c.Close()
+			closed++
+		}
+	}
+	return closed
 }
 
 func (h *HookServer) ModeList() []string {
@@ -79,7 +173,15 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 		t = c.(*counter.TrafficCounter)
 	}
 	conn = counter.NewConnCounter(conn, t.GetCounter(m.User))
-	return conn
+	tc := &trackedConn{Conn: conn}
+	release, ok := h.register(taguuid, tc)
+	if !ok {
+		// the user was removed while this was being set up
+		conn.Close()
+		return conn
+	}
+	tc.release = release
+	return tc
 }
 
 func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) N.PacketConn {
@@ -127,5 +229,12 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 		t = c.(*counter.TrafficCounter)
 	}
 	conn = counter.NewPacketConnCounter(conn, t.GetCounter(m.User))
-	return conn
+	pc := &trackedPacketConn{PacketConn: conn}
+	release, ok := h.register(taguuid, pc)
+	if !ok {
+		conn.Close()
+		return conn
+	}
+	pc.release = release
+	return pc
 }
