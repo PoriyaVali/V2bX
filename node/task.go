@@ -1,6 +1,7 @@
 package node
 
 import (
+	"errors"
 	"reflect"
 	"time"
 
@@ -72,7 +73,17 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		return nil
 	}
 	// get user info
+	//
+	// userListFresh separates "the panel sent a list" from "the panel said
+	// nothing changed". Only the first lets us act on membership below - and
+	// crucially, a fresh list that is EMPTY is an answer, not a non-answer: it
+	// means nobody is authorised here any more. Testing len(newU) instead
+	// collapsed those two cases and left cut-off users connected.
 	newU, err := c.apiClient.GetUserList()
+	userListFresh := true
+	if errors.Is(err, panel.ErrUserListNotModified) {
+		userListFresh, newU, err = false, nil, nil
+	}
 	if err != nil {
 		log.WithFields(log.Fields{
 			"tag": c.tag,
@@ -99,7 +110,13 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	if newN != nil {
 		c.info = newN
 		// nodeInfo changed
-		if newU != nil {
+		//
+		// Same distinction as below: adopt the list whenever the panel actually
+		// sent one, including an empty one. A nil check would not do - a reply
+		// carrying no users decodes to a nil slice, so the node would rebuild
+		// itself around the previous membership and re-add users the panel had
+		// just dropped.
+		if userListFresh {
 			c.userList = newU
 			c.syncUIDIndex()
 		}
@@ -205,7 +222,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		c.limiter.SetAliveList(newA)
 	}
 	// node no changed, check users
-	if len(newU) == 0 {
+	if !userListFresh {
 		return nil
 	}
 	deleted, added := compareUserList(c.userList, newU)

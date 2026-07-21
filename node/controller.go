@@ -1,6 +1,7 @@
 package node
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -70,8 +71,13 @@ func (c *Controller) Start() error {
 		return fmt.Errorf("get node info error: %s", err)
 	}
 	// Update user
+	//
+	// A 304 would mean an etag survived into a fresh start, which cannot happen
+	// today - but reading it as a failure would make the node refuse to boot
+	// over a reply that only says "nothing changed". Start empty instead and let
+	// the first monitor pass fill the list in.
 	c.userList, err = c.apiClient.GetUserList()
-	if err != nil {
+	if err != nil && !errors.Is(err, panel.ErrUserListNotModified) {
 		return fmt.Errorf("get user list error: %s", err)
 	}
 	// An empty user list is a legitimate state, not a startup failure. A node
