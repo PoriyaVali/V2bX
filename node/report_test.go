@@ -1,6 +1,7 @@
 package node
 
 import (
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -54,6 +55,10 @@ type fakePanel struct {
 	users         []panel.UserInfo
 	capturedAlive map[int][]string
 	srv           *httptest.Server
+	// etag makes the user endpoint answer 304 when the caller already holds the
+	// current list, like the real panel. Off by default so tests that only care
+	// about "here is the list now" keep getting a plain 200.
+	etag bool
 }
 
 func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *fakePanel {
@@ -69,10 +74,19 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 			`{"push_interval":41,"pull_interval":31,"node_report_min_traffic":0,"device_online_min_traffic":%d}}`,
 			deviceOnlineMinKB)
 	})
-	mux.HandleFunc("/api/v1/server/UniProxy/user", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/api/v1/server/UniProxy/user", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		body, _ := json.Marshal(panel.UserListBody{Users: f.users})
+		useEtag := f.etag
 		f.mu.Unlock()
+		if useEtag {
+			tag := fmt.Sprintf(`"%x"`, sha1.Sum(body))
+			w.Header().Set("ETag", tag)
+			if r.Header.Get("If-None-Match") == tag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(body)
 	})
@@ -100,6 +114,14 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 func (f *fakePanel) setUsers(u []panel.UserInfo) {
 	f.mu.Lock()
 	f.users = u
+	f.mu.Unlock()
+}
+
+// enableEtag switches the user endpoint over to conditional replies, so an
+// unchanged list comes back as 304 instead of a fresh 200.
+func (f *fakePanel) enableEtag() {
+	f.mu.Lock()
+	f.etag = true
 	f.mu.Unlock()
 }
 

@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,17 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+// ErrUserListNotModified reports a 304 from the panel: the list has not changed
+// since the last poll, so the caller must keep the one it already holds.
+//
+// This has to be tellable apart from a successful reply carrying an EMPTY list,
+// which means the opposite - nobody is authorised on this node any more and
+// every user must be torn down. Both used to arrive as a nil slice and a nil
+// error, and the caller could only test len() == 0, so it read "everyone was
+// removed" as "nothing changed" and kept serving users the panel had already
+// cut off. They stayed connected until the process restarted.
+var ErrUserListNotModified = errors.New("user list not modified")
 
 type OnlineUser struct {
 	UID int
@@ -44,7 +56,7 @@ func (c *Client) GetUserList() ([]UserInfo, error) {
 	defer r.RawResponse.Body.Close()
 
 	if r.StatusCode() == 304 {
-		return nil, nil
+		return nil, ErrUserListNotModified
 	}
 
 	if err = c.checkResponse(r, path, err); err != nil {
