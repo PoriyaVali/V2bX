@@ -56,6 +56,43 @@ func (c *trackedConn) Close() error {
 	return c.Conn.Close()
 }
 
+// The three methods below keep this wrapper out of the data path.
+//
+// What it wraps is a *counter.ConnCounter, which is not a plain net.Conn: it
+// carries ReadBuffer/WriteBuffer plus sing's unwrap protocol (Upstream,
+// UnwrapReader, UnwrapWriter) that lets a copy run straight against the raw
+// connection while the byte counts are applied through CountFuncs. Embedding
+// an INTERFACE only promotes that interface's own methods, so wrapping in
+// net.Conn hid every one of them - sing could no longer see a counter, chose a
+// copy path that never went through it, and traffic stopped being counted
+// while data kept flowing perfectly. Nothing failed; the numbers simply went
+// quiet, which cost a release to notice.
+//
+// Declaring the upstream replaceable hands reads and writes back to the
+// counter untouched. Close still belongs to this type, which is all the
+// tracking needs.
+func (c *trackedConn) Upstream() any { return c.Conn }
+
+func (c *trackedConn) ReaderReplaceable() bool { return true }
+
+func (c *trackedConn) WriterReplaceable() bool { return true }
+
+// The three methods below keep this wrapper out of the data path.
+//
+// What it wraps is a *counter.ConnCounter, which is not a plain net.Conn: it
+// carries ReadBuffer/WriteBuffer plus sing's unwrap protocol (Upstream,
+// UnwrapReader, UnwrapWriter) that lets a copy run straight against the raw
+// connection while the byte counts are applied through CountFuncs. Embedding
+// an INTERFACE only promotes that interface's own methods, so wrapping in
+// net.Conn hid every one of them - sing could no longer see a counter, chose a
+// copy path that never went through it, and traffic stopped being counted
+// while data kept flowing perfectly. Nothing failed; the numbers simply went
+// quiet, which cost a release to notice.
+//
+// Declaring the upstream replaceable hands reads and writes back to the
+// counter untouched. Close still belongs to this type, which is all the
+// tracking needs.
+
 type trackedPacketConn struct {
 	N.PacketConn
 	release func()
@@ -70,6 +107,17 @@ func (c *trackedPacketConn) Close() error {
 	})
 	return c.PacketConn.Close()
 }
+
+// Same reasoning as trackedConn: PacketConnCounter carries the packet unwrap
+// protocol, and hiding it would silently stop UDP being counted.
+func (c *trackedPacketConn) Upstream() any { return c.PacketConn }
+
+func (c *trackedPacketConn) ReaderReplaceable() bool { return true }
+
+func (c *trackedPacketConn) WriterReplaceable() bool { return true }
+
+// Same reasoning as trackedConn: PacketConnCounter carries the packet unwrap
+// protocol, and hiding it would silently stop UDP being counted.
 
 func (h *HookServer) register(key string, c io.Closer) (func(), bool) {
 	v, _ := h.conns.LoadOrStore(key, &userConns{m: make(map[io.Closer]struct{})})
