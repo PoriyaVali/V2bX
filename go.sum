@@ -102,8 +102,8 @@ github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible/go
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/OpenDNS/vegadns2client v0.0.0-20180418235048-a3fa4a771d87 h1:xPMsUicZ3iosVPSIP7bW5EcGUzjiiMl1OYTe14y/R24=
 github.com/OpenDNS/vegadns2client v0.0.0-20180418235048-a3fa4a771d87/go.mod h1:iGLljf5n9GjT6kc0HBvyI1nOKnGQbNB66VzSNbK5iks=
-github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260707155520-295de16bc4db h1:vJem8MSWbaJRFMDTqTqrHmSLhRuScquPIKzuC+N6wF4=
-github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260707155520-295de16bc4db/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260722173436-7f3f4e522a2b h1:TkTXmCyiLzTdPUaC8JUgd8rHcAsXDPGdryYGRdjo88E=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260722173436-7f3f4e522a2b/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v1.251202.1 h1:JIgTTWHOHT9vP9w/mC8FslQomUu1jXo+CstDvzDXovA=
 github.com/PoriyaVali/Xray-core v1.251202.1/go.mod h1:kclzboEF0g6VBrp9/NXm8C0Aj64SDBt52OfthH1LSr4=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.2 h1:TLjmPz3iKjdMTsj7j4D6Ndd4mPqH3paEUZK66nCq/hU=
