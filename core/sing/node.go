@@ -17,6 +17,7 @@ import (
 	"github.com/sagernet/sing-box/option"
 	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/json/badoption"
+	log "github.com/sirupsen/logrus"
 )
 
 type HttpNetworkConfig struct {
@@ -412,6 +413,31 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	if err != nil {
 		return err
 	}
+	// Point the anytls inbound's fallback at this node's own decoy site, so a
+	// prober that speaks TLS and then fails authentication is answered by a
+	// web page instead of a closed socket. Started here rather than inside
+	// getInboundOptions because the listener's lifetime belongs to the node,
+	// not to the options struct.
+	//
+	// A failure to start it is deliberately NOT fatal: losing the disguise is
+	// worse than nothing, but refusing to bring the node up would cost every
+	// user their connection over a cosmetic listener.
+	if c.Type == "anytls" && config.SingOptions.DecoyEnabled() {
+		if opts, ok := c.Options.(*option.AnyTLSInboundOptions); ok {
+			if d, derr := startDecoy(decoySeed(tag)); derr != nil {
+				log.WithField("err", derr).Warn("decoy site unavailable; unauthenticated connections will be closed")
+			} else {
+				host, port := d.hostPort()
+				opts.Fallback = &option.ServerOptions{Server: host, ServerPort: port}
+				b.decoysMu.Lock()
+				if old := b.decoys[tag]; old != nil {
+					_ = old.Close() // node re-added: replace, never leak
+				}
+				b.decoys[tag] = d
+				b.decoysMu.Unlock()
+			}
+		}
+	}
 	in := b.box.Inbound()
 	err = in.Create(
 		b.ctx,
@@ -429,6 +455,12 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 }
 
 func (b *Sing) DelNode(tag string) error {
+	b.decoysMu.Lock()
+	if d := b.decoys[tag]; d != nil {
+		_ = d.Close()
+		delete(b.decoys, tag)
+	}
+	b.decoysMu.Unlock()
 	in := b.box.Inbound()
 	err := in.Remove(tag)
 	if err != nil {

@@ -33,6 +33,11 @@ type Sing struct {
 	logFactory                log.Factory
 	users                     *UserMap
 	nodeReportMinTrafficBytes map[string]int64
+	// One decoy site per node tag: each node has its own certificate and
+	// hostname, so each gets its own page. Ten nodes serving one identical
+	// page would just relocate the fingerprint into the repetition.
+	decoys   map[string]*decoy
+	decoysMu sync.Mutex
 }
 
 type UserMap struct {
@@ -142,6 +147,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 			uidMap: make(map[string]int),
 		},
 		nodeReportMinTrafficBytes: make(map[string]int64),
+		decoys:                    make(map[string]*decoy),
 	}, nil
 }
 
@@ -150,6 +156,12 @@ func (b *Sing) Start() error {
 }
 
 func (b *Sing) Close() error {
+	b.decoysMu.Lock()
+	for tag, d := range b.decoys {
+		_ = d.Close()
+		delete(b.decoys, tag)
+	}
+	b.decoysMu.Unlock()
 	return b.box.Close()
 }
 

@@ -108,6 +108,8 @@ github.com/PoriyaVali/Xray-core v1.251202.1 h1:JIgTTWHOHT9vP9w/mC8FslQomUu1jXo+C
 github.com/PoriyaVali/Xray-core v1.251202.1/go.mod h1:kclzboEF0g6VBrp9/NXm8C0Aj64SDBt52OfthH1LSr4=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.2 h1:TLjmPz3iKjdMTsj7j4D6Ndd4mPqH3paEUZK66nCq/hU=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.2/go.mod h1:Bh3B7QDfevBhkc3NQTSywIk8dan6EIxTlBK4hmKRFYI=
+github.com/PoriyaVali/sing-box v1.13.14-v2bx.3 h1:zGuoEoabrAxtmkFoyRXP2Q536tnrkScWlkbQcOKJ1C4=
+github.com/PoriyaVali/sing-box v1.13.14-v2bx.3/go.mod h1:Bh3B7QDfevBhkc3NQTSywIk8dan6EIxTlBK4hmKRFYI=
 github.com/Shopify/sarama v1.19.0/go.mod h1:FVkBWblsNy7DGZRfXLU0O9RCGt5g3g3yEuWXgklEdEo=
 github.com/Shopify/sarama v1.30.1/go.mod h1:hGgx05L/DiW8XYBXeJdKIN6V2QUy2H6JqME5VT1NLRw=
 github.com/Shopify/toxiproxy v2.1.4+incompatible/go.mod h1:OXgGpZ6Cli1/URJOF1DMxUHB2q5Ap20/P/eIdh4G0pI=

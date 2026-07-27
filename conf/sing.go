@@ -45,6 +45,24 @@ type SingOptions struct {
 	// tunnel (which arrives from 127.0.0.1). It also accepts connections without
 	// a header, so direct (non-tunnel) users keep working — safe to leave on.
 	ProxyProtocol bool `json:"ProxyProtocol"`
+	// DecoySite serves an ordinary-looking web page to anyone who completes the
+	// TLS handshake but is not one of our users — an active prober, in other
+	// words. Closing on them instead, which is what happens with this off, makes
+	// the port answer like nothing else on the internet. Served in-process (see
+	// core/sing/decoy.go), so there is nothing to install on the node.
+	//
+	// Defaults ON: NewSingOptions is the base every node config unmarshals over,
+	// so existing nodes pick it up on upgrade without an edit. Set false to opt
+	// out. Only anytls inbounds use it today — it is the only protocol here
+	// whose library accepts a fallback handler.
+	DecoySite *bool `json:"DecoySite"`
+}
+
+// DecoyEnabled reports whether the decoy should run. Pointer + nil check rather
+// than a plain bool so an operator's explicit `"DecoySite": false` survives the
+// default, which a zero-value bool could not express.
+func (o *SingOptions) DecoyEnabled() bool {
+	return o == nil || o.DecoySite == nil || *o.DecoySite
 }
 
 type SingNtpConfig struct {
