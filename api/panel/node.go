@@ -91,6 +91,13 @@ type TlsSettings struct {
 	PrivateKey  string `json:"private_key"`
 	Mldsa65Seed string `json:"mldsa65Seed"`
 	Xver        uint64 `json:"xver,string"`
+
+	// Encrypted Client Hello. Ech is the panel's mode switch ("custom", or
+	// empty for off) and EchKey is the server key. The panel stores it as bare
+	// base64 while sing-box demands a PEM block of type "ECH KEYS", so it is
+	// wrapped on the way into the inbound options - see core/sing/node.go.
+	Ech    string `json:"ech"`
+	EchKey string `json:"ech_key"`
 }
 
 type EncSettings struct {
@@ -128,6 +135,14 @@ type TuicNode struct {
 type AnyTlsNode struct {
 	CommonNode
 	PaddingScheme []string `json:"padding_scheme,omitempty"`
+
+	// Same two fields, and the same JSON names, the vless node already uses -
+	// the panel serves them identically for both. Before this an anytls node
+	// received nothing but server_port/server_name/padding_scheme, so it could
+	// only ever serve plain TLS. A panel that has not been updated omits them
+	// and Tls decodes as 0, which is treated as plain TLS below.
+	Tls         int         `json:"tls"`
+	TlsSettings TlsSettings `json:"tls_settings"`
 }
 
 // MdnsNode is a MasterDnsVPN (DNS-tunnel) node. server_port is the UDP
@@ -270,7 +285,16 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		}
 		cm = &rsp.CommonNode
 		node.AnyTls = rsp
-		node.Security = Tls
+		// Read the mode the panel actually sent instead of assuming plain TLS.
+		// The old unconditional `node.Security = Tls` is why REALITY could never
+		// reach an anytls node however completely it was implemented below.
+		// anytls is never plaintext, so anything that is not an explicit
+		// Reality (2) - including the 0 an un-upgraded panel sends - is Tls.
+		if rsp.Tls == Reality {
+			node.Security = Reality
+		} else {
+			node.Security = Tls
+		}
 	case "mdns":
 		rsp := &MdnsNode{}
 		err = json.Unmarshal(r.Body(), rsp)

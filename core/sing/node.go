@@ -3,6 +3,7 @@ package sing
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"net/netip"
 	"net/url"
@@ -86,6 +87,21 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		}
 		multiplex = &multiplexOption
 	}
+	// The TLS settings and the reality tuning live on different node structs
+	// per protocol. Resolving them ONCE here is what lets the two branches below
+	// stay protocol-agnostic: the Reality branch used to read info.VAllss
+	// directly, which is populated only for vmess/vless, so reaching it with an
+	// anytls node dereferenced a nil pointer.
+	var tlsSettings panel.TlsSettings
+	var realityConfig panel.RealityConfig
+	switch {
+	case info.VAllss != nil:
+		tlsSettings = info.VAllss.TlsSettings
+		realityConfig = info.VAllss.RealityConfig
+	case info.AnyTls != nil:
+		tlsSettings = info.AnyTls.TlsSettings
+	}
+
 	var tls option.InboundTLSOptions
 	switch info.Security {
 	case panel.Tls:
@@ -100,24 +116,38 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 			tls.CertificatePath = c.CertConfig.CertFile
 			tls.KeyPath = c.CertConfig.KeyFile
 		}
+		// ECH encrypts the SNI of the certificate we just loaded, so it only
+		// makes sense on this branch - under REALITY the name on the wire is
+		// the borrowed site's already. Attached only when the panel both turned
+		// it on and sent a key, so a node whose panel predates this stays
+		// exactly as it was.
+		if tls.Enabled && tlsSettings.Ech != "" && tlsSettings.EchKey != "" {
+			pem, err := echKeyToPEM(tlsSettings.EchKey)
+			if err != nil {
+				return option.Inbound{}, fmt.Errorf("anytls ech key: %s", err)
+			}
+			tls.ECH = &option.InboundECHOptions{
+				Enabled: true,
+				Key:     []string{pem},
+			}
+		}
 	case panel.Reality:
 		tls.Enabled = true
-		v := info.VAllss
-		tls.ServerName = v.TlsSettings.ServerName
-		port, _ := strconv.Atoi(v.TlsSettings.ServerPort)
+		tls.ServerName = tlsSettings.ServerName
+		port, _ := strconv.Atoi(tlsSettings.ServerPort)
 		var dest string
-		if v.TlsSettings.Dest != "" {
-			dest = v.TlsSettings.Dest
+		if tlsSettings.Dest != "" {
+			dest = tlsSettings.Dest
 		} else {
 			dest = tls.ServerName
 		}
 
-		mtd, _ := time.ParseDuration(v.RealityConfig.MaxTimeDiff)
+		mtd, _ := time.ParseDuration(realityConfig.MaxTimeDiff)
 		tls.Reality = &option.InboundRealityOptions{
 			Enabled:    true,
-			ShortID:    []string{v.TlsSettings.ShortId},
-			PrivateKey: v.TlsSettings.PrivateKey,
-			Xver:       uint8(v.TlsSettings.Xver),
+			ShortID:    []string{tlsSettings.ShortId},
+			PrivateKey: tlsSettings.PrivateKey,
+			Xver:       uint8(tlsSettings.Xver),
 			Handshake: option.InboundRealityHandshakeOptions{
 				ServerOptions: option.ServerOptions{
 					Server:     dest,
@@ -405,6 +435,38 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		}
 	}
 	return in, nil
+}
+
+// echKeyToPEM turns the panel's ECH server key into the form sing-box accepts.
+//
+// The two ends disagree on purpose-built formats and neither is wrong: the panel
+// stores MarshalECHKeys output as bare base64 (it is JSON, and that travels),
+// while sing-box's parseECHKeys runs pem.Decode and rejects anything whose block
+// type is not "ECH KEYS". Handing the stored value over unwrapped therefore
+// fails at inbound construction with a message about ECH keys rather than about
+// encoding, which is a long way to walk for a missing header - so the wrapping
+// lives here, next to the only caller.
+//
+// A value that is already PEM is passed through, so an operator who pastes a
+// proper block by hand is not punished for it.
+func echKeyToPEM(key string) (string, error) {
+	key = strings.TrimSpace(key)
+	if strings.Contains(key, "-----BEGIN") {
+		return key, nil
+	}
+	raw, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		// The panel may url-safe encode elsewhere; accept that too rather than
+		// fail a node over an alphabet.
+		raw, err = base64.URLEncoding.DecodeString(key)
+		if err != nil {
+			return "", fmt.Errorf("decode base64: %s", err)
+		}
+	}
+	if len(raw) == 0 {
+		return "", fmt.Errorf("empty key")
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "ECH KEYS", Bytes: raw})), nil
 }
 
 func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) error {
