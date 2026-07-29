@@ -226,3 +226,22 @@ func (b *Sing) DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo
 	}
 	return nil
 }
+
+// GetDeviceTrafficSlice reports, per user id, the bytes each of that user's
+// source addresses moved this cycle - the data device_online_min_traffic needs
+// in order to mean "devices whose own traffic passed the threshold" rather than
+// "every address of a user whose TOTAL passed it".
+//
+// Returns nil when nothing has been counted for the tag, which callers treat as
+// "no per-device data" and fall back to the old per-user behaviour.
+func (b *Sing) GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string]int64, error) {
+	hook := b.hookServer
+	if hook == nil {
+		return nil, nil
+	}
+	b.users.mapLock.RLock()
+	defer b.users.mapLock.RUnlock()
+	return hook.GetDeviceTraffic(tag, func(uuid string) int {
+		return b.users.uidMap[uuid]
+	}, reset), nil
+}

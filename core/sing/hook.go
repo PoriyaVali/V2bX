@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/PoriyaVali/V2bX/common/format"
@@ -23,6 +24,131 @@ var _ adapter.ConnectionTracker = (*HookServer)(nil)
 type HookServer struct {
 	counter sync.Map //map[string]*counter.TrafficCounter
 	conns   sync.Map //map[string]*userConns, keyed by format.UserTag
+
+	// Per-source-address traffic, so device_online_min_traffic can mean what the
+	// admin panel says it means: "only report the IPs of devices whose OWN
+	// traffic passes the threshold". It was applied per USER - if the user's
+	// total passed, every one of their addresses was reported - which on a
+	// carrier that hands out a different egress IP per connection turned one
+	// phone into a dozen "devices" and locked the customer out of their own
+	// account.
+	//
+	// Deliberately a SEPARATE map rather than extra keys in `counter` above:
+	// GetUserTrafficSlice ranges over that one and deletes any key whose uuid is
+	// not a known user (uidMap lookup == 0), so per-address entries living there
+	// would be quietly erased on the first cycle and this would always read zero.
+	deviceCounter sync.Map //map[string]*counter.TrafficCounter, keyed by inbound tag; inner key: uuid|ip
+	deviceIdle    sync.Map //map[string]int, consecutive silent cycles per uuid|ip
+}
+
+// deviceKey is the inner key of deviceCounter: one entry per (user, source
+// address). The separator cannot appear in a uuid, and an IPv6 literal keeps its
+// colons, so splitting on the FIRST separator recovers both halves.
+func deviceKey(uuid, ip string) string { return uuid + "|" + ip }
+
+func splitDeviceKey(key string) (uuid, ip string, ok bool) {
+	i := strings.Index(key, "|")
+	if i < 0 {
+		return "", "", false
+	}
+	return key[:i], key[i+1:], true
+}
+
+// trafficStorages returns the ledgers one connection should be counted into:
+// always the user's, and additionally that user's per-address one when the
+// source is a device worth counting.
+func (h *HookServer) trafficStorages(inbound, user, ip string, countDevice bool) []*counter.TrafficStorage {
+	var t *counter.TrafficCounter
+	if c, ok := h.counter.Load(inbound); ok {
+		t = c.(*counter.TrafficCounter)
+	} else {
+		t = counter.NewTrafficCounter()
+		if actual, loaded := h.counter.LoadOrStore(inbound, t); loaded {
+			t = actual.(*counter.TrafficCounter)
+		}
+	}
+	storages := []*counter.TrafficStorage{t.GetCounter(user)}
+	if !countDevice || ip == "" {
+		return storages
+	}
+
+	var d *counter.TrafficCounter
+	if c, ok := h.deviceCounter.Load(inbound); ok {
+		d = c.(*counter.TrafficCounter)
+	} else {
+		d = counter.NewTrafficCounter()
+		if actual, loaded := h.deviceCounter.LoadOrStore(inbound, d); loaded {
+			d = actual.(*counter.TrafficCounter)
+		}
+	}
+	return append(storages, d.GetCounter(deviceKey(user, ip)))
+}
+
+// deviceIdleCycles counts how many consecutive reads found an entry at zero.
+// Entries are RESET rather than deleted while they are being read, because a
+// live connection holds a pointer to its storage: deleting it would orphan that
+// pointer, the next read would create a fresh zeroed entry, and a device that is
+// genuinely busy would look idle and disappear from the count. Eviction only
+// happens once an address has been silent for several cycles, which also keeps
+// the map from growing without bound on a carrier that rotates addresses.
+const deviceIdleCycles = 3
+
+// GetDeviceTraffic returns, per user id, the bytes each of that user's source
+// addresses moved since the last call. Reset clears the counters for the next
+// cycle and evicts addresses that have been silent for deviceIdleCycles reads.
+func (h *HookServer) GetDeviceTraffic(tag string, uidOf func(uuid string) int, reset bool) map[int]map[string]int64 {
+	v, ok := h.deviceCounter.Load(tag)
+	if !ok {
+		return nil
+	}
+	d := v.(*counter.TrafficCounter)
+
+	out := make(map[int]map[string]int64)
+	d.Counters.Range(func(key, value any) bool {
+		k := key.(string)
+		uuid, ip, ok := splitDeviceKey(k)
+		if !ok {
+			d.Delete(k)
+			return true
+		}
+		st := value.(*counter.TrafficStorage)
+		total := st.UpCounter.Load() + st.DownCounter.Load()
+
+		uid := uidOf(uuid)
+		if uid == 0 {
+			// The user is gone from this inbound; nothing will ever read this.
+			d.Delete(k)
+			return true
+		}
+		if total > 0 {
+			if out[uid] == nil {
+				out[uid] = make(map[string]int64)
+			}
+			out[uid][ip] = total
+		}
+		if !reset {
+			return true
+		}
+		if total > 0 {
+			st.UpCounter.Store(0)
+			st.DownCounter.Store(0)
+			h.deviceIdle.Delete(k)
+			return true
+		}
+		// Silent this cycle - evict once it has been silent long enough.
+		n := 1
+		if prev, ok := h.deviceIdle.Load(k); ok {
+			n = prev.(int) + 1
+		}
+		if n >= deviceIdleCycles {
+			d.Delete(k)
+			h.deviceIdle.Delete(k)
+		} else {
+			h.deviceIdle.Store(k, n)
+		}
+		return true
+	})
+	return out
 }
 
 // userConns holds the connections a single user currently has open on one
@@ -220,7 +346,10 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	} else {
 		t = c.(*counter.TrafficCounter)
 	}
-	conn = counter.NewConnCounter(conn, t.GetCounter(m.User))
+	// Count into the user's ledger and, when this source is a real device, into
+	// that device's own ledger as well. countDevice is already false for the
+	// node's own addresses, which are not devices and must not be counted as one.
+	conn = counter.NewConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	tc := &trackedConn{Conn: conn}
 	release, ok := h.register(taguuid, tc)
 	if !ok {
@@ -240,6 +369,12 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 	}
 	ip := m.Source.Addr.String()
 	taguuid := format.UserTag(m.Inbound, m.User)
+	// A packet connection never REGISTERS an online device - CheckLimit is called
+	// with the device flag off below, as it always has been - but its bytes still
+	// belong to whichever device did register over TCP. Counting them keeps a
+	// UDP-heavy device (a video call) from looking idle and being dropped from
+	// the online report. The node's own addresses are excluded, same as for TCP.
+	countDevice := !isNodeOwnedIP(m.Source.Addr)
 	if b, r := l.CheckLimit(taguuid, ip, false, false); r {
 		conn.Close()
 		log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
@@ -276,7 +411,7 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 	} else {
 		t = c.(*counter.TrafficCounter)
 	}
-	conn = counter.NewPacketConnCounter(conn, t.GetCounter(m.User))
+	conn = counter.NewPacketConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	pc := &trackedPacketConn{PacketConn: conn}
 	release, ok := h.register(taguuid, pc)
 	if !ok {

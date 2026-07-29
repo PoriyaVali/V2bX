@@ -53,6 +53,33 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		}
 		result := *onlineDevice
 		if deviceMin > 0 {
+			// Per-DEVICE first, which is what the panel's own description of this
+			// setting promises. Falling back to the per-user gate below only when
+			// the core cannot supply per-address traffic.
+			//
+			// The per-user gate is what made a rotating carrier address look like a
+			// crowd: pass the threshold once and EVERY address that user was seen
+			// from got reported, so one phone behind a NAT pool that hands out a
+			// different egress IP per connection was counted as a dozen devices and
+			// the customer was locked out of their own account. Judging each address
+			// on its own traffic drops the transient ones that carried a few
+			// kilobytes and keeps the one or two doing real work.
+			if dp, ok := c.server.(interface {
+				GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string]int64, error)
+			}); ok {
+				if perDevice, err := dp.GetDeviceTrafficSlice(c.tag, true); err == nil && len(perDevice) > 0 {
+					var kept []panel.OnlineUser
+					for _, online := range *onlineDevice {
+						if perDevice[online.UID][online.IP] >= deviceMin*1000 {
+							kept = append(kept, online)
+						}
+					}
+					result = kept
+					deviceMin = 0 // handled; skip the per-user fallback
+				}
+			}
+		}
+		if deviceMin > 0 {
 			// Report a user's devices only when we hold a traffic sample for them
 			// that reaches the threshold. This used to be phrased as a deny-set
 			// ("skip users whose traffic is below it"), which inverted the gate at
