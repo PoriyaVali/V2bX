@@ -419,24 +419,74 @@ generate_config() {
         read -rp "Listen IP [default: :: (IPv4+IPv6), or 0.0.0.0 for IPv4-only]: " LISTEN_IP
         LISTEN_IP="${LISTEN_IP:-::}"
 
+        # REALITY needs no certificate at all: the node relays an
+        # unauthenticated handshake to the borrowed site, so it never presents a
+        # certificate of its own and the Reality branch in core/sing never looks
+        # at CertConfig. Asking for a domain here would send the operator through
+        # an ACME issuance (open port 80, or a DNS API token) for a file nothing
+        # reads - and that request can fail, making a perfectly good node look
+        # broken. Only offered for the types that can actually carry it.
+        NODE_REALITY="n"
+        if [[ "${NODE_TYPE}" == "anytls" || "${NODE_TYPE}" == "vless" ]]; then
+            echo -e "Is this node REALITY? | این نود REALITY است؟"
+            echo -e "  ${yellow}Answer yes only if the panel has tls=2 for this node${plain}"
+            echo -e "  ${yellow}فقط اگر در پنل برای این نود tls=2 تنظیم شده${plain}"
+            read -rp "REALITY? [y/N]: " reality_choice
+            case "${reality_choice}" in
+                y|Y|yes|YES) NODE_REALITY="y" ;;
+                *) NODE_REALITY="n" ;;
+            esac
+        fi
+
         # TLS cert — each TLS node type (anytls/vmess/vless/trojan, on sing or
-        # xray) gets its own domain → own cert files. ss/hysteria2/mdns skip it.
+        # xray) gets its own domain → own cert files. ss/hysteria2/mdns skip it,
+        # and so does a REALITY node.
         NODE_CERT_BLOCK=""
-        if [[ "${NODE_TYPE}" == "anytls" || "${NODE_TYPE}" == "vmess" || "${NODE_TYPE}" == "vless" || "${NODE_TYPE}" == "trojan" ]]; then
+        if [[ "${NODE_REALITY}" == "y" ]]; then
+            # CertMode "none" leaves tls.Enabled false, which is exactly right
+            # here: the Reality branch builds its own TLS options and never
+            # consults this block. CertDomain is left empty deliberately - there
+            # is no domain of ours on the wire under REALITY.
+            echo -e "${green}REALITY node — skipping certificate setup (none is needed)${plain}"
+            CERT_MODE="none"
+            NODE_CERT_BLOCK=",
+        \"CertConfig\": {
+          \"CertMode\": \"none\",
+          \"RejectUnknownSni\": false,
+          \"CertDomain\": \"\",
+          \"CertFile\": \"\",
+          \"KeyFile\": \"\"
+        }"
+        elif [[ "${NODE_TYPE}" == "anytls" || "${NODE_TYPE}" == "vmess" || "${NODE_TYPE}" == "vless" || "${NODE_TYPE}" == "trojan" ]]; then
             read -rp "Certificate domain (e.g. ff.example.com): " CERT_DOMAIN
             echo -e "Cert mode | نحوه دریافت سرتیفیکت:"
             echo -e "  ${green}1.${plain} http  (port 80 must be open)"
             echo -e "  ${green}2.${plain} dns   (no port needed — needs DNS API token) | بدون نیاز به پورت"
             echo -e "  ${green}3.${plain} self  (self-signed, test only)"
             echo -e "  ${green}4.${plain} file  (already have cert files)"
-            echo -e "  ${green}5.${plain} none  (no TLS)"
-            read -rp "Cert mode [1-5, default=1]: " cert_choice
+            # anytls is TLS by definition, so "none" would produce a listener
+            # with tls.Enabled false while every client still opens with a TLS
+            # handshake: the node starts, logs nothing unusual, and simply
+            # nobody can connect. The panel refuses the same combination
+            # (V2nodeController rewrites tls=0 to 1 for anytls), so the wizard
+            # must not offer it either. A REALITY node took the branch above.
+            if [[ "${NODE_TYPE}" != "anytls" ]]; then
+                echo -e "  ${green}5.${plain} none  (no TLS)"
+                read -rp "Cert mode [1-5, default=1]: " cert_choice
+            else
+                read -rp "Cert mode [1-4, default=1]: " cert_choice
+            fi
             CERT_EXTRA=""
             case "${cert_choice}" in
                 2) CERT_MODE="dns" ;;
                 3) CERT_MODE="self" ;;
                 4) CERT_MODE="file" ;;
-                5) CERT_MODE="none" ;;
+                5) if [[ "${NODE_TYPE}" == "anytls" ]]; then
+                       echo -e "${yellow}anytls cannot run without TLS - using http instead${plain}"
+                       CERT_MODE="http"
+                   else
+                       CERT_MODE="none"
+                   fi ;;
                 *) CERT_MODE="http" ;;
             esac
             # DNS-01 challenge: no port needed, survives closed/blocked port 80,
