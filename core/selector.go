@@ -133,6 +133,30 @@ func (s *Selector) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraf
 	return t.(Core).GetUserTrafficSlice(tag, reset)
 }
 
+// GetDeviceTrafficSlice forwards to whichever core owns the tag, for the cores
+// that can answer it.
+//
+// This forwarding is load-bearing rather than tidy: a node running more than one
+// core - "Core Selector(sing mdns)" in the startup log, which is every node here
+// - hands the controller a *Selector, not the core itself. The caller reaches
+// this through a type assertion, so without this method the assertion simply
+// fails and per-device traffic goes unused: no error, no log, the online report
+// quietly keeps its old per-user behaviour. Cores that do not implement it (xray,
+// hysteria2, mdns) return nil, and the caller falls back the same way.
+func (s *Selector) GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string]int64, error) {
+	t, e := s.nodes.Load(tag)
+	if !e {
+		return nil, errors.New("the node is not have")
+	}
+	dp, ok := t.(interface {
+		GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string]int64, error)
+	})
+	if !ok {
+		return nil, nil
+	}
+	return dp.GetDeviceTrafficSlice(tag, reset)
+}
+
 func (s *Selector) DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo) error {
 	t, e := s.nodes.Load(tag)
 	if !e {
