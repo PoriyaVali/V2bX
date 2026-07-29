@@ -16,3 +16,12 @@ output/*
 .idea/*
 newV2bX.sh
 quic_singbox.sh
+
+# Runtime artefacts from running a node locally. node/*.key and node/*.pem are
+# real private keys and certificates - a local test run drops them here, and
+# they must never reach the repo.
+node/cert/
+node/*.key
+node/*.pem
+# Knowledge-graph output, regenerated on demand.
+graphify-out/
