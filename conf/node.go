@@ -123,6 +123,37 @@ type Options struct {
 	CertConfig             *CertConfig     `json:"CertConfig"`
 }
 
+// overlayCoreOptions applies a nested `"<key>": { … }` block on top of options
+// already read from the node's top level.
+//
+// The core options are unmarshalled from the WHOLE node object, so they have
+// always been read from the node's TOP level - while the setup wizard writes
+// them as a nested block, and a nested block is the shape most people assume
+// from the field name. Those values were silently discarded: parsed once by the
+// generic pass over Options, then thrown away when the core branch reassigns the
+// pointer and re-parses. Nothing errored, so the config looked applied and was
+// not.
+//
+// It went unnoticed because the wizard's block repeats the defaults exactly
+// (EnableTFO false, EnableSniff true, SniffOverrideDestination true, EnableDNS
+// false), so the only thing an operator could actually lose was MultiplexConfig
+// - and one full day was spent chasing a tunnel that would not carry TLS,
+// because ProxyProtocol had been written there by hand and never took effect.
+//
+// Both shapes are now honoured, nested last so the more specific wins. Absent or
+// malformed nested blocks leave the top-level values untouched.
+func overlayCoreOptions(data []byte, key string, target any) error {
+	var wrapper map[string]json.RawMessage
+	if err := json.Unmarshal(data, &wrapper); err != nil {
+		return nil // not an object we can inspect; top-level values stand
+	}
+	nested, ok := wrapper[key]
+	if !ok || len(nested) == 0 || string(nested) == "null" {
+		return nil
+	}
+	return json.Unmarshal(nested, target)
+}
+
 func (o *Options) UnmarshalJSON(data []byte) error {
 	type opt Options
 	err := json.Unmarshal(data, (*opt)(o))
@@ -132,10 +163,16 @@ func (o *Options) UnmarshalJSON(data []byte) error {
 	switch o.Core {
 	case "xray":
 		o.XrayOptions = NewXrayOptions()
-		return json.Unmarshal(data, o.XrayOptions)
+		if err = json.Unmarshal(data, o.XrayOptions); err != nil {
+			return err
+		}
+		return overlayCoreOptions(data, "XrayOptions", o.XrayOptions)
 	case "sing":
 		o.SingOptions = NewSingOptions()
-		return json.Unmarshal(data, o.SingOptions)
+		if err = json.Unmarshal(data, o.SingOptions); err != nil {
+			return err
+		}
+		return overlayCoreOptions(data, "SingOptions", o.SingOptions)
 	case "hysteria2":
 		o.RawOptions = data
 		return nil
