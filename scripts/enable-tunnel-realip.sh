@@ -66,14 +66,36 @@ touched = []
 for node in cfg.get("Nodes", []):
     if str(node.get("Core", "")).lower() != "sing":
         continue
-    opts = node.setdefault("SingOptions", {})
-    if opts.get("ProxyProtocol") != want:
-        opts["ProxyProtocol"] = want
+    # 🔴 TOP LEVEL of the node, not inside "SingOptions".
+    #
+    # conf/node.go's Options.UnmarshalJSON does, for Core "sing":
+    #     o.SingOptions = NewSingOptions()
+    #     return json.Unmarshal(data, o.SingOptions)
+    # where `data` is the WHOLE node object. So SingOptions fields are read from
+    # the node's top level, and a nested "SingOptions": {...} block is parsed
+    # into the struct once by the generic pass and then thrown away by that
+    # reassignment. Writing the flag there sets it in a place V2bX never reads:
+    # it stays false, the listener never wraps the connection, the PROXY header
+    # reaches the TLS parser as if it were a ClientHello, and the node answers
+    # "first record does not look like a TLS handshake" - which reads as a
+    # tunnel or parser fault and is neither.
+    #
+    # Confirmed by feeding both shapes to V2bX's own parser: nested -> false,
+    # top-level -> true. (The setup wizard writes a nested block too, so those
+    # values are equally inert; only NewSingOptions defaults apply there.)
+    if node.get("ProxyProtocol") != want:
+        node["ProxyProtocol"] = want
         touched.append(node.get("NodeID"))
+    # Clear any nested copy an earlier version of this script left behind, so
+    # the file cannot show `true` in one place while the node behaves as false.
+    nested = node.get("SingOptions")
+    if isinstance(nested, dict) and "ProxyProtocol" in nested:
+        del nested["ProxyProtocol"]
 if touched:
     json.dump(cfg, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     print(f"  ProxyProtocol={want} on node(s): {', '.join(map(str, touched))}")
 else:
+    json.dump(cfg, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     print(f"  already ProxyProtocol={want} — nothing to change")
 PY
 
@@ -90,6 +112,26 @@ else:
     json.dump(cfg, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     print(f"  proxy_protocol={want}")
 PY
+
+# --- prove V2bX ITSELF sees the flag, not just that we wrote it -----------
+# Reading back what we just wrote proves only that the write happened. The
+# previous version of this script did exactly that, put the flag somewhere V2bX
+# never reads, and reported success - three releases were then built chasing a
+# symptom whose cause was an inert config key. `V2bX check` runs the real
+# parser, so this asks the program instead of the file.
+echo "== config as V2bX parses it =="
+if V2bX check >/tmp/v2bx_check.$$ 2>&1; then
+    info "config parses"
+else
+    red "  V2bX rejects this config:"
+    sed 's/^/    /' /tmp/v2bx_check.$$ | tail -5
+    red "  restoring the backup and stopping."
+    cp -a "${V2BX_CONF}.bak_realip_${STAMP}" "$V2BX_CONF"
+    cp -a "${HED_CONF}.bak_realip_${STAMP}" "$HED_CONF"
+    rm -f /tmp/v2bx_check.$$
+    exit 1
+fi
+rm -f /tmp/v2bx_check.$$
 
 # --- restart both, in the order that keeps the gap shortest ---------------
 echo "== restarting =="
