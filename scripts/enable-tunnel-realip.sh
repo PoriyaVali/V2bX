@@ -141,6 +141,7 @@ PY
         fi
     fi
 fi
+if [[ $WANT == true ]]; then
 cat <<'EOT'
 
 Now watch the panel: this node should start reporting online users within about
@@ -148,3 +149,11 @@ a minute, where before it reported none. If it still reports none, the header is
 not arriving - check that the hedioum service really restarted, and that this
 node's traffic actually comes through the relay rather than direct.
 EOT
+else
+cat <<'EOT'
+
+Real-address recovery is off. Tunnelled users are back to arriving as 127.0.0.1,
+so this node reports no online users and enforces no device limit - the state it
+was in before. Their connections are unaffected.
+EOT
+fi
