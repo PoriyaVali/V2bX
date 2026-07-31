@@ -42,16 +42,37 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		}
 	}
 
-	if onlineDevice, err := c.limiter.GetOnlineDevice(); err != nil {
+	// The limiter is the usual source of online addresses: every core routes its
+	// connections through CheckLimit, which records them. One does not — mdns
+	// paces itself inside the tunnel and never calls the limiter — so its users
+	// appeared nowhere in this report and no device limit could be enforced on
+	// them, while every other protocol in the fleet enforced one. Cores that can
+	// answer for themselves are asked and their addresses merged in; cores that
+	// cannot are unaffected, since the assertion simply fails.
+	var onlineDevice []panel.OnlineUser
+	if fromLimiter, err := c.limiter.GetOnlineDevice(); err != nil {
 		log.Print(err)
-	} else if len(*onlineDevice) > 0 {
+	} else if fromLimiter != nil {
+		onlineDevice = *fromLimiter
+	}
+	if op, ok := c.server.(interface {
+		OnlineDevices(tag string) ([]panel.OnlineUser, error)
+	}); ok {
+		if fromCore, err := op.OnlineDevices(c.tag); err != nil {
+			log.WithFields(log.Fields{"tag": c.tag, "err": err}).
+				Info("Read online devices from core failed")
+		} else if len(fromCore) > 0 {
+			onlineDevice = append(onlineDevice, fromCore...)
+		}
+	}
+	if len(onlineDevice) > 0 {
 		// device_online_min_traffic: prefer the panel value (dynamic), fall
 		// back to the node's config.json value when the panel doesn't send it.
 		deviceMin := c.Options.DeviceOnlineMinTraffic
 		if c.info != nil && c.info.DeviceOnlineMinTraffic > 0 {
 			deviceMin = c.info.DeviceOnlineMinTraffic
 		}
-		result := *onlineDevice
+		result := onlineDevice
 		if deviceMin > 0 {
 			// Per-DEVICE first, which is what the panel's own description of this
 			// setting promises. Falling back to the per-user gate below only when
@@ -69,7 +90,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 			}); ok {
 				if perDevice, err := dp.GetDeviceTrafficSlice(c.tag, true); err == nil && len(perDevice) > 0 {
 					var kept []panel.OnlineUser
-					for _, online := range *onlineDevice {
+					for _, online := range onlineDevice {
 						if perDevice[online.UID][online.IP] >= deviceMin*1000 {
 							kept = append(kept, online)
 						}
@@ -95,7 +116,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 				}
 			}
 			result = nil
-			for _, online := range *onlineDevice {
+			for _, online := range onlineDevice {
 				if _, ok := countUID[online.UID]; ok {
 					result = append(result, online)
 				}
@@ -112,7 +133,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 				"err": err,
 			}).Info("Report online users failed")
 		} else {
-			log.WithField("tag", c.tag).Infof("Total %d online users, %d Reported", len(*onlineDevice), len(result))
+			log.WithField("tag", c.tag).Infof("Total %d online users, %d Reported", len(onlineDevice), len(result))
 			log.WithField("tag", c.tag).Debugf("Online users: %+v", data)
 		}
 	}

@@ -104,6 +104,10 @@ github.com/OpenDNS/vegadns2client v0.0.0-20180418235048-a3fa4a771d87 h1:xPMsUicZ
 github.com/OpenDNS/vegadns2client v0.0.0-20180418235048-a3fa4a771d87/go.mod h1:iGLljf5n9GjT6kc0HBvyI1nOKnGQbNB66VzSNbK5iks=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260722173436-7f3f4e522a2b h1:TkTXmCyiLzTdPUaC8JUgd8rHcAsXDPGdryYGRdjo88E=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260722173436-7f3f4e522a2b/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731130818-50172cd485a3 h1:YrfSQM+CuUWeDLscJqxzme2VYwtbQXey+ztkdJj+OPk=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731130818-50172cd485a3/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731132910-bc89de06c242 h1:5wfPBbJqDQ8ncsQ7h6lPIfgtGtFqrErhwwURYTDz9+o=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731132910-bc89de06c242/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v1.251202.1 h1:JIgTTWHOHT9vP9w/mC8FslQomUu1jXo+CstDvzDXovA=
 github.com/PoriyaVali/Xray-core v1.251202.1/go.mod h1:kclzboEF0g6VBrp9/NXm8C0Aj64SDBt52OfthH1LSr4=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.7 h1:q8KulEwbxXX5NZ4J4mqlT4cOkg2WVz+6qS0x2DeMEHA=

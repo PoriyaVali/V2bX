@@ -157,6 +157,42 @@ func (s *Selector) GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[st
 	return dp.GetDeviceTrafficSlice(tag, reset)
 }
 
+// OnlineDevices forwards to whichever core owns the tag, for the cores that
+// track their own connections instead of going through the limiter.
+//
+// Same reason GetDeviceTrafficSlice is forwarded: every node here runs a
+// selector, so the controller holds a *Selector and its type assertion would
+// fail without a method on this type — silently, leaving mdns users invisible
+// to device counting. Cores that do not implement it return nothing.
+func (s *Selector) OnlineDevices(tag string) ([]panel.OnlineUser, error) {
+	t, e := s.nodes.Load(tag)
+	if !e {
+		return nil, errors.New("the node is not have")
+	}
+	op, ok := t.(interface {
+		OnlineDevices(tag string) ([]panel.OnlineUser, error)
+	})
+	if !ok {
+		return nil, nil
+	}
+	return op.OnlineDevices(tag)
+}
+
+// UpdateUserLimits pushes changed speed limits to a core that enforces them
+// itself. Most cores read limits through the limiter on every connection and
+// need nothing here.
+func (s *Selector) UpdateUserLimits(tag string, users []panel.UserInfo) {
+	t, e := s.nodes.Load(tag)
+	if !e {
+		return
+	}
+	if up, ok := t.(interface {
+		UpdateUserLimits(tag string, users []panel.UserInfo)
+	}); ok {
+		up.UpdateUserLimits(tag, users)
+	}
+}
+
 func (s *Selector) DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo) error {
 	t, e := s.nodes.Load(tag)
 	if !e {

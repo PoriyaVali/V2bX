@@ -269,6 +269,16 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	// lands within one pull interval instead of waiting for a node reload. Cheap
 	// (one sync.Map load per user) and it never disturbs a live connection.
 	c.limiter.UpdateUserLimits(c.tag, newU)
+	// One core enforces its limits itself rather than through the limiter, so
+	// the line above never reaches it: an admin's change would only apply to
+	// users who joined afterwards, and a subscriber whose plan changed would
+	// keep their old speed indefinitely. Cores that read the limiter do not
+	// implement this and are untouched.
+	if up, ok := c.server.(interface {
+		UpdateUserLimits(tag string, users []panel.UserInfo)
+	}); ok {
+		up.UpdateUserLimits(c.tag, newU)
+	}
 	c.userList = newU
 	c.syncUIDIndex()
 	if len(added)+len(deleted) != 0 {
