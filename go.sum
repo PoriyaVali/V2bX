@@ -108,6 +108,8 @@ github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731130818-50172cd485a3 h1:YrfSQM+
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731130818-50172cd485a3/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731132910-bc89de06c242 h1:5wfPBbJqDQ8ncsQ7h6lPIfgtGtFqrErhwwURYTDz9+o=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731132910-bc89de06c242/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731134401-382adca6e83a h1:wJQhzJA+diTh+Pt9LXiimuxI6zmoZKy5TRjYRGhIM44=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260731134401-382adca6e83a/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v1.251202.1 h1:JIgTTWHOHT9vP9w/mC8FslQomUu1jXo+CstDvzDXovA=
 github.com/PoriyaVali/Xray-core v1.251202.1/go.mod h1:kclzboEF0g6VBrp9/NXm8C0Aj64SDBt52OfthH1LSr4=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.7 h1:q8KulEwbxXX5NZ4J4mqlT4cOkg2WVz+6qS0x2DeMEHA=

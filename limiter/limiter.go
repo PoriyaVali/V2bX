@@ -216,6 +216,36 @@ func (l *Limiter) admitNewIP(ip string, uid, deviceLimit, aliveIp int) bool {
 	return true
 }
 
+// AdmitDevice answers whether ip may become another device for this user,
+// using the same decision CheckLimit makes — including the fleet-wide alive
+// count and the grace list — but WITHOUT registering the address.
+//
+// The registration is left out on purpose. A core that tracks its own
+// connections reports its own addresses, and letting the limiter record them
+// too would list every address twice in the online report: the panel would read
+// twice the devices and lock out exactly the users this is meant to protect.
+//
+// An unknown user is admitted here, unlike in CheckLimit. This answers only
+// "is this device over the limit"; membership has already been proven by the
+// caller (an mdns handshake carries an HMAC token that must match a registered
+// user). Rejecting on absence would turn a moment's lag between the limiter's
+// user list and the core's into a refused connection for a paying subscriber.
+func (l *Limiter) AdmitDevice(taguuid string, ip string) bool {
+	if l == nil {
+		return true
+	}
+	ip = strings.TrimPrefix(ip, "::ffff:")
+	v, ok := l.UserLimitInfo.Load(taguuid)
+	if !ok {
+		return true
+	}
+	u := v.(*UserLimitInfo)
+	l.aliveMu.RLock()
+	aliveIp := l.AliveList[u.UID]
+	l.aliveMu.RUnlock()
+	return l.admitNewIP(ip, u.UID, int(u.DeviceLimit.Load()), aliveIp)
+}
+
 func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool) (Bucket *ratelimit.Bucket, Reject bool) {
 	l.checks.Add(1)
 	defer func() {
