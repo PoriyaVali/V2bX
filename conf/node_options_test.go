@@ -62,8 +62,11 @@ func TestDefaultsSurviveWhenNothingIsSpecified(t *testing.T) {
 	if !o.SniffEnabled || !o.SniffOverrideDestination {
 		t.Error("sniff defaults lost")
 	}
-	if o.ProxyProtocol {
-		t.Error("ProxyProtocol must default off")
+	if !o.ProxyProtocol {
+		// This assertion used to read the other way. It was changed on purpose:
+		// opt-in cost a relay node weeks of reporting every tunnelled user as
+		// 127.0.0.1, silently. See TestProxyProtocolIsOnWhenTheConfigDoesNotMentionIt.
+		t.Error("ProxyProtocol must default on")
 	}
 	if !o.DecoyEnabled() {
 		t.Error("the decoy must stay on by default")
@@ -106,5 +109,40 @@ func TestCertConfigIsReadFromTheNodeTopLevel(t *testing.T) {
 	                    "CertConfig":{"CertMode":"http","CertDomain":"a.example.com"}}`)
 	if n.Options.CertConfig == nil || n.Options.CertConfig.CertDomain != "a.example.com" {
 		t.Fatalf("CertConfig not read from the node top level: %+v", n.Options.CertConfig)
+	}
+}
+
+// 🔴 On by default. It used to be opt-in, and the cost was a node behind the
+// relay reporting every tunnelled user as 127.0.0.1 for weeks - device counting
+// dead, online list useless, no output saying so. The install wizard also drops
+// the setting whenever it regenerates config.json, so relying on someone to set
+// it by hand is not a plan.
+func TestProxyProtocolIsOnWhenTheConfigDoesNotMentionIt(t *testing.T) {
+	n := parseNode(t, `{"Core":"sing","NodeID":46,"NodeType":"anytls"}`)
+	if !n.Options.SingOptions.ProxyProtocol {
+		t.Error("a config that says nothing got ProxyProtocol off; the tunnel would report 127.0.0.1")
+	}
+}
+
+// A default is not a decision taken away from the operator: an explicit false
+// must still turn it off, in either place the option can be written.
+func TestProxyProtocolCanStillBeTurnedOff(t *testing.T) {
+	flat := parseNode(t, `{"Core":"sing","NodeID":46,"ProxyProtocol":false}`)
+	if flat.Options.SingOptions.ProxyProtocol {
+		t.Error("an explicit top-level false was ignored")
+	}
+	nested := parseNode(t, `{"Core":"sing","NodeID":46,"SingOptions":{"ProxyProtocol":false}}`)
+	if nested.Options.SingOptions.ProxyProtocol {
+		t.Error("an explicit false in the nested block was ignored")
+	}
+}
+
+// A nested block that says nothing about it must not silently reset the default
+// - this is the shape every live config on the fleet actually has.
+func TestANestedBlockWithoutTheKeyKeepsTheDefault(t *testing.T) {
+	n := parseNode(t, `{"Core":"sing","NodeID":47,"NodeType":"anytls",
+	                    "SingOptions":{"EnableTFO":false,"EnableSniff":true}}`)
+	if !n.Options.SingOptions.ProxyProtocol {
+		t.Error("a nested block that never mentions ProxyProtocol switched it off")
 	}
 }

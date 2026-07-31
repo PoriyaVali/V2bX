@@ -100,7 +100,20 @@ func NewSingOptions() *SingOptions {
 		TCPFastOpen:              false,
 		SniffEnabled:             true,
 		SniffOverrideDestination: true,
-		FallBackConfigs:          &FallBackConfigForSing{},
-		Multiplex:                &MultiplexConfig{},
+		// On by default. It used to be opt-in, and the cost of that was a node
+		// sitting behind the relay for weeks reporting every tunnelled user as
+		// 127.0.0.1 - device counting dead, the online list useless, and not one
+		// line of output to say so. The setting is also lost whenever the install
+		// wizard regenerates config.json, so remembering to set it is not a plan.
+		//
+		// Safe for a node that has no tunnel: a header is only ever believed from
+		// a loopback peer, so a direct connection is returned untouched - not
+		// wrapped, not buffered, no deadline. The trust this widens is "a process
+		// already running on this node could claim a false source address", which
+		// only matters to someone who can already read config.json, the panel API
+		// key, and every connection on the box.
+		ProxyProtocol:   true,
+		FallBackConfigs: &FallBackConfigForSing{},
+		Multiplex:       &MultiplexConfig{},
 	}
 }
