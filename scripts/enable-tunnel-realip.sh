@@ -103,12 +103,43 @@ fi
 V2bX restart >/dev/null 2>&1 && info "restarted V2bX" || red "  V2bX restart failed"
 
 # --- verify ---------------------------------------------------------------
+# `V2bX log` follows the journal and never returns, which hung the script right
+# after it had already made every change - the worst place to stop, because it
+# looks like the change failed when it had actually finished. Read a bounded
+# snapshot instead.
 echo "== check =="
 sleep 3
-if V2bX log 2>/dev/null | tail -40 | grep -qiE 'proxy protocol|failed to (start|bind)|address already in use'; then
-    red "  something in the log looks wrong — inspect: V2bX log"
+snapshot=$(journalctl -u V2bX --no-pager -n 60 --since '-1min' 2>/dev/null || true)
+if [[ -z $snapshot ]]; then
+    info "no journal available — check manually with: V2bX log"
+elif grep -qiE 'failed to (start|bind)|address already in use|proxy protocol' <<<"$snapshot"; then
+    red "  the log reports a problem:"
+    grep -iE 'failed to (start|bind)|address already in use|proxy protocol' <<<"$snapshot" | tail -3 | sed 's/^/    /'
+    red "  roll back with:  $0 --off"
 else
     grn "  inbounds came up clean"
+fi
+
+# A tunnelled inbound that cannot complete TLS is the failure this change can
+# cause, and it is invisible from the node's own log - so prove the handshake
+# still works rather than assuming it.
+if [[ $WANT == true ]]; then
+    port=$(python3 - "$V2BX_CONF" <<'PY' 2>/dev/null || true
+import json,sys
+cfg=json.load(open(sys.argv[1],encoding="utf-8"))
+for n in cfg.get("Nodes",[]):
+    p=(n.get("SingOptions") or {}).get("ListenPort") or n.get("ListenPort")
+    if p: print(p); break
+PY
+)
+    if [[ -n ${port:-} ]] && command -v openssl >/dev/null; then
+        if echo | timeout 15 openssl s_client -connect "127.0.0.1:${port}" 2>/dev/null | grep -q "^subject="; then
+            grn "  local TLS on :${port} still completes"
+        else
+            red "  local TLS on :${port} did NOT complete — users may be cut off."
+            red "  roll back now:  $0 --off"
+        fi
+    fi
 fi
 cat <<'EOT'
 
