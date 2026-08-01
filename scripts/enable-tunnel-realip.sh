@@ -120,8 +120,17 @@ PY
 # symptom whose cause was an inert config key. `V2bX check` runs the real
 # parser, so this asks the program instead of the file.
 echo "== config as V2bX parses it =="
-if V2bX check >/tmp/v2bx_check.$$ 2>&1; then
+V2bX check >/tmp/v2bx_check.$$ 2>&1; check_rc=$?
+if grep -qi 'unknown command' /tmp/v2bx_check.$$; then
+    # Older binaries have no `check`, and older still exited 0 for a command
+    # that does not exist - so this branch used to print "config parses" and
+    # verify nothing at all. Say so instead of inventing reassurance.
+    red "  this V2bX is too old to verify its own config (no 'check' command)."
+    red "  the edit has been written but NOT verified — run 'v2bx update' first."
+    rm -f /tmp/v2bx_check.$$
+elif [[ $check_rc -eq 0 ]]; then
     info "config parses"
+    sed 's/^/    /' /tmp/v2bx_check.$$
 else
     red "  V2bX rejects this config:"
     sed 's/^/    /' /tmp/v2bx_check.$$ | tail -5
