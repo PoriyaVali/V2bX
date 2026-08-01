@@ -132,13 +132,43 @@ func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*
 			return nil, fmt.Errorf("marshal reality dest error: %s", err)
 		}
 		mtd, _ := time.ParseDuration(v.RealityConfig.MaxTimeDiff)
+
+		// 🔴 An empty minClientVer no longer means "no minimum".
+		//
+		// Xray v26 fills it in when the config leaves it blank:
+		//
+		//     config.MinClientVer = []byte{26, 3, 27}
+		//     "The default minimal client version is Xray-core v26.3.27,
+		//      other clients may be refused to connect"
+		//
+		// and the REALITY handshake then only authenticates a client whose
+		// reported version reaches that (xtls/reality tls.go: the whole
+		// `hs.c.conn = conn` assignment is gated on it). sing-box and mihomo do
+		// not report an Xray-core version at all, so on v26 every one of their
+		// users is refused - the server quietly falls back to the borrowed site
+		// and the client reports "reality verification failed". Nothing logs a
+		// rejection, and a prober still gets a perfect certificate, so the node
+		// looks healthy from every angle.
+		//
+		// This was observed live: after upgrading to v26 the vless node stopped
+		// accepting both app cores, while the anytls node on the same box kept
+		// working - because sing-box implements REALITY itself and never sees
+		// this default.
+		//
+		// "0.0.0" restores the old meaning. It is passed explicitly rather than
+		// left empty because empty is exactly what triggers the new default.
+		minClientVer := v.RealityConfig.MinClientVer
+		if minClientVer == "" {
+			minClientVer = "0.0.0"
+		}
+
 		in.StreamSetting.REALITYSettings = &coreConf.REALITYConfig{
 			Dest:         d,
 			Xver:         xver,
 			Show:         false,
 			ServerNames:  []string{v.TlsSettings.ServerName},
 			PrivateKey:   v.TlsSettings.PrivateKey,
-			MinClientVer: v.RealityConfig.MinClientVer,
+			MinClientVer: minClientVer,
 			MaxClientVer: v.RealityConfig.MaxClientVer,
 			MaxTimeDiff:  uint64(mtd.Microseconds()),
 			ShortIds:     []string{v.TlsSettings.ShortId},
