@@ -62,11 +62,10 @@ import (
 	_ "github.com/xtls/xray-core/transport/internet/websocket"
 
 	// Transport headers
+	// Only http and noop survive upstream: xray v26 removed the dns, srtp,
+	// tls, utp, wechat and wireguard fake-header packages outright. A node
+	// configured with one of those mKCP header types cannot work on v26 at
+	// all - that is upstream's removal, not a choice made here.
 	_ "github.com/xtls/xray-core/transport/internet/headers/http"
 	_ "github.com/xtls/xray-core/transport/internet/headers/noop"
-	_ "github.com/xtls/xray-core/transport/internet/headers/srtp"
-	_ "github.com/xtls/xray-core/transport/internet/headers/tls"
-	_ "github.com/xtls/xray-core/transport/internet/headers/utp"
-	_ "github.com/xtls/xray-core/transport/internet/headers/wechat"
-	_ "github.com/xtls/xray-core/transport/internet/headers/wireguard"
 )

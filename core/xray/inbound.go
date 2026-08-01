@@ -58,7 +58,7 @@ func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*
 	// Set SniffingConfig
 	sniffingConfig := &coreConf.SniffingConfig{
 		Enabled:      true,
-		DestOverride: &coreConf.StringList{"http", "tls"},
+		DestOverride: coreConf.StringList{"http", "tls"},
 	}
 	if option.XrayOptions.DisableSniffing {
 		sniffingConfig.Enabled = false
@@ -319,10 +319,11 @@ func buildShadowsocks(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *c
 	}
 	settings.Users = append(settings.Users, defaultSSuser)
 	settings.NetworkList = &coreConf.NetworkList{"tcp", "udp"}
-	settings.IVCheck = true
-	if config.XrayOptions.DisableIVCheck {
-		settings.IVCheck = false
-	}
+	// xray v26 removed IVCheck from ShadowsocksServerConfig entirely, so the
+	// DisableIVCheck option in conf/xray.go can no longer do anything. It is
+	// left declared rather than deleted so an existing config.json carrying it
+	// still parses instead of failing to load - but it is now inert, and saying
+	// so here is the only way anyone finds that out.
 	t := coreConf.TransportProtocol("tcp")
 	inbound.StreamSetting = &coreConf.StreamConfig{Network: &t}
 	sets, err := json.Marshal(settings)

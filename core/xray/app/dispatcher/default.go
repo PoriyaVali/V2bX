@@ -5,7 +5,6 @@ package dispatcher
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -244,22 +243,17 @@ func (d *DefaultDispatcher) shouldOverride(ctx context.Context, result SniffResu
 	if domain == "" {
 		return false
 	}
-	for _, d := range request.ExcludeForDomain {
-		if strings.HasPrefix(d, "regexp:") {
-			pattern := d[7:]
-			re, err := regexp.Compile(pattern)
-			if err != nil {
-				errors.LogInfo(ctx, "Unable to compile regex")
-				continue
-			}
-			if re.MatchString(domain) {
-				return false
-			}
-		} else {
-			if strings.ToLower(domain) == d {
-				return false
-			}
-		}
+	// Ported from upstream v26: ExcludeForDomain stopped being a []string that
+	// this loop matched by hand (exact, or "regexp:" prefix) and became a
+	// geodata.DomainMatcher, with a sibling matcher for IPs that did not exist
+	// before. Keeping the old loop was not an option - it no longer compiles -
+	// and reimplementing the matching here would drift from whatever upstream's
+	// matcher actually does.
+	if request.ExcludeForDomain != nil && request.ExcludeForDomain.MatchAny(strings.ToLower(domain)) {
+		return false
+	}
+	if request.ExcludeForIP != nil && destination.Address.Family().IsIP() && request.ExcludeForIP.Match(destination.Address.IP()) {
+		return false
 	}
 	protocolString := result.Protocol()
 	if resComp, ok := result.(SnifferResultComposite); ok {
