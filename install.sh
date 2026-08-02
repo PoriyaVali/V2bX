@@ -426,15 +426,55 @@ generate_config() {
         # an ACME issuance (open port 80, or a DNS API token) for a file nothing
         # reads - and that request can fail, making a perfectly good node look
         # broken. Only offered for the types that can actually carry it.
+        # Whether this node is REALITY is not the operator's to remember - the
+        # panel already knows, as tls=2. Asking here made it a second source of
+        # truth, and the two drifted: answer "no" for a REALITY node and the
+        # wizard sends you through an ACME issuance for a certificate the node
+        # never reads; answer "yes" for a plain-TLS node and it skips the cert
+        # that node cannot start without. Both happened, in one run.
+        #
+        # So ask the panel instead. The node's config endpoint returns the same
+        # tls the running node reads (api/panel/node.go keys REALITY off exactly
+        # this field), so the wizard and the node can no longer disagree. The
+        # manual prompt stays as a fallback for when the panel cannot be reached
+        # at setup time - an unreachable panel must not block a node from being
+        # configured.
         NODE_REALITY="n"
         if [[ "${NODE_TYPE}" == "anytls" || "${NODE_TYPE}" == "vless" ]]; then
-            echo -e "Is this node REALITY? | این نود REALITY است؟"
-            echo -e "  ${yellow}Answer yes only if the panel has tls=2 for this node${plain}"
-            echo -e "  ${yellow}فقط اگر در پنل برای این نود tls=2 تنظیم شده${plain}"
-            read -rp "REALITY? [y/N]: " reality_choice
-            case "${reality_choice}" in
-                y|Y|yes|YES) NODE_REALITY="y" ;;
-                *) NODE_REALITY="n" ;;
+            node_tls=""
+            probe_url="${API_HOST%/}/api/v1/server/UniProxy/config?token=${API_KEY}&node_type=${NODE_TYPE}&node_id=${NODE_ID}"
+            probe_body="$(curl -fsSL --max-time 10 "${probe_url}" 2>/dev/null || true)"
+            if [[ -n "${probe_body}" ]]; then
+                # Match "tls": N tolerating spaces; grep+sed keeps this dependency
+                # free (no jq), and a body with no tls field leaves node_tls empty.
+                node_tls="$(printf '%s' "${probe_body}" | grep -oE '"tls"[[:space:]]*:[[:space:]]*[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)"
+            fi
+
+            case "${node_tls}" in
+                2)
+                    NODE_REALITY="y"
+                    echo -e "${green}Panel says this node is REALITY (tls=2) — no certificate needed.${plain}"
+                    echo -e "${green}پنل می‌گوید این نود REALITY است (tls=2) — نیازی به گواهی نیست.${plain}"
+                    ;;
+                0|1)
+                    NODE_REALITY="n"
+                    echo -e "${green}Panel says this node uses plain TLS (tls=${node_tls}) — a certificate is required.${plain}"
+                    echo -e "${green}پنل می‌گوید این نود TLS معمولی است (tls=${node_tls}) — گواهی لازم است.${plain}"
+                    ;;
+                *)
+                    # Panel unreachable or gave no tls — fall back to asking, but
+                    # say why, so the operator knows this is the unverified path.
+                    echo -e "${yellow}Could not read this node's TLS mode from the panel; please answer manually.${plain}"
+                    echo -e "${yellow}نتوانستم نوع TLS این نود را از پنل بخوانم؛ لطفاً دستی پاسخ دهید.${plain}"
+                    echo -e "Is this node REALITY? | این نود REALITY است؟"
+                    echo -e "  ${yellow}Answer yes only if the panel has tls=2 for this node${plain}"
+                    echo -e "  ${yellow}فقط اگر در پنل برای این نود tls=2 تنظیم شده${plain}"
+                    read -rp "REALITY? [y/N]: " reality_choice
+                    case "${reality_choice}" in
+                        y|Y|yes|YES) NODE_REALITY="y" ;;
+                        *) NODE_REALITY="n" ;;
+                    esac
+                    ;;
             esac
         fi
 
