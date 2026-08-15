@@ -68,6 +68,7 @@ func New(c *conf.ApiConfig) (*Client, error) {
 		"tuic",
 		"anytls",
 		"mdns",
+		"trusttunnel",
 		"vless":
 	default:
 		return nil, fmt.Errorf("unsupported Node type: %s", c.NodeType)
