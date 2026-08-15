@@ -329,6 +329,13 @@ generate_config() {
                 CB="{
       \"Type\": \"mdns\"
     }" ;;
+            trusttunnel)
+                # Same as mdns: no core-level config. The endpoint is a separate
+                # binary whose settings are generated per node from what the
+                # panel sends, so there is nothing to put here.
+                CB="{
+      \"Type\": \"trusttunnel\"
+    }" ;;
             *)
                 CB="{
       \"Type\": \"hysteria2\"
@@ -354,11 +361,13 @@ generate_config() {
         echo -e "  ${green}2.${plain} xray"
         echo -e "  ${green}3.${plain} hysteria2"
         echo -e "  ${green}4.${plain} mdns  (DNS-tunnel anti-censorship | تونل DNS ضدسانسور)"
-        read -rp "Core [1-4, default=1]: " core_choice
+        echo -e "  ${green}5.${plain} trusttunnel  (HTTP/2-3 tunnel | تونل HTTP/2-3)"
+        read -rp "Core [1-5, default=1]: " core_choice
         case "${core_choice}" in
             2) CORE_TYPE="xray" ;;
             3) CORE_TYPE="hysteria2" ;;
             4) CORE_TYPE="mdns" ;;
+            5) CORE_TYPE="trusttunnel" ;;
             *) CORE_TYPE="sing" ;;
         esac
 
@@ -380,6 +389,9 @@ generate_config() {
         if [[ "${CORE_TYPE}" == "mdns" ]]; then
             NODE_TYPE="mdns"
             echo -e "Node type | نوع نود: ${yellow}mdns${plain}"
+        elif [[ "${CORE_TYPE}" == "trusttunnel" ]]; then
+            NODE_TYPE="trusttunnel"
+            echo -e "Node type | نوع نود: ${yellow}trusttunnel${plain}"
         elif [[ "${CORE_TYPE}" == "hysteria2" ]]; then
             NODE_TYPE="hysteria2"
             echo -e "Node type | نوع نود: ${yellow}hysteria2${plain}"
@@ -479,8 +491,9 @@ generate_config() {
         fi
 
         # TLS cert — each TLS node type (anytls/vmess/vless/trojan, on sing or
-        # xray) gets its own domain → own cert files. ss/hysteria2/mdns skip it,
-        # and so does a REALITY node.
+        # xray) gets its own domain → own cert files. ss/hysteria2/mdns skip
+        # it, and so does a REALITY node. trusttunnel skips it too: its
+        # endpoint obtains its own certificate from what the panel sends.
         NODE_CERT_BLOCK=""
         if [[ "${NODE_REALITY}" == "y" ]]; then
             # CertMode "none" leaves tls.Enabled false, which is exactly right
