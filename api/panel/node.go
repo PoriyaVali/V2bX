@@ -39,6 +39,7 @@ type NodeInfo struct {
 	Tuic        *TuicNode
 	AnyTls      *AnyTlsNode
 	Mdns        *MdnsNode
+	TrustTunnel *TrustTunnelNode
 	Hysteria    *HysteriaNode
 	Hysteria2   *Hysteria2Node
 	Common      *CommonNode
@@ -153,6 +154,26 @@ type MdnsNode struct {
 	EncryptionMethod int      `json:"encryption_method"`
 	EncryptionKey    string   `json:"encryption_key"`
 	NodeSecret       string   `json:"node_secret"`
+}
+
+// TrustTunnelNode is an endpoint run as a separate process rather than inside
+// V2bX, so what the panel sends here is what the setup wizard needs on its
+// command line - not a config this core assembles itself.
+type TrustTunnelNode struct {
+	CommonNode
+	// Certificate hostname the endpoint serves TLS for.
+	Hostname string `json:"hostname"`
+	// How the endpoint obtains its certificate: "self-signed", "letsencrypt"
+	// or "provided". Each needs different things from the host - letsencrypt
+	// wants port 80 reachable and an account email, provided wants the two
+	// paths below - so the panel has to say which rather than a default being
+	// guessed here.
+	CertType string `json:"cert_type"`
+	// Required when CertType is "letsencrypt".
+	AcmeEmail string `json:"acme_email"`
+	// Required when CertType is "provided".
+	CertChainPath string `json:"cert_chain_path"`
+	CertKeyPath   string `json:"cert_key_path"`
 }
 
 type HysteriaNode struct {
@@ -304,6 +325,17 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		cm = &rsp.CommonNode
 		node.Mdns = rsp
 		node.Security = None
+	case "trusttunnel":
+		rsp := &TrustTunnelNode{}
+		err = json.Unmarshal(r.Body(), rsp)
+		if err != nil {
+			return nil, fmt.Errorf("decode trusttunnel params error: %s", err)
+		}
+		cm = &rsp.CommonNode
+		node.TrustTunnel = rsp
+		// The endpoint terminates TLS itself, whatever certificate it ends up
+		// with, so this is never plaintext.
+		node.Security = Tls
 	case "hysteria":
 		rsp := &HysteriaNode{}
 		err = json.Unmarshal(r.Body(), rsp)
