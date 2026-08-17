@@ -46,6 +46,30 @@ jobs:
           GOEXPERIMENT: jsonv2
         run: go build ./...
 
+      # The untagged build above never compiles core/imports/*, because every
+      # core registers itself from an init() behind a build tag. That is the
+      # path a release actually ships, and a core missing from it produces a
+      # binary that starts and then refuses its own config with "unknown core
+      # type" - so build it here with the same tags a release uses.
+      - name: Build (release tags)
+        env:
+          GOEXPERIMENT: jsonv2
+        run: |
+          go build -o /tmp/V2bX_tagged \
+            -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel" ./
+
+      # A tag that compiles proves nothing about the core being registered, so
+      # check the names are actually in the binary.
+      - name: Cores are registered
+        run: |
+          for core in sing xray hysteria2 mdns trusttunnel; do
+            if grep -qa "$core" /tmp/V2bX_tagged; then
+              echo "  $core: present"
+            else
+              echo "  $core: MISSING from the binary"; exit 1
+            fi
+          done
+
       - name: Vet
         env:
           GOEXPERIMENT: jsonv2
