@@ -1,7 +1,9 @@
 package trusttunnel
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,10 +26,6 @@ const (
 	// the reason in log noise.
 	restartMinDelay = 2 * time.Second
 	restartMaxDelay = 60 * time.Second
-
-	// The endpoint logs every connection at info level, so this is a disk
-	// limit, not a debugging preference.
-	endpointLogMaxBytes = 32 << 20
 )
 
 // node is one endpoint process and the state needed to talk to it.
@@ -41,6 +39,11 @@ type node struct {
 	users   map[string]string // uuid -> password
 	closing bool
 	done    chan struct{}
+	// exec.Cmd's own docs: it is incorrect to call Wait before the reads from
+	// StdoutPipe/StderrPipe have finished, because Wait closes them. Without
+	// this the tail of a dying endpoint's output - the part explaining why -
+	// is the part most likely to be lost.
+	logs sync.WaitGroup
 }
 
 func envOr(key, fallback string) string {
@@ -177,45 +180,77 @@ func enableMetrics(path string, port int) error {
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600)
 }
 
-// rotateLog keeps the endpoint's own output from filling the disk.
+// endpointLogLevel translates V2bX's own log level into the endpoint's.
 //
-// The endpoint logs every connection at info level and nothing rotates it, so
-// on a busy node an untended file is a matter of time. One previous generation
-// is kept: enough to read what happened before a restart, bounded at twice the
-// limit.
-func rotateLog(path string, max int64) {
-	if fi, err := os.Stat(path); err == nil && fi.Size() > max {
-		_ = os.Remove(path + ".1")
-		_ = os.Rename(path, path+".1")
+// The endpoint is a separate process with its own verbosity, so leaving it at a
+// fixed level would either flood an operator who asked for errors only, or hide
+// detail from one who asked for debug. Following V2bX means one setting governs
+// both.
+func endpointLogLevel() string {
+	switch log.GetLevel() {
+	case log.TraceLevel, log.DebugLevel:
+		return "debug"
+	case log.InfoLevel:
+		return "info"
+	case log.WarnLevel:
+		return "warn"
+	default:
+		return "error"
+	}
+}
+
+// pipeToLog forwards one of the endpoint's streams into V2bX's log, a line at a
+// time, tagged with the node it came from.
+//
+// The endpoint used to write to its own file beside its config, which meant two
+// places to look and a file nothing rotated. Sending it here puts everything in
+// the log the operator already reads, and makes it obey that log's rotation and
+// destination.
+func pipeToLog(r io.Reader, tag string, isErr bool) {
+	sc := bufio.NewScanner(r)
+	// A stack trace or a long request line would exceed the default 64 KiB and
+	// silently end the scan, taking the rest of the node's output with it.
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	entry := log.WithField("tag", tag)
+	for sc.Scan() {
+		line := strings.TrimRight(sc.Text(), "\r")
+		if line == "" {
+			continue
+		}
+		if isErr {
+			entry.Warnf("trusttunnel: %s", line)
+		} else {
+			entry.Infof("trusttunnel: %s", line)
+		}
 	}
 }
 
 func (n *node) start(bin string) error {
-	logPath := filepath.Join(n.dir, "endpoint.log")
-	rotateLog(logPath, endpointLogMaxBytes)
-
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return fmt.Errorf("open log: %w", err)
-	}
-
-	cmd := exec.Command(bin, "./vpn.toml", "./hosts.toml", "-l", "info")
+	cmd := exec.Command(bin, "./vpn.toml", "./hosts.toml", "-l", endpointLogLevel())
 	cmd.Dir = n.dir
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("stderr pipe: %w", err)
+	}
 	if err := cmd.Start(); err != nil {
-		logFile.Close()
 		return err
 	}
+	// Both pipes are drained until the process closes them, so a restart does
+	// not leak these goroutines.
+	n.logs.Add(2)
+	go func() { defer n.logs.Done(); pipeToLog(stdout, n.tag, false) }()
+	go func() { defer n.logs.Done(); pipeToLog(stderr, n.tag, true) }()
 
 	n.mu.Lock()
 	n.cmd = cmd
 	n.mu.Unlock()
 
-	// Say where the endpoint's own log is: it is not in V2bX's log file, and an
-	// operator debugging a node should not have to read this source to find it.
-	log.WithField("tag", n.tag).Infof("trusttunnel: endpoint started (pid %d), log at %s",
-		cmd.Process.Pid, logPath)
+	log.WithField("tag", n.tag).Infof("trusttunnel: endpoint started (pid %d)", cmd.Process.Pid)
 	return nil
 }
 
@@ -237,6 +272,8 @@ func (n *node) supervise(bin string) {
 			return
 		}
 
+		// Drain both streams first; Wait closes the pipes under the readers.
+		n.logs.Wait()
 		err := cmd.Wait()
 
 		n.mu.Lock()
