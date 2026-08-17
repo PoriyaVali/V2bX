@@ -118,6 +118,45 @@ get_version() {
 }
 
 # ================================================================
+# Install TrustTunnel endpoint | نصب هستهٔ TrustTunnel
+# ================================================================
+# The trusttunnel core spawns these two binaries; they are not part of V2bX and
+# nothing else installs them. Fetched only when that core is actually chosen, so
+# an operator who never uses it pays nothing.
+install_trusttunnel_bins() {
+    if [[ -x /usr/local/V2bX/trusttunnel_endpoint && -x /usr/local/V2bX/setup_wizard ]]; then
+        echo -e "${green}TrustTunnel binaries already present | باینری‌های TrustTunnel از قبل موجودند${plain}"
+        return 0
+    fi
+
+    echo -e "${green}Installing TrustTunnel endpoint | در حال نصب هستهٔ TrustTunnel...${plain}"
+    local tt_repo="PoriyaVali/TrustTunnel"
+    local tt_version
+    tt_version=$(curl -s "https://api.github.com/repos/${tt_repo}/releases/latest" \
+        | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [[ -z "${tt_version}" ]]; then
+        echo -e "${red}Could not find a TrustTunnel release | نسخه‌ای پیدا نشد${plain}"
+        return 1
+    fi
+
+    local tt_url="https://github.com/${tt_repo}/releases/download/${tt_version}/TrustTunnel-${arch}.zip"
+    echo -e "Downloading | دانلود: ${tt_url}"
+    if ! wget -nv --show-progress -O /tmp/TrustTunnel.zip "${tt_url}"; then
+        echo -e "${red}TrustTunnel download failed | دانلود ناموفق${plain}"
+        echo -e "  ${yellow}This architecture may not be published yet | شاید برای این معماری منتشر نشده${plain}"
+        return 1
+    fi
+
+    unzip -o /tmp/TrustTunnel.zip -d /usr/local/V2bX
+    rm -f /tmp/TrustTunnel.zip
+    chmod +x /usr/local/V2bX/trusttunnel_endpoint /usr/local/V2bX/setup_wizard
+
+    # The core looks here; keep the two settings in one place rather than
+    # relying on a default that could drift from where the installer put them.
+    echo -e "${green}TrustTunnel endpoint installed | نصب شد: $(/usr/local/V2bX/trusttunnel_endpoint --version 2>/dev/null || echo unknown)${plain}"
+}
+
+# ================================================================
 # Install V2bX | نصب V2bX
 # ================================================================
 install_V2bX() {
@@ -392,6 +431,9 @@ generate_config() {
         elif [[ "${CORE_TYPE}" == "trusttunnel" ]]; then
             NODE_TYPE="trusttunnel"
             echo -e "Node type | نوع نود: ${yellow}trusttunnel${plain}"
+            install_trusttunnel_bins || {
+                echo -e "${red}The node will not start without these binaries | نود بدون این باینری‌ها بالا نمی‌آید${plain}"
+            }
         elif [[ "${CORE_TYPE}" == "hysteria2" ]]; then
             NODE_TYPE="hysteria2"
             echo -e "Node type | نوع نود: ${yellow}hysteria2${plain}"

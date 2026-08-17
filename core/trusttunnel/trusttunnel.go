@@ -49,7 +49,10 @@ func init() {
 // binaries somewhere else can say so without a rebuild.
 func New(_ *conf.CoreConfig) (vCore.Core, error) {
 	work := envOr("V2BX_TRUSTTUNNEL_DIR", "/etc/V2bX/trusttunnel")
-	bin := envOr("V2BX_TRUSTTUNNEL_BIN", "/usr/local/bin")
+	// Where install.sh unpacks them, beside V2bX itself. A default pointing
+	// somewhere the installer does not write is a node that configures cleanly
+	// and then cannot start.
+	bin := envOr("V2BX_TRUSTTUNNEL_BIN", "/usr/local/V2bX")
 	return &TrustTunnel{
 		nodes:    make(map[string]*node),
 		usersMap: make(map[string]int),
