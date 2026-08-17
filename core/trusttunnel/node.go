@@ -24,6 +24,10 @@ const (
 	// the reason in log noise.
 	restartMinDelay = 2 * time.Second
 	restartMaxDelay = 60 * time.Second
+
+	// The endpoint logs every connection at info level, so this is a disk
+	// limit, not a debugging preference.
+	endpointLogMaxBytes = 32 << 20
 )
 
 // node is one endpoint process and the state needed to talk to it.
@@ -98,6 +102,7 @@ func (t *TrustTunnel) DelNode(tag string) error {
 
 	if ok {
 		n.shutdown()
+		log.WithField("tag", tag).Info("trusttunnel: node removed")
 	}
 	return nil
 }
@@ -172,9 +177,24 @@ func enableMetrics(path string, port int) error {
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600)
 }
 
+// rotateLog keeps the endpoint's own output from filling the disk.
+//
+// The endpoint logs every connection at info level and nothing rotates it, so
+// on a busy node an untended file is a matter of time. One previous generation
+// is kept: enough to read what happened before a restart, bounded at twice the
+// limit.
+func rotateLog(path string, max int64) {
+	if fi, err := os.Stat(path); err == nil && fi.Size() > max {
+		_ = os.Remove(path + ".1")
+		_ = os.Rename(path, path+".1")
+	}
+}
+
 func (n *node) start(bin string) error {
-	logFile, err := os.OpenFile(filepath.Join(n.dir, "endpoint.log"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	logPath := filepath.Join(n.dir, "endpoint.log")
+	rotateLog(logPath, endpointLogMaxBytes)
+
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("open log: %w", err)
 	}
@@ -191,6 +211,11 @@ func (n *node) start(bin string) error {
 	n.mu.Lock()
 	n.cmd = cmd
 	n.mu.Unlock()
+
+	// Say where the endpoint's own log is: it is not in V2bX's log file, and an
+	// operator debugging a node should not have to read this source to find it.
+	log.WithField("tag", n.tag).Infof("trusttunnel: endpoint started (pid %d), log at %s",
+		cmd.Process.Pid, logPath)
 	return nil
 }
 

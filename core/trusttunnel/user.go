@@ -182,7 +182,7 @@ func (n *node) drain(reset bool) (map[string]usage, error) {
 			// serve user data anywhere else, so there is nothing to reach
 			// through a proxy - and inheriting one from the environment would
 			// send the subscriber list somewhere it should never go.
-			Proxy: nil,
+			Proxy:       nil,
 			DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
 		},
 	}
