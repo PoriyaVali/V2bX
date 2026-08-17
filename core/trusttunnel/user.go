@@ -89,9 +89,19 @@ func (n *node) applyUsers() error {
 
 	n.mu.Lock()
 	cmd := n.cmd
+	ready := n.ready
 	n.mu.Unlock()
 	if cmd == nil || cmd.Process == nil {
 		return nil // not running; the file is in place for when it starts
+	}
+	if !ready {
+		// The endpoint has not answered yet, so it may not have installed its
+		// SIGHUP handler - and the default disposition for that signal kills
+		// the process. The list is already on disk and is read at startup, so
+		// staying quiet here costs nothing and losing the endpoint costs a
+		// node. This is not hypothetical: it killed the first live node on
+		// every start, because a panel syncs users the moment a node appears.
+		return nil
 	}
 	return cmd.Process.Signal(syscall.SIGHUP)
 }

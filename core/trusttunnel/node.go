@@ -26,6 +26,11 @@ const (
 	// the reason in log noise.
 	restartMinDelay = 2 * time.Second
 	restartMaxDelay = 60 * time.Second
+
+	// How long to wait for a freshly started endpoint to answer before giving
+	// up on signalling it. Generous: being slow here costs nothing.
+	readyTimeout      = 30 * time.Second
+	readyPollInterval = 250 * time.Millisecond
 )
 
 // node is one endpoint process and the state needed to talk to it.
@@ -39,6 +44,11 @@ type node struct {
 	users   map[string]string // uuid -> password
 	closing bool
 	done    chan struct{}
+	// Set once the endpoint answers on its metrics port. Until then it may not
+	// have installed its SIGHUP handler yet, and the default disposition for
+	// that signal is to terminate - so a reload sent too early kills the
+	// process we just started.
+	ready bool
 	// exec.Cmd's own docs: it is incorrect to call Wait before the reads from
 	// StdoutPipe/StderrPipe have finished, because Wait closes them. Without
 	// this the tail of a dying endpoint's output - the part explaining why -
@@ -248,10 +258,37 @@ func (n *node) start(bin string) error {
 
 	n.mu.Lock()
 	n.cmd = cmd
+	n.ready = false
 	n.mu.Unlock()
+	go n.waitReady()
 
 	log.WithField("tag", n.tag).Infof("trusttunnel: endpoint started (pid %d)", cmd.Process.Pid)
 	return nil
+}
+
+// waitReady marks the endpoint reloadable once its metrics port answers.
+//
+// Nothing is lost by waiting: the credentials file is written before the signal
+// and is read at startup anyway, so a user change that arrives during this
+// window is already in the file the endpoint is about to read.
+func (n *node) waitReady() {
+	deadline := time.Now().Add(readyTimeout)
+	for time.Now().Before(deadline) {
+		n.mu.Lock()
+		closing := n.closing
+		n.mu.Unlock()
+		if closing {
+			return
+		}
+		if _, err := n.drain(false); err == nil {
+			n.mu.Lock()
+			n.ready = true
+			n.mu.Unlock()
+			return
+		}
+		time.Sleep(readyPollInterval)
+	}
+	log.WithField("tag", n.tag).Warn("trusttunnel: endpoint did not answer on its metrics port; user changes will apply on its next start")
 }
 
 // supervise restarts the endpoint if it exits on its own.
