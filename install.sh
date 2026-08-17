@@ -124,21 +124,28 @@ get_version() {
 # nothing else installs them. Fetched only when that core is actually chosen, so
 # an operator who never uses it pays nothing.
 install_trusttunnel_bins() {
-    if [[ -x /usr/local/V2bX/trusttunnel_endpoint && -x /usr/local/V2bX/setup_wizard ]]; then
-        echo -e "${green}TrustTunnel binaries already present | باینری‌های TrustTunnel از قبل موجودند${plain}"
-        return 0
-    fi
-
-    echo -e "${green}Installing TrustTunnel endpoint | در حال نصب هستهٔ TrustTunnel...${plain}"
     local tt_repo="PoriyaVali/TrustTunnel"
+    local tt_marker="/usr/local/V2bX/.trusttunnel_version"
     local tt_version
     tt_version=$(curl -s "https://api.github.com/repos/${tt_repo}/releases/latest" \
         | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     if [[ -z "${tt_version}" ]]; then
         echo -e "${red}Could not find a TrustTunnel release | نسخه‌ای پیدا نشد${plain}"
+        # An existing install still works; only a first install is fatal.
+        [[ -x /usr/local/V2bX/trusttunnel_endpoint ]] && return 0
         return 1
     fi
 
+    # Compare versions rather than merely checking the files exist. Skipping on
+    # presence alone left a node running whatever endpoint it first received -
+    # including one with a fix it needed - because nothing ever replaced it.
+    if [[ -x /usr/local/V2bX/trusttunnel_endpoint && -x /usr/local/V2bX/setup_wizard \
+          && -f "${tt_marker}" && "$(cat "${tt_marker}")" == "${tt_version}" ]]; then
+        echo -e "${green}TrustTunnel ${tt_version} already installed | از قبل نصب است${plain}"
+        return 0
+    fi
+
+    echo -e "${green}Installing TrustTunnel endpoint ${tt_version} | در حال نصب هستهٔ TrustTunnel...${plain}"
     local tt_url="https://github.com/${tt_repo}/releases/download/${tt_version}/TrustTunnel-${arch}.zip"
     echo -e "Downloading | دانلود: ${tt_url}"
     if ! wget -nv --show-progress -O /tmp/TrustTunnel.zip "${tt_url}"; then
@@ -150,9 +157,8 @@ install_trusttunnel_bins() {
     unzip -o /tmp/TrustTunnel.zip -d /usr/local/V2bX
     rm -f /tmp/TrustTunnel.zip
     chmod +x /usr/local/V2bX/trusttunnel_endpoint /usr/local/V2bX/setup_wizard
+    echo "${tt_version}" > "${tt_marker}"
 
-    # The core looks here; keep the two settings in one place rather than
-    # relying on a default that could drift from where the installer put them.
     echo -e "${green}TrustTunnel endpoint installed | نصب شد: $(/usr/local/V2bX/trusttunnel_endpoint --version 2>/dev/null || echo unknown)${plain}"
 }
 
@@ -259,6 +265,13 @@ update_V2bX() {
     echo -e "${green}Updating V2bX | در حال به‌روزرسانی V2bX...${plain}"
     get_version "$1"
     install_V2bX
+
+    # Refresh the endpoint too, but only for a node that actually uses it.
+    # Updating V2bX while leaving an old endpoint in place is how a fixed
+    # bug survives an update.
+    if [[ -x /usr/local/V2bX/trusttunnel_endpoint ]]; then
+        install_trusttunnel_bins || true
+    fi
     if [[ x"${release}" != x"alpine" ]]; then
         systemctl restart V2bX
     fi
