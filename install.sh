@@ -120,6 +120,90 @@ get_version() {
 # ================================================================
 # Install TrustTunnel endpoint | نصب هستهٔ TrustTunnel
 # ================================================================
+# A trusttunnel node's certificate is obtained by setup_wizard, which the core
+# runs with the --cert-type the PANEL sends. That is the right place for it -
+# the panel decides per node - but it left the operator with nothing: pick
+# letsencrypt in the panel with port 80 closed and the node simply never comes
+# up, on a host where nothing says why.
+#
+# So this asks the panel what it decided and prepares what that choice needs. It
+# never overrides the panel: an answer here that disagreed would be a second
+# source of truth, which is exactly the bug the REALITY probe below was written
+# to end.
+trusttunnel_cert_prereqs() {
+    local node_id="$1"
+    local body cert_type acme_email
+
+    body="$(curl -fsSL --max-time 10 \
+        "${API_HOST%/}/api/v1/server/UniProxy/config?token=${API_KEY}&node_type=trusttunnel&node_id=${node_id}" \
+        2>/dev/null || true)"
+
+    if [[ -z "${body}" ]]; then
+        echo -e "${yellow}Could not reach the panel to read this node's certificate mode.${plain}"
+        echo -e "${yellow}نتوانستم نحوهٔ دریافت گواهی این نود را از پنل بخوانم.${plain}"
+        echo -e "${yellow}If it is set to letsencrypt, port 80 must be reachable.${plain}"
+        return 0
+    fi
+
+    # grep+sed rather than jq, to keep the installer dependency-free - the same
+    # approach the REALITY probe uses.
+    cert_type="$(printf '%s' "${body}" | grep -oE '"cert_type"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
+    [[ -z "${cert_type}" ]] && cert_type="self-signed"
+
+    case "${cert_type}" in
+        letsencrypt)
+            acme_email="$(printf '%s' "${body}" | grep -oE '"acme_email"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
+            echo -e "${green}Panel says: Let's Encrypt certificate | پنل می‌گوید: گواهی Let's Encrypt${plain}"
+            if [[ -z "${acme_email}" ]]; then
+                # ACME refuses an account without one, and the failure surfaces
+                # as the endpoint not starting rather than as a missing field.
+                echo -e "${red}No ACME email set for this node in the panel — issuance will fail.${plain}"
+                echo -e "${red}ایمیل ACME برای این نود در پنل تنظیم نشده — دریافت گواهی شکست می‌خورد.${plain}"
+            fi
+            # Port 80 is not optional for the http-01 challenge, and a host
+            # firewall closing it is the common cause of a node that configures
+            # cleanly and never listens.
+            echo -e "${yellow}Port 80 must be reachable for the ACME challenge | پورت ۸۰ باید باز باشد${plain}"
+            if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+                ufw allow 80/tcp >/dev/null 2>&1 && \
+                    echo -e "${green}Opened port 80 in ufw | پورت ۸۰ در ufw باز شد${plain}"
+            elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+                firewall-cmd --permanent --add-port=80/tcp >/dev/null 2>&1 && \
+                    firewall-cmd --reload >/dev/null 2>&1 && \
+                    echo -e "${green}Opened port 80 in firewalld | پورت ۸۰ در firewalld باز شد${plain}"
+            fi
+            # Something already bound to 80 takes the challenge instead of the
+            # endpoint, so say so now rather than after the failure.
+            if command -v ss >/dev/null 2>&1 && ss -ltnH 2>/dev/null | grep -qE '[:.]80[[:space:]]'; then
+                echo -e "${red}Something is already listening on port 80 — ACME will fail until it stops.${plain}"
+                echo -e "${red}چیزی روی پورت ۸۰ در حال گوش‌دادن است — تا متوقف نشود گواهی گرفته نمی‌شود.${plain}"
+            fi
+            ;;
+        provided)
+            echo -e "${green}Panel says: certificate files provided | پنل می‌گوید: فایل گواهی از قبل موجود است${plain}"
+            local chain key
+            chain="$(printf '%s' "${body}" | grep -oE '"cert_chain_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
+            key="$(printf '%s' "${body}" | grep -oE '"cert_key_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
+            # Checked here because the endpoint reads them at startup, and a
+            # missing file there is a node that dies immediately.
+            for f in "${chain}" "${key}"; do
+                if [[ -z "${f}" ]]; then
+                    echo -e "${red}A certificate path is empty in the panel.${plain}"
+                elif [[ ! -r "${f}" ]]; then
+                    echo -e "${red}Not readable on this host: ${f}${plain}"
+                    echo -e "${red}روی این سرور قابل خواندن نیست: ${f}${plain}"
+                fi
+            done
+            ;;
+        *)
+            echo -e "${green}Panel says: self-signed certificate | پنل می‌گوید: گواهی self-signed${plain}"
+            # Worth saying plainly: this only works because the subscription
+            # link carries skip_verification for such a node.
+            echo -e "${yellow}Clients accept it only because the panel marks the node self-signed.${plain}"
+            ;;
+    esac
+}
+
 # The trusttunnel core spawns these two binaries; they are not part of V2bX and
 # nothing else installs them. Fetched only when that core is actually chosen, so
 # an operator who never uses it pays nothing.
@@ -447,6 +531,7 @@ generate_config() {
             install_trusttunnel_bins || {
                 echo -e "${red}The node will not start without these binaries | نود بدون این باینری‌ها بالا نمی‌آید${plain}"
             }
+            trusttunnel_cert_prereqs "${NODE_ID}"
         elif [[ "${CORE_TYPE}" == "hysteria2" ]]; then
             NODE_TYPE="hysteria2"
             echo -e "Node type | نوع نود: ${yellow}hysteria2${plain}"
