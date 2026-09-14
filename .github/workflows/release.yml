@@ -183,6 +183,8 @@ jobs:
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@v4
         with:
+          # 1 day: the release step uploads the binaries itself; 90 days filled the account quota.
+          retention-days: 1
           name: V2bX-${{ steps.get_filename.outputs.ASSET_NAME }}
           path: |
             ./V2bX-${{ steps.get_filename.outputs.ASSET_NAME }}/*
