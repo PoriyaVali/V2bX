@@ -2,6 +2,7 @@ package trusttunnel
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,13 +21,20 @@ import (
 const (
 	endpointBin = "trusttunnel_endpoint"
 	wizardBin   = "setup_wizard"
+)
 
-	// Restart backoff. A node that cannot start - a taken port, a certificate
-	// it cannot read - would otherwise be relaunched in a tight loop and bury
-	// the reason in log noise.
+// Restart backoff. A node that cannot start - a taken port, a certificate it
+// cannot read - would otherwise be relaunched in a tight loop and bury the
+// reason in log noise. Variables so tests can shorten them.
+var (
 	restartMinDelay = 2 * time.Second
 	restartMaxDelay = 60 * time.Second
+	// A run at least this long counts as healthy and earns the short delay
+	// back; anything shorter is a crash loop and keeps backing off.
+	stableUptime = time.Minute
+)
 
+const (
 	// How long to wait for a freshly started endpoint to answer before giving
 	// up on signalling it. Generous: being slow here costs nothing.
 	readyTimeout      = 30 * time.Second
@@ -44,6 +52,8 @@ type node struct {
 	users   map[string]string // uuid -> password
 	closing bool
 	done    chan struct{}
+	stop    chan struct{} // closed by shutdown; wakes a restart that is waiting
+	started time.Time     // when the current process was launched
 	// Set once the endpoint answers on its metrics port. Until then it may not
 	// have installed its SIGHUP handler yet, and the default disposition for
 	// that signal is to terminate - so a reload sent too early kills the
@@ -95,6 +105,7 @@ func (t *TrustTunnel) AddNode(tag string, info *panel.NodeInfo, _ *conf.Options)
 		metricsPort: metricsPort,
 		users:       make(map[string]string),
 		done:        make(chan struct{}),
+		stop:        make(chan struct{}),
 	}
 	if err := n.start(t.binPath(endpointBin)); err != nil {
 		return fmt.Errorf("trusttunnel: start %s: %w", tag, err)
@@ -247,19 +258,29 @@ func (n *node) start(bin string) error {
 	if err != nil {
 		return fmt.Errorf("stderr pipe: %w", err)
 	}
+	// Checked and launched under the lock, so a shutdown can never slip in
+	// between: a process started after it would be signalled by nobody and
+	// keep the node's port until someone killed it by hand.
+	n.mu.Lock()
+	if n.closing {
+		n.mu.Unlock()
+		stdout.Close()
+		stderr.Close()
+		return errClosing
+	}
 	if err := cmd.Start(); err != nil {
+		n.mu.Unlock()
 		return err
 	}
+	n.cmd = cmd
+	n.ready = false
+	n.started = time.Now()
+	n.mu.Unlock()
 	// Both pipes are drained until the process closes them, so a restart does
 	// not leak these goroutines.
 	n.logs.Add(2)
 	go func() { defer n.logs.Done(); pipeToLog(stdout, n.tag, false) }()
 	go func() { defer n.logs.Done(); pipeToLog(stderr, n.tag, true) }()
-
-	n.mu.Lock()
-	n.cmd = cmd
-	n.ready = false
-	n.mu.Unlock()
 	go n.waitReady()
 
 	log.WithField("tag", n.tag).Infof("trusttunnel: endpoint started (pid %d)", cmd.Process.Pid)
@@ -315,34 +336,57 @@ func (n *node) supervise(bin string) {
 
 		n.mu.Lock()
 		closing := n.closing
+		ranFor := time.Since(n.started)
 		n.mu.Unlock()
 		if closing {
 			return
 		}
 
-		log.WithField("tag", n.tag).Warnf("trusttunnel: endpoint exited (%v), restarting in %s", err, delay)
-		time.Sleep(delay)
-		if delay *= 2; delay > restartMaxDelay {
-			delay = restartMaxDelay
+		// A process that stayed up gets the short delay back, so one bad night
+		// does not leave a healthy node waiting a minute after every blip. This
+		// used to reset right after every restart, before knowing whether the
+		// new process lived - so a crash loop never backed off at all.
+		if ranFor >= stableUptime {
+			delay = restartMinDelay
 		}
-
-		if err := n.start(bin); err != nil {
-			log.WithField("tag", n.tag).Errorf("trusttunnel: restart failed: %v", err)
-			continue
+		log.WithField("tag", n.tag).Warnf("trusttunnel: endpoint exited after %s (%v), restarting in %s",
+			ranFor.Round(time.Second), err, delay)
+		// Interruptible: the node may be removed while this waits. A plain
+		// sleep used to be followed by a start regardless, leaving an orphan
+		// endpoint on the node's port.
+		for {
+			select {
+			case <-time.After(delay):
+			case <-n.stop:
+				return
+			}
+			if delay *= 2; delay > restartMaxDelay {
+				delay = restartMaxDelay
+			}
+			err := n.start(bin)
+			if err == nil {
+				break
+			}
+			if errors.Is(err, errClosing) {
+				return
+			}
+			log.WithField("tag", n.tag).Errorf("trusttunnel: restart failed, next try in %s: %v", delay, err)
 		}
-		// A process that has stayed up long enough to be restarted cleanly gets
-		// the short delay back, so one bad night does not leave a healthy node
-		// waiting a minute after every blip.
 		if err := n.writeCredentials(); err != nil {
 			log.WithField("tag", n.tag).Errorf("trusttunnel: restore users after restart: %v", err)
 		}
-		delay = restartMinDelay
 	}
 }
 
+// errClosing is what start returns once the node is being shut down.
+var errClosing = errors.New("trusttunnel: node is shutting down")
+
 func (n *node) shutdown() {
 	n.mu.Lock()
-	n.closing = true
+	if !n.closing {
+		n.closing = true
+		close(n.stop)
+	}
 	cmd := n.cmd
 	n.mu.Unlock()
 
