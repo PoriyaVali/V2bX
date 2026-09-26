@@ -21,10 +21,14 @@ func Init() {
 }
 
 type Limiter struct {
-	rules         atomic.Pointer[ruleSet] // audit rules; see rule.go
-	SpeedLimit    int
-	UserOnlineIP  *sync.Map    // Key: TagUUID, value: {Key: Ip, value: Uid}
-	OldUserOnline *sync.Map    // Key: Ip, value: Uid
+	rules        atomic.Pointer[ruleSet] // audit rules; see rule.go
+	SpeedLimit   int
+	UserOnlineIP *sync.Map // Key: TagUUID, value: {Key: Ip, value: Uid}
+	// The grace list: addresses online in the previous report cycle (Key: Ip,
+	// value: Uid). Replaced as a whole each cycle while connections read it,
+	// so it sits behind an atomic pointer - a plain field swapped under them
+	// was a data race (reproduced with -race).
+	oldUserOnline atomic.Pointer[sync.Map]
 	UserLimitInfo *sync.Map    // Key: TagUUID value: *UserLimitInfo
 	SpeedLimiter  *sync.Map    // key: TagUUID, value: *ratelimit.Bucket
 	AliveList     map[int]int  // Key: Uid, value: alive_ip
@@ -64,8 +68,8 @@ func AddLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveLi
 		UserLimitInfo: new(sync.Map),
 		SpeedLimiter:  new(sync.Map),
 		AliveList:     aliveList,
-		OldUserOnline: new(sync.Map),
 	}
+	info.oldUserOnline.Store(new(sync.Map))
 	for i := range users {
 		info.UserLimitInfo.Store(format.UserTag(tag, users[i].Uuid), newUserLimitInfo(&users[i]))
 	}
@@ -204,8 +208,9 @@ func (l *Limiter) admitNewIP(ip string, uid, deviceLimit, aliveIp int) bool {
 	// The grace list is keyed by IP alone, so it must be matched back to this
 	// user: admitting on a bare IP hit let a DIFFERENT user in over their device
 	// limit whenever the two shared a public address — routine behind CGNAT.
-	if v, ok := l.OldUserOnline.Load(ip); ok && v.(int) == uid {
-		l.OldUserOnline.Delete(ip)
+	grace := l.graceList()
+	if v, ok := grace.Load(ip); ok && v.(int) == uid {
+		grace.Delete(ip)
 		return true
 	}
 	if deviceLimit > 0 && deviceLimit <= aliveIp {
@@ -320,32 +325,72 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 	if v, ok := l.SpeedLimiter.Load(taguuid); ok {
 		return v.(*ratelimit.Bucket), false
 	}
-	Bucket = ratelimit.NewBucketWithQuantum(time.Second, limit, limit)
+	Bucket = newSpeedBucket(limit)
 	actual, _ := l.SpeedLimiter.LoadOrStore(taguuid, Bucket)
 	return actual.(*ratelimit.Bucket), false
 }
 
+// graceList returns the current grace list (never nil).
+func (l *Limiter) graceList() *sync.Map {
+	if m := l.oldUserOnline.Load(); m != nil {
+		return m
+	}
+	m := new(sync.Map)
+	if l.oldUserOnline.CompareAndSwap(nil, m) {
+		return m
+	}
+	return l.oldUserOnline.Load()
+}
+
+// GetOnlineDevice returns the addresses seen since the last call and starts a
+// new cycle: each one moves to the grace list, so the next connection from it
+// is admitted even though the fleet-wide count has not caught up yet.
+//
+// The next grace list is built complete and then published in one step. It
+// used to be swapped for an empty map first and filled while connections were
+// already reading it, so a device checking in during the report could find
+// its own address missing and be counted as a new one.
 func (l *Limiter) GetOnlineDevice() (*[]panel.OnlineUser, error) {
 	var onlineUser []panel.OnlineUser
-	l.OldUserOnline = new(sync.Map)
-	l.UserOnlineIP.Range(func(key, value interface{}) bool {
-		taguuid := key.(string)
-		ipMap := value.(*sync.Map)
-		ipMap.Range(func(key, value interface{}) bool {
+	next := new(sync.Map)
+	l.UserOnlineIP.Range(func(key, _ interface{}) bool {
+		// Detach the user's set before reading it, so an address added from
+		// here on lands in a fresh set for the next cycle instead of being
+		// dropped along with this one.
+		v, ok := l.UserOnlineIP.LoadAndDelete(key)
+		if !ok {
+			return true
+		}
+		v.(*sync.Map).Range(func(key, value interface{}) bool {
 			uid := value.(int)
 			ip := key.(string)
-			l.OldUserOnline.Store(ip, uid)
+			next.Store(ip, uid)
 			onlineUser = append(onlineUser, panel.OnlineUser{UID: uid, IP: ip})
 			return true
 		})
-		l.UserOnlineIP.Delete(taguuid) // Reset online device
 		return true
 	})
-
+	l.oldUserOnline.Store(next)
 	return &onlineUser, nil
 }
 
 type UserIpList struct {
 	Uid    int      `json:"Uid"`
 	IpList []string `json:"Ips"`
+}
+
+// newSpeedBucket builds the token bucket for a limit of bytesPerSecond.
+//
+// It used to be NewBucketWithQuantum(time.Second, limit, limit): a whole
+// second's allowance dropped in at once, spent at line rate, then nothing
+// until the next second. A user at their limit got a burst and a ~1 s stall
+// every second - video stutters, and TCP reads the stall as loss and backs off
+// below the limit. This refills continuously and allows a burst of a tenth of
+// a second (at least 64 KiB, so one full-size read never has to wait twice).
+func newSpeedBucket(bytesPerSecond int64) *ratelimit.Bucket {
+	burst := bytesPerSecond / 10
+	if burst < 64*1024 {
+		burst = 64 * 1024
+	}
+	return ratelimit.NewBucketWithRate(float64(bytesPerSecond), burst)
 }

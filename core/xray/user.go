@@ -70,8 +70,10 @@ func (x *Xray) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 			down := traffic.DownCounter.Load()
 			if up+down > x.nodeReportMinTrafficBytes[tag] {
 				if reset {
-					traffic.UpCounter.Store(0)
-					traffic.DownCounter.Store(0)
+					// Swap, not Store(0): bytes counted between the Load above and a
+					// plain reset were wiped without ever being reported.
+					up = traffic.UpCounter.Swap(0)
+					down = traffic.DownCounter.Swap(0)
 				}
 				if x.users.uidMap[email] == 0 {
 					c.Delete(email)

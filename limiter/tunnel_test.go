@@ -33,7 +33,7 @@ func TestTunnel_SpeedLimitStillAppliesToLoopbackSource(t *testing.T) {
 	if reject {
 		t.Fatal("a tunneled connection must not be rejected")
 	}
-	if b == nil || b.Capacity() != 10*1000000/8 {
+	if b == nil || !rateIs(b, 10*1000000/8) {
 		t.Fatalf("tunneled user lost their speed limit: bucket = %v", b)
 	}
 }

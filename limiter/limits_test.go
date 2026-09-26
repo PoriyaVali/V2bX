@@ -66,15 +66,15 @@ func TestUpdateUserLimits_SpeedChangeRebuildsBucket(t *testing.T) {
 	tu := format.UserTag(tag, "u1")
 
 	b, _ := l.CheckLimit(tu, "1.1.1.1", true, true)
-	if b == nil || b.Capacity() != mbpsToBytes(100) {
+	if b == nil || !rateIs(b, mbpsToBytes(100)) {
 		t.Fatalf("setup: bucket = %v, want %d B/s", b, mbpsToBytes(100))
 	}
 
 	l.UpdateUserLimits(tag, []panel.UserInfo{{Id: 1, Uuid: "u1", SpeedLimit: 10}})
 
 	b, _ = l.CheckLimit(tu, "1.1.1.1", true, true)
-	if b == nil || b.Capacity() != mbpsToBytes(10) {
-		t.Fatalf("speed_limit 100→10 but bucket still serves %v B/s — stale bucket", b.Capacity())
+	if b == nil || !rateIs(b, mbpsToBytes(10)) {
+		t.Fatalf("speed_limit 100→10 but bucket still serves %v B/s — stale bucket", b.Rate())
 	}
 }
 
@@ -108,8 +108,8 @@ func TestDynamicSpeedLimit_AppliesThenLifts(t *testing.T) {
 	tu := format.UserTag(tag, "u1")
 
 	b, _ := l.CheckLimit(tu, "1.1.1.1", true, true) // caches a 100 Mbit bucket
-	if b.Capacity() != mbpsToBytes(100) {
-		t.Fatalf("setup: %d", b.Capacity())
+	if !rateIs(b, mbpsToBytes(100)) {
+		t.Fatalf("setup: %v", b.Rate())
 	}
 
 	// Throttle to 1 Mbit for the next 10 minutes.
@@ -117,8 +117,8 @@ func TestDynamicSpeedLimit_AppliesThenLifts(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ = l.CheckLimit(tu, "1.1.1.1", true, true)
-	if b.Capacity() != mbpsToBytes(1) {
-		t.Fatalf("dynamic limit ignored: bucket still at %d B/s, want %d", b.Capacity(), mbpsToBytes(1))
+	if !rateIs(b, mbpsToBytes(1)) {
+		t.Fatalf("dynamic limit ignored: bucket still at %v B/s, want %d", b.Rate(), mbpsToBytes(1))
 	}
 
 	// Window closes → back to the user's own 100 Mbit.
@@ -126,8 +126,8 @@ func TestDynamicSpeedLimit_AppliesThenLifts(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ = l.CheckLimit(tu, "1.1.1.1", true, true)
-	if b.Capacity() != mbpsToBytes(100) {
-		t.Fatalf("throttle never lifted: bucket at %d B/s, want %d", b.Capacity(), mbpsToBytes(100))
+	if !rateIs(b, mbpsToBytes(100)) {
+		t.Fatalf("throttle never lifted: bucket at %v B/s, want %d", b.Rate(), mbpsToBytes(100))
 	}
 }
 

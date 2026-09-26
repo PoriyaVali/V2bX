@@ -112,7 +112,13 @@ func (h *HookServer) GetDeviceTraffic(tag string, uidOf func(uuid string) int, r
 			return true
 		}
 		st := value.(*counter.TrafficStorage)
-		total := st.UpCounter.Load() + st.DownCounter.Load()
+		up, down := st.UpCounter.Load(), st.DownCounter.Load()
+		if reset && up+down > 0 {
+			// Swap, not Load then Store(0): bytes counted between those two
+			// steps were wiped without ever being read.
+			up, down = st.UpCounter.Swap(0), st.DownCounter.Swap(0)
+		}
+		total := up + down
 
 		uid := uidOf(uuid)
 		if uid == 0 {
@@ -130,8 +136,6 @@ func (h *HookServer) GetDeviceTraffic(tag string, uidOf func(uuid string) int, r
 			return true
 		}
 		if total > 0 {
-			st.UpCounter.Store(0)
-			st.DownCounter.Store(0)
 			h.deviceIdle.Delete(k)
 			return true
 		}
@@ -339,13 +343,6 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 			}
 		}
 	}
-	var t *counter.TrafficCounter
-	if c, ok := h.counter.Load(m.Inbound); !ok {
-		t = counter.NewTrafficCounter()
-		h.counter.Store(m.Inbound, t)
-	} else {
-		t = c.(*counter.TrafficCounter)
-	}
 	// Count into the user's ledger and, when this source is a real device, into
 	// that device's own ledger as well. countDevice is already false for the
 	// node's own addresses, which are not devices and must not be counted as one.
@@ -380,7 +377,7 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 		log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
 		return conn
 	} else if b != nil {
-		//conn = rate.NewPacketConnCounter(conn, b)
+		conn = rate.NewPacketConnRateLimiter(conn, b)
 	}
 	if l != nil {
 		destStr := m.Destination.AddrString()
@@ -404,13 +401,11 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 			}
 		}
 	}
-	var t *counter.TrafficCounter
-	if c, ok := h.counter.Load(m.Inbound); !ok {
-		t = counter.NewTrafficCounter()
-		h.counter.Store(m.Inbound, t)
-	} else {
-		t = c.(*counter.TrafficCounter)
-	}
+	// trafficStorages creates the inbound's counter with LoadOrStore. A plain
+	// Load-then-Store used to run here too: two first connections racing on a
+	// fresh inbound (every user reconnecting after a restart) could each store
+	// their own counter, and the one overwritten was never read again - the
+	// traffic of the connections holding it went unbilled.
 	conn = counter.NewPacketConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	pc := &trackedPacketConn{PacketConn: conn}
 	release, ok := h.register(taguuid, pc)
