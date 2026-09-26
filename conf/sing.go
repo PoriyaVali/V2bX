@@ -9,6 +9,10 @@ type SingConfig struct {
 	NtpConfig        SingNtpConfig `json:"NTP"`
 	OriginalPath     string        `json:"OriginalPath"`
 	BlockedCountries []string      `json:"BlockedCountries"` // e.g. ["ir","cn"]
+	// AllowPrivateDestinations lets users reach loopback, private and
+	// link-local addresses through the node. Off by default: those are the
+	// node's own services and its hosting provider's internal network.
+	AllowPrivateDestinations bool `json:"AllowPrivateDestinations"`
 }
 
 type SingLogConfig struct {

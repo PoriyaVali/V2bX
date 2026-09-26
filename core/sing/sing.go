@@ -125,6 +125,11 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		}
 	}
 
+	if !c.SingConfig.AllowPrivateDestinations {
+		if err := addPrivateDestinationRules(&options); err != nil {
+			return nil, err
+		}
+	}
 	os.Setenv("SING_DNS_PATH", "")
 	b, err := box.New(box.Options{
 		Context: ctx,
