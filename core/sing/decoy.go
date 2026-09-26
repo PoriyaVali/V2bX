@@ -3,7 +3,6 @@ package sing
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -218,6 +217,15 @@ func slugify(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
+// nginx404 is nginx's built-in 404 page, CRLF line endings included.
+const nginx404 = "<html>\r\n" +
+	"<head><title>404 Not Found</title></head>\r\n" +
+	"<body>\r\n" +
+	"<center><h1>404 Not Found</h1></center>\r\n" +
+	"<hr><center>nginx</center>\r\n" +
+	"</body>\r\n" +
+	"</html>\r\n"
+
 // startDecoy binds a loopback listener and serves the site. The port is chosen
 // by the OS so nothing has to be reserved or configured, and it is loopback
 // only: a decoy reachable from outside on its own port would be a fresh tell,
@@ -229,7 +237,12 @@ func startDecoy(seed string) (*decoy, error) {
 	}
 	tpl, accent, built := pickDecoy(seed)
 	page := renderDecoy(tpl, accent, built)
-	etag := `"` + hex.EncodeToString(sha256.New().Sum([]byte(page))[:8]) + `"`
+	// nginx's own ETag for a static file: last-modified time and size, in hex.
+	// This used to be hex(sha256.New().Sum(page)[:8]) - but Sum APPENDS the
+	// hash of nothing to its argument, so it was the page's first 8 bytes,
+	// "<!DOCTYP", on every decoy of every node: one header value that
+	// identified the whole fleet to an active prober.
+	etag := fmt.Sprintf(`"%x-%x"`, built.Unix(), len(page))
 
 	mux := http.NewServeMux()
 	write := func(w http.ResponseWriter, r *http.Request, status int, body, ctype string) {
@@ -268,9 +281,10 @@ func startDecoy(seed string) (*decoy, error) {
 		}
 		// Anything else 404s with an ordinary page. A server that answers 200
 		// for every path is as odd as one that answers nothing.
-		body := "<!DOCTYPE html>\n<html><head><title>404 Not Found</title></head>\n" +
-			"<body><h1>Not Found</h1><p>The requested URL was not found on this server.</p></body></html>\n"
-		write(w, r, http.StatusNotFound, body, "text/html; charset=utf-8")
+		// Byte for byte the page nginx itself serves (server_tokens off), and
+		// its bare Content-Type: this was Apache's wording under an nginx
+		// Server header, which gives the disguise away.
+		write(w, r, http.StatusNotFound, nginx404, "text/html")
 	})
 
 	d := &decoy{
