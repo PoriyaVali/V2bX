@@ -1,6 +1,8 @@
 package panel
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -89,5 +91,40 @@ func TestGetNodeInfo_OddRoutesDoNotCrash(t *testing.T) {
 	}
 	if n.PushInterval != defaultInterval || n.PullInterval != defaultInterval {
 		t.Fatalf("intervals = %s / %s, want the default", n.PushInterval, n.PullInterval)
+	}
+}
+
+// A config the node could not decode must not be remembered as applied: once
+// the panel serves it correctly, the node has to pick it up.
+func TestGetNodeInfo_UndecodableReplyIsNotRemembered(t *testing.T) {
+	good := `{"server_port":1234,"cipher":"aes-128-gcm","base_config":{"push_interval":60,"pull_interval":60}}`
+	var bodies = []string{`{"server_port":"not a number"`, good}
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b := bodies[len(bodies)-1]
+		if calls < len(bodies) {
+			b = bodies[calls]
+		}
+		calls++
+		etag := fmt.Sprintf(`"%x"`, sha1.Sum([]byte(b)))
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(b))
+	}))
+	defer srv.Close()
+	c, err := New(&conf.ApiConfig{APIHost: srv.URL, NodeID: 1, Key: "k", NodeType: "shadowsocks", Timeout: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.GetNodeInfo(); err == nil {
+		t.Fatal("a broken config decoded without error")
+	}
+	n, err := c.GetNodeInfo()
+	if err != nil || n == nil {
+		t.Fatalf("the good config after a broken one was not applied: node=%v err=%v", n, err)
 	}
 }

@@ -220,19 +220,29 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		ForceContentType("application/json").
 		Get(path)
 
-	if r.StatusCode() == 304 {
+	if r != nil && r.StatusCode() == 304 {
 		return nil, nil
+	}
+	if err = c.checkResponse(r, path, err); err != nil {
+		return nil, err
 	}
 	hash := sha256.Sum256(r.Body())
 	newBodyHash := hex.EncodeToString(hash[:])
 	if c.responseBodyHash == newBodyHash {
 		return nil, nil
 	}
-	c.responseBodyHash = newBodyHash
-	c.nodeEtag = r.Header().Get("ETag")
-	if err = c.checkResponse(r, path, err); err != nil {
-		return nil, err
-	}
+	// Remember this reply only once it has been understood. The hash and ETag
+	// used to be stored before the status check and the parse, so an error
+	// page, or a config that failed to decode, was recorded as the current
+	// one: the next poll got a 304 or the same hash, and the node never
+	// applied that config until the panel changed it again.
+	newEtag := r.Header().Get("ETag")
+	defer func() {
+		if err == nil && node != nil {
+			c.responseBodyHash = newBodyHash
+			c.nodeEtag = newEtag
+		}
+	}()
 
 	if r != nil {
 		defer func() {
