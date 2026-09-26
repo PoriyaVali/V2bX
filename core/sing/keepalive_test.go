@@ -40,6 +40,14 @@ func TestInbound_DeadConnectionTimeouts(t *testing.T) {
 	if got := time.Duration(l.UDPTimeout); got != 2*time.Minute {
 		t.Errorf("udp timeout = %s, want 2m", got)
 	}
+	if l.TCPCongestion != "bbr" {
+		t.Errorf("congestion control = %q, want bbr by default", l.TCPCongestion)
+	}
+	off := conf.NewSingOptions()
+	off.TCPCongestion = "none"
+	if got := anytlsListen(t, off).TCPCongestion; got != "" {
+		t.Errorf(`"none" still sets %q`, got)
+	}
 
 	so := conf.NewSingOptions()
 	so.TCPKeepAliveIdle, so.TCPKeepAliveInterval, so.UDPTimeout = 300, 75, 600

@@ -66,6 +66,9 @@ type SingOptions struct {
 	TCPKeepAliveIdle     int `json:"TCPKeepAliveIdle"`
 	TCPKeepAliveInterval int `json:"TCPKeepAliveInterval"`
 	UDPTimeout           int `json:"UDPTimeout"`
+	// Congestion control for subscribers' connections; "" = bbr, "none" =
+	// the system default. See TCPCongestionName.
+	TCPCongestion string `json:"TCPCongestion"`
 }
 
 // DecoyEnabled reports whether the decoy should run. Pointer + nil check rather
@@ -107,6 +110,25 @@ func (o *SingOptions) KeepAliveInterval() time.Duration {
 
 func (o *SingOptions) UDPIdle() time.Duration {
 	return secondsOr(o.UDPTimeout, DefaultUDPTimeout)
+}
+
+// TCPCongestionName is the congestion control subscribers' connections use.
+//
+// BBR by default, for these connections only - the system default stays as it
+// is. Most nodes run the kernel default, CUBIC, which reads every lost packet
+// as congestion and halves its rate; on Iranian mobile paths, where loss comes
+// from the radio and from throttling rather than full queues, that keeps the
+// link far below what it can carry and piles data into queues, which is what
+// users feel as lag. BBR paces by measured bandwidth and round-trip time
+// instead. A kernel without it keeps its default. "none" opts out.
+func (o *SingOptions) TCPCongestionName() string {
+	switch o.TCPCongestion {
+	case "":
+		return "bbr"
+	case "none", "default", "system":
+		return ""
+	}
+	return o.TCPCongestion
 }
 
 func (o *SingOptions) DecoyEnabled() bool {
