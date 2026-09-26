@@ -371,7 +371,7 @@ require (
 	masterdnsvpn-go v0.0.0-20260707155520-295de16bc4db
 )
 
-replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.15-v2bx.1
+replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.15-v2bx.2
 
 replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v1.260728.0
 
