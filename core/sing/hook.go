@@ -7,6 +7,8 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/PoriyaVali/V2bX/common/format"
 	"github.com/PoriyaVali/V2bX/common/rate"
@@ -249,13 +251,29 @@ func (c *trackedPacketConn) WriterReplaceable() bool { return true }
 // Same reasoning as trackedConn: PacketConnCounter carries the packet unwrap
 // protocol, and hiding it would silently stop UDP being counted.
 
-func (h *HookServer) register(key string, c io.Closer) (func(), bool) {
+// Why register refused a connection.
+type registerResult int
+
+const (
+	registered registerResult = iota
+	userRemoved
+	tooManyConns
+)
+
+// register records one of a user's connections. max caps how many the user
+// may hold at once (0 = no cap); the connection that would go over it is
+// refused, so a single runaway client cannot exhaust the node.
+func (h *HookServer) register(key string, c io.Closer, max int) (func(), registerResult) {
 	v, _ := h.conns.LoadOrStore(key, &userConns{m: make(map[io.Closer]struct{})})
 	uc := v.(*userConns)
 	uc.mu.Lock()
 	if uc.closed {
 		uc.mu.Unlock()
-		return nil, false
+		return nil, userRemoved
+	}
+	if max > 0 && len(uc.m) >= max {
+		uc.mu.Unlock()
+		return nil, tooManyConns
 	}
 	uc.m[c] = struct{}{}
 	uc.mu.Unlock()
@@ -263,7 +281,22 @@ func (h *HookServer) register(key string, c io.Closer) (func(), bool) {
 		uc.mu.Lock()
 		delete(uc.m, c)
 		uc.mu.Unlock()
-	}, true
+	}, registered
+}
+
+// logGate lets one message per key through per interval. A client that keeps
+// retrying after being refused used to write an ERROR line per attempt.
+var logGate sync.Map // key -> *atomic.Int64 (unix seconds of the last line)
+
+func logEvery(key string, every time.Duration) bool {
+	now := time.Now().Unix()
+	v, _ := logGate.LoadOrStore(key, new(atomic.Int64))
+	last := v.(*atomic.Int64)
+	prev := last.Load()
+	if prev != 0 && now-prev < int64(every/time.Second) {
+		return false
+	}
+	return last.CompareAndSwap(prev, now)
 }
 
 // CloseUserConns drops every connection these users still have open on the
@@ -316,7 +349,9 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	}
 	if b, r := l.CheckLimit(taguuid, ip, true, countDevice); r {
 		conn.Close()
-		log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
+		if logEvery("dev|"+taguuid, time.Minute) {
+			log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
+		}
 		return conn
 	} else if b != nil {
 		conn = rate.NewConnRateLimiter(conn, b)
@@ -348,10 +383,11 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	// node's own addresses, which are not devices and must not be counted as one.
 	conn = counter.NewConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	tc := &trackedConn{Conn: conn}
-	release, ok := h.register(taguuid, tc)
-	if !ok {
-		// the user was removed while this was being set up
+	release, res := h.register(taguuid, tc, l.MaxConns)
+	if res != registered {
+		// the user was removed while this was being set up, or holds too many
 		conn.Close()
+		h.logRefused(m.Inbound, m.User, taguuid, res, l.MaxConns)
 		return conn
 	}
 	tc.release = release
@@ -374,7 +410,9 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 	countDevice := !isNodeOwnedIP(m.Source.Addr)
 	if b, r := l.CheckLimit(taguuid, ip, false, false); r {
 		conn.Close()
-		log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
+		if logEvery("dev|"+taguuid, time.Minute) {
+			log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
+		}
 		return conn
 	} else if b != nil {
 		conn = rate.NewPacketConnRateLimiter(conn, b)
@@ -408,11 +446,19 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 	// traffic of the connections holding it went unbilled.
 	conn = counter.NewPacketConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	pc := &trackedPacketConn{PacketConn: conn}
-	release, ok := h.register(taguuid, pc)
-	if !ok {
+	release, res := h.register(taguuid, pc, l.MaxConns)
+	if res != registered {
 		conn.Close()
+		h.logRefused(m.Inbound, m.User, taguuid, res, l.MaxConns)
 		return conn
 	}
 	pc.release = release
 	return pc
+}
+
+func (h *HookServer) logRefused(inbound, user, taguuid string, res registerResult, max int) {
+	if res == tooManyConns && logEvery("conns|"+taguuid, time.Minute) {
+		log.Warn("[", inbound, "] user ", user, " already holds ", max,
+			" connections (ConnLimit); refusing more")
+	}
 }

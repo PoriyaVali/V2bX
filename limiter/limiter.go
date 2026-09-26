@@ -23,6 +23,7 @@ func Init() {
 type Limiter struct {
 	rules        atomic.Pointer[ruleSet] // audit rules; see rule.go
 	SpeedLimit   int
+	MaxConns     int       // one user's simultaneous connections; 0 = no cap
 	UserOnlineIP *sync.Map // Key: TagUUID, value: {Key: Ip, value: Uid}
 	// The grace list: addresses online in the previous report cycle (Key: Ip,
 	// value: Uid). Replaced as a whole each cycle while connections read it,
@@ -64,6 +65,7 @@ func newUserLimitInfo(u *panel.UserInfo) *UserLimitInfo {
 func AddLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveList map[int]int) *Limiter {
 	info := &Limiter{
 		SpeedLimit:    l.SpeedLimit,
+		MaxConns:      l.MaxConnsPerUser(),
 		UserOnlineIP:  new(sync.Map),
 		UserLimitInfo: new(sync.Map),
 		SpeedLimiter:  new(sync.Map),
