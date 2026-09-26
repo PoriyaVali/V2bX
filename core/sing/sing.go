@@ -125,6 +125,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		}
 	}
 
+	applyDNSDefaults(&options)
 	if !c.SingConfig.AllowPrivateDestinations {
 		if err := addPrivateDestinationRules(&options); err != nil {
 			return nil, err
