@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"syscall"
 
+	"github.com/PoriyaVali/V2bX/common/memguard"
 	"github.com/PoriyaVali/V2bX/common/metrics"
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
@@ -68,6 +69,9 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 			log.SetOutput(f)
 		}
 	}
+	// Before anything allocates much: the soft limit steers the collector from
+	// the first connection on.
+	memguard.Start(c.MemoryConfig.LimitPercent)
 	limiter.Init()
 	log.Info("Start V2bX...")
 	vc, err := vCore.NewCore(c.CoresConfig)

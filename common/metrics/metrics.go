@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PoriyaVali/V2bX/common/memguard"
 	"github.com/PoriyaVali/V2bX/limiter"
 	log "github.com/sirupsen/logrus"
 )
@@ -70,6 +71,26 @@ func handleMetrics(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(&b, "v2bx_node_rejects_total{node=\"%s\"} %d\n", escapeLabel(s.Tag), s.Rejects)
 	}
 
+	writeProcessMetrics(&b)
+
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = w.Write([]byte(b.String()))
+}
+
+// writeProcessMetrics adds the process and machine readings memguard takes, so
+// memory, goroutines and open files can be graphed against uptime.
+func writeProcessMetrics(b *strings.Builder) {
+	s := memguard.Read()
+	gauge := func(name, help string, v uint64) {
+		fmt.Fprintln(b, "# HELP", name, help)
+		fmt.Fprintln(b, "# TYPE", name, "gauge")
+		fmt.Fprintln(b, name, v)
+	}
+	gauge("v2bx_process_rss_bytes", "Resident memory of the V2bX process.", s.RSSBytes)
+	gauge("v2bx_process_heap_inuse_bytes", "Go heap in use.", s.HeapInuseBytes)
+	gauge("v2bx_process_goroutines", "Goroutines.", uint64(s.Goroutines))
+	gauge("v2bx_process_open_files", "Open file descriptors, sockets included.", uint64(s.OpenFiles))
+	gauge("v2bx_memory_soft_limit_bytes", "Go soft memory limit; 0 = none.", s.SoftLimitBytes)
+	gauge("v2bx_machine_ram_ceiling_bytes", "RAM available to the process: cgroup limit or MemTotal.", s.CeilingBytes)
+	gauge("v2bx_machine_ram_available_bytes", "MemAvailable, or cgroup headroom when tighter.", s.AvailableBytes)
 }

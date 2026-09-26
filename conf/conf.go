@@ -15,6 +15,15 @@ type Conf struct {
 	CoresConfig   []CoreConfig  `json:"Cores"`
 	NodeConfig    []NodeConfig  `json:"Nodes"`
 	MetricsConfig MetricsConfig `json:"Metrics"`
+	MemoryConfig  MemoryConfig  `json:"Memory"`
+}
+
+// MemoryConfig tunes how V2bX fits into the machine's RAM (see common/memguard).
+type MemoryConfig struct {
+	// LimitPercent is the share of the RAM ceiling the Go heap aims to stay
+	// under. 0 = default (70); negative = no limit. GOMEMLIMIT in the
+	// environment overrides it.
+	LimitPercent int `json:"LimitPercent"`
 }
 
 // MetricsConfig enables the optional Prometheus-text metrics endpoint. Leave
