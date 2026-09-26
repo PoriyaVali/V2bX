@@ -58,6 +58,8 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 			Interval: time.Duration(c.LimitConfig.DynamicSpeedLimitConfig.Periodic) * time.Second,
 			Execute:  c.SpeedChecker,
 		}
+		// Created but never started, so EnableDynamicSpeedLimit did nothing.
+		_ = c.dynamicSpeedLimitPeriodic.Start(false)
 		log.Printf("[%s: %d] Start dynamic speed limit", c.apiClient.NodeType, c.apiClient.NodeId)
 	}
 }
@@ -203,13 +205,13 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		// Check interval
 		if c.nodeInfoMonitorPeriodic.Interval != newN.PullInterval &&
 			newN.PullInterval != 0 {
-			c.nodeInfoMonitorPeriodic.Interval = newN.PullInterval
+			c.nodeInfoMonitorPeriodic.SetInterval(newN.PullInterval)
 			c.nodeInfoMonitorPeriodic.Close()
 			_ = c.nodeInfoMonitorPeriodic.Start(false)
 		}
 		if c.userReportPeriodic.Interval != newN.PushInterval &&
 			newN.PushInterval != 0 {
-			c.userReportPeriodic.Interval = newN.PushInterval
+			c.userReportPeriodic.SetInterval(newN.PushInterval)
 			c.userReportPeriodic.Close()
 			_ = c.userReportPeriodic.Start(false)
 		}
@@ -348,14 +350,14 @@ func (c *Controller) applyHotConfig(newN *panel.NodeInfo) {
 	if c.nodeInfoMonitorPeriodic != nil && newN.PullInterval != 0 &&
 		c.nodeInfoMonitorPeriodic.Interval != newN.PullInterval {
 		c.info.PullInterval = newN.PullInterval
-		c.nodeInfoMonitorPeriodic.Interval = newN.PullInterval
+		c.nodeInfoMonitorPeriodic.SetInterval(newN.PullInterval)
 		c.nodeInfoMonitorPeriodic.Close()
 		_ = c.nodeInfoMonitorPeriodic.Start(false)
 	}
 	if c.userReportPeriodic != nil && newN.PushInterval != 0 &&
 		c.userReportPeriodic.Interval != newN.PushInterval {
 		c.info.PushInterval = newN.PushInterval
-		c.userReportPeriodic.Interval = newN.PushInterval
+		c.userReportPeriodic.SetInterval(newN.PushInterval)
 		c.userReportPeriodic.Close()
 		_ = c.userReportPeriodic.Start(false)
 	}
