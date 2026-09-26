@@ -58,3 +58,25 @@ func TestTask_ZeroIntervalIsNotABusyLoop(t *testing.T) {
 		t.Fatalf("zero interval ran %d times in 100ms", n)
 	}
 }
+
+// A panic in one pass must not end the loop, let alone the process.
+func TestTask_PanicDoesNotStopTheLoop(t *testing.T) {
+	var runs atomic.Int64
+	ts := &Task{Interval: 5 * time.Millisecond, Execute: func() error {
+		if runs.Add(1) == 1 {
+			panic("boom")
+		}
+		return nil
+	}}
+	_ = ts.Start(true)
+	defer ts.Close()
+	// Poll rather than sleep a fixed time: under a loaded -race run the loop
+	// can be slow to be scheduled, which is not what this test is about.
+	deadline := time.Now().Add(3 * time.Second)
+	for runs.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n := runs.Load(); n < 3 {
+		t.Fatalf("loop stopped after the panic: %d runs", n)
+	}
+}

@@ -1,8 +1,11 @@
 package task
 
 import (
+	"runtime/debug"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // minInterval stands in for an Interval that is zero or negative. Without it
@@ -44,7 +47,7 @@ func (t *Task) Start(first bool) error {
 
 	go func() {
 		if first {
-			if err := t.Execute(); err != nil {
+			if err := t.run(); err != nil {
 				t.halt(stop)
 				return
 			}
@@ -64,7 +67,7 @@ func (t *Task) Start(first bool) error {
 			default:
 			}
 
-			if err := t.Execute(); err != nil {
+			if err := t.run(); err != nil {
 				t.halt(stop)
 				return
 			}
@@ -100,4 +103,20 @@ func (t *Task) SetInterval(d time.Duration) {
 	t.access.Lock()
 	t.Interval = d
 	t.access.Unlock()
+}
+
+// run executes one pass and turns a panic into a logged error.
+//
+// Every node's periodic work runs here - pulling users, reporting traffic,
+// renewing certificates - and a panic in any of it used to take the whole
+// process down, and with it every node the server carries. One bad pass now
+// costs that pass only; the loop carries on at the next interval.
+func (t *Task) run() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.WithField("stack", string(debug.Stack())).Error("task panicked; continuing at the next interval: ", r)
+			err = nil
+		}
+	}()
+	return t.Execute()
 }
