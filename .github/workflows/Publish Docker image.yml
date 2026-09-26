@@ -10,7 +10,9 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/v2bx
+  # Lowercase by hand: an image reference must be, and the owner name is
+  # PoriyaVali - every push failed with "repository name must be lowercase".
+  IMAGE_NAME: poriyavali/v2bx
 
 jobs:
   build:
