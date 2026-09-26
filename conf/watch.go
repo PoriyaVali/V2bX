@@ -5,10 +5,14 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
+
+// reloadMu serialises config reloads.
+var reloadMu sync.Mutex
 
 func (p *Conf) Watch(filePath, xDnsPath string, sDnsPath string, reload func()) error {
 	watcher, err := fsnotify.NewWatcher()
@@ -30,17 +34,27 @@ func (p *Conf) Watch(filePath, xDnsPath string, sDnsPath string, reload func()) 
 				pre = time.Now()
 				go func() {
 					time.Sleep(5 * time.Second)
+					// One reload at a time: a second edit arriving while the
+					// first is still tearing nodes down must not interleave.
+					reloadMu.Lock()
+					defer reloadMu.Unlock()
 					switch filepath.Base(strings.TrimSuffix(e.Name, "~")) {
 					case filepath.Base(xDnsPath), filepath.Base(sDnsPath):
 						log.Println("DNS file changed, reloading...")
 					default:
 						log.Println("config file changed, reloading...")
 					}
-					*p = *New()
-					err := p.LoadFromPath(filePath)
-					if err != nil {
-						log.Printf("reload config error: %s", err)
+					// Parse into a fresh value and only then swap it in. This
+					// used to reset the live config, log a parse error and call
+					// reload() anyway - so one typo in config.json tore down
+					// every node and rebuilt them from an empty config, leaving
+					// the process up and serving nobody.
+					next := New()
+					if err := next.LoadFromPath(filePath); err != nil {
+						log.Printf("reload config error, keeping the running config: %s", err)
+						return
 					}
+					*p = *next
 					reload()
 					log.Println("reload config success")
 				}()

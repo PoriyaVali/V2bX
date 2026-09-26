@@ -63,12 +63,16 @@ func (c *Controller) syncUIDIndex() {
 }
 
 // Start implement the Start() function of the service interface
-func (c *Controller) Start() error {
+func (c *Controller) Start() (err error) {
 	// First fetch Node Info
-	var err error
 	node, err := c.apiClient.GetNodeInfo()
 	if err != nil {
 		return fmt.Errorf("get node info error: %s", err)
+	}
+	if node == nil {
+		// A 304 or an unchanged body. Only possible if this client has polled
+		// before; the retry loop builds a fresh one for exactly this reason.
+		return fmt.Errorf("get node info error: panel sent no node info")
 	}
 	// Update user
 	//
@@ -106,6 +110,21 @@ func (c *Controller) Start() error {
 
 	// add limiter
 	l := limiter.AddLimiter(c.tag, &c.LimitConfig, c.userList, c.aliveMap)
+	// A start that fails part-way must leave nothing behind: the node is
+	// retried, and a leftover limiter or a node still registered in the core
+	// would make the next attempt fail with "already exists" forever.
+	nodeAdded := false
+	defer func() {
+		if err == nil {
+			return
+		}
+		if nodeAdded {
+			if derr := c.server.DelNode(c.tag); derr != nil {
+				log.WithField("tag", c.tag).Error("Undo AddNode after failed start: ", derr)
+			}
+		}
+		limiter.DeleteLimiter(c.tag)
+	}()
 	// add rule limiter
 	if err = l.UpdateRule(&node.Rules); err != nil {
 		return fmt.Errorf("update rule error: %s", err)
@@ -122,6 +141,7 @@ func (c *Controller) Start() error {
 	if err != nil {
 		return fmt.Errorf("add new node error: %s", err)
 	}
+	nodeAdded = true
 	added, err := c.server.AddUsers(&vCore.AddUsersParams{
 		Tag:      c.tag,
 		Users:    c.userList,

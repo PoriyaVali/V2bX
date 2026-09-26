@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
@@ -23,8 +24,12 @@ var (
 var serverCommand = cobra.Command{
 	Use:   "server",
 	Short: "Run V2bX server",
-	Run:   serverHandle,
-	Args:  cobra.NoArgs,
+	// RunE, not Run: a start that fails must end the process with a non-zero
+	// status. With Run the error was only logged and the process exited 0, and
+	// the systemd unit restarts on FAILURE only - so a node that booted while the
+	// panel was unreachable simply stayed down until someone noticed.
+	RunE: serverHandle,
+	Args: cobra.NoArgs,
 }
 
 func init() {
@@ -37,13 +42,11 @@ func init() {
 	command.AddCommand(&serverCommand)
 }
 
-func serverHandle(_ *cobra.Command, _ []string) {
+func serverHandle(_ *cobra.Command, _ []string) error {
 	showVersion()
 	c := conf.New()
-	err := c.LoadFromPath(config)
-	if err != nil {
-		log.WithField("err", err).Error("Load config file failed")
-		return
+	if err := c.LoadFromPath(config); err != nil {
+		return fmt.Errorf("load config file: %w", err)
 	}
 	switch c.LogConfig.Level {
 	case "debug":
@@ -58,29 +61,30 @@ func serverHandle(_ *cobra.Command, _ []string) {
 	if c.LogConfig.Output != "" {
 		f, err := os.OpenFile(c.LogConfig.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
+			// Keep stdout. Handing logrus the nil *os.File from a failed open
+			// silently discarded every log line from then on.
 			log.WithField("err", err).Error("Open log file failed, using stdout instead")
+		} else {
+			log.SetOutput(f)
 		}
-		log.SetOutput(f)
 	}
 	limiter.Init()
 	log.Info("Start V2bX...")
 	vc, err := vCore.NewCore(c.CoresConfig)
 	if err != nil {
-		log.WithField("err", err).Error("new core failed")
-		return
+		return fmt.Errorf("new core: %w", err)
 	}
-	err = vc.Start()
-	if err != nil {
-		log.WithField("err", err).Error("Start core failed")
-		return
+	if err = vc.Start(); err != nil {
+		return fmt.Errorf("start core: %w", err)
 	}
-	defer vc.Close()
+	// A closure, not `defer vc.Close()`: that form binds the core that exists
+	// right now, so after a reload the process would close the old one on exit
+	// and leave the running one open.
+	defer func() { _ = vc.Close() }()
 	log.Info("Core ", vc.Type(), " started")
 	nodes := node.New()
-	err = nodes.Start(c.NodeConfig, vc)
-	if err != nil {
-		log.WithField("err", err).Error("Run nodes failed")
-		return
+	if err = nodes.Start(c.NodeConfig, vc); err != nil {
+		return fmt.Errorf("run nodes: %w", err)
 	}
 	log.Info("Nodes started")
 	metrics.Start(c.MetricsConfig.Listen)
@@ -88,42 +92,42 @@ func serverHandle(_ *cobra.Command, _ []string) {
 	sdns := os.Getenv("SING_DNS_PATH")
 	if watch {
 		err = c.Watch(config, xdns, sdns, func() {
+			// Everything below runs after the old nodes and core are gone, so a
+			// failure here would leave the process alive and serving nobody -
+			// and systemd, seeing it alive, would never step in. Exit instead:
+			// the unit restarts on failure and starts from the file again.
 			nodes.Close()
-			err = vc.Close()
-			if err != nil {
-				log.WithField("err", err).Error("Restart node failed")
-				return
+			if err := vc.Close(); err != nil {
+				log.WithField("err", err).Error("Close core before reload failed")
 			}
-			vc, err = vCore.NewCore(c.CoresConfig)
+			newCore, err := vCore.NewCore(c.CoresConfig)
 			if err != nil {
-				log.WithField("err", err).Error("New core failed")
-				return
+				log.WithField("err", err).Error("New core failed during reload; exiting so the service restarts")
+				os.Exit(1)
 			}
-			err = vc.Start()
-			if err != nil {
-				log.WithField("err", err).Error("Start core failed")
-				return
+			if err = newCore.Start(); err != nil {
+				log.WithField("err", err).Error("Start core failed during reload; exiting so the service restarts")
+				os.Exit(1)
 			}
+			vc = newCore
 			log.Info("Core ", vc.Type(), " restarted")
-			err = nodes.Start(c.NodeConfig, vc)
-			if err != nil {
-				log.WithField("err", err).Error("Run nodes failed")
-				return
+			if err = nodes.Start(c.NodeConfig, vc); err != nil {
+				log.WithField("err", err).Error("Run nodes failed during reload; exiting so the service restarts")
+				os.Exit(1)
 			}
 			log.Info("Nodes restarted")
 			runtime.GC()
 		})
 		if err != nil {
-			log.WithField("err", err).Error("start watch failed")
-			return
+			return fmt.Errorf("start watch: %w", err)
 		}
 	}
 	// clear memory
 	runtime.GC()
 	// wait exit signal
-	{
-		osSignals := make(chan os.Signal, 1)
-		signal.Notify(osSignals, syscall.SIGINT, syscall.SIGTERM)
-		<-osSignals
-	}
+	osSignals := make(chan os.Signal, 1)
+	signal.Notify(osSignals, syscall.SIGINT, syscall.SIGTERM)
+	<-osSignals
+	nodes.Close()
+	return nil
 }
