@@ -74,7 +74,10 @@ func (c *Controller) requestCert() error {
 }
 
 func generateSelfSslCertificate(domain, certPath, keyPath string) error {
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return fmt.Errorf("generate key: %w", err)
+	}
 	tmpl := &x509.Certificate{
 		Version:      3,
 		SerialNumber: big.NewInt(time.Now().Unix()),
@@ -85,34 +88,32 @@ func generateSelfSslCertificate(domain, certPath, keyPath string) error {
 		BasicConstraintsValid: true,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(30, 0, 0),
+		// An hour back, so a client whose clock runs a little behind does not
+		// reject a certificate that is "not yet valid".
+		NotBefore: time.Now().Add(-time.Hour),
+		NotAfter:  time.Now().AddDate(30, 0, 0),
 	}
 	cert, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(certPath, os.O_CREATE|os.O_RDWR, 0644)
+	if err := writePEM(certPath, 0o644, "CERTIFICATE", cert); err != nil {
+		return err
+	}
+	// 0600: this is the node's private key. It was written world-readable, and
+	// labelled "EC PRIVATE KEY" around PKCS#1 RSA bytes (Go's loader guesses
+	// past the label; other tools do not). Both files were also never closed.
+	return writePEM(keyPath, 0o600, "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(key))
+}
+
+func writePEM(path string, mode os.FileMode, blockType string, der []byte) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
-	err = pem.Encode(f, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: cert,
-	})
-	if err != nil {
+	if err := pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}); err != nil {
+		f.Close()
 		return err
 	}
-	f, err = os.OpenFile(keyPath, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		return err
-	}
-	err = pem.Encode(f, &pem.Block{
-		Type:  "EC PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(key),
-	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return f.Close()
 }
