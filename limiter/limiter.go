@@ -2,7 +2,6 @@ package limiter
 
 import (
 	"errors"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,8 +21,7 @@ func Init() {
 }
 
 type Limiter struct {
-	DomainRules   []*regexp.Regexp
-	ProtocolRules []string
+	rules         atomic.Pointer[ruleSet] // audit rules; see rule.go
 	SpeedLimit    int
 	UserOnlineIP  *sync.Map    // Key: TagUUID, value: {Key: Ip, value: Uid}
 	OldUserOnline *sync.Map    // Key: Ip, value: Uid

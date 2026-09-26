@@ -358,17 +358,11 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 
 	// parse rules and dns
 	for i := range cm.Routes {
-		var matchs []string
-		if _, ok := cm.Routes[i].Match.(string); ok {
-			matchs = strings.Split(cm.Routes[i].Match.(string), ",")
-		} else if _, ok = cm.Routes[i].Match.([]string); ok {
-			matchs = cm.Routes[i].Match.([]string)
-		} else {
-			temp := cm.Routes[i].Match.([]interface{})
-			matchs = make([]string, len(temp))
-			for i := range temp {
-				matchs[i] = temp[i].(string)
-			}
+		matchs := routeMatches(cm.Routes[i].Match)
+		if len(matchs) == 0 {
+			// Nothing to match. An empty or null match used to crash the
+			// process here (an unchecked type assertion, then matchs[0]).
+			continue
 		}
 		switch cm.Routes[i].Action {
 		case "block":
@@ -432,16 +426,43 @@ func anyToInt64(i interface{}) int64 {
 	}
 }
 
+// defaultInterval stands in for a push/pull interval the panel did not send
+// or sent as nothing usable.
+const defaultInterval = 60 * time.Second
+
+// intervalToTime converts the panel's push/pull interval (seconds, as a number
+// or a string) to a duration. A missing, zero, negative or unparsable value
+// yields defaultInterval: nil used to panic here, and zero produced a task
+// that re-ran with no pause at all - every node hammering the panel.
 func intervalToTime(i interface{}) time.Duration {
-	switch reflect.TypeOf(i).Kind() {
-	case reflect.Int:
-		return time.Duration(i.(int)) * time.Second
-	case reflect.String:
-		i, _ := strconv.Atoi(i.(string))
-		return time.Duration(i) * time.Second
-	case reflect.Float64:
-		return time.Duration(i.(float64)) * time.Second
-	default:
-		return time.Duration(reflect.ValueOf(i).Int()) * time.Second
+	if seconds := anyToInt64(i); seconds > 0 {
+		return time.Duration(seconds) * time.Second
 	}
+	return defaultInterval
+}
+
+// routeMatches normalises a route's "match" field, which the panel may send as
+// a comma-separated string, a list of strings, or a list of mixed JSON values.
+// Anything that is not a non-empty string is dropped.
+func routeMatches(m interface{}) []string {
+	var raw []string
+	switch v := m.(type) {
+	case string:
+		raw = strings.Split(v, ",")
+	case []string:
+		raw = v
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				raw = append(raw, s)
+			}
+		}
+	}
+	out := raw[:0:0]
+	for _, s := range raw {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
