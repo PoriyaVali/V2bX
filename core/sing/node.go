@@ -61,6 +61,11 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		Listen:      (*badoption.Addr)(&addr),
 		ListenPort:  uint16(info.Common.ServerPort),
 		TCPFastOpen: c.SingOptions.TCPFastOpen,
+		// Reap vanished devices in about 5 minutes instead of about 16; see
+		// conf.DefaultTCPKeepAliveIdle.
+		TCPKeepAlive:         badoption.Duration(c.SingOptions.KeepAliveIdle()),
+		TCPKeepAliveInterval: badoption.Duration(c.SingOptions.KeepAliveInterval()),
+		UDPTimeout:           option.UDPTimeoutCompat(c.SingOptions.UDPIdle()),
 		// Wire the SingOptions sniff/domain settings into the inbound. Without
 		// this, sniffing is off so the destination stays an IP — domain and
 		// protocol audit rules (hook.go) never match and logs show raw IPs.

@@ -1,6 +1,8 @@
 package conf
 
 import (
+	"time"
+
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -60,11 +62,53 @@ type SingOptions struct {
 	// out. Only anytls inbounds use it today — it is the only protocol here
 	// whose library accepts a fallback handler.
 	DecoySite *bool `json:"DecoySite"`
+	// Seconds; 0 = the defaults below.
+	TCPKeepAliveIdle     int `json:"TCPKeepAliveIdle"`
+	TCPKeepAliveInterval int `json:"TCPKeepAliveInterval"`
+	UDPTimeout           int `json:"UDPTimeout"`
 }
 
 // DecoyEnabled reports whether the decoy should run. Pointer + nil check rather
 // than a plain bool so an operator's explicit `"DecoySite": false` survives the
 // default, which a zero-value bool could not express.
+// How long a subscriber's vanished device may keep holding a connection.
+//
+// A phone that loses signal or switches network sends no FIN, so its session
+// stays open on the node - with every stream and outbound connection in it -
+// until TCP keepalive declares it dead. sing-box's defaults (5 min idle, then
+// probes 75 s apart, 9 of them) take about 16 minutes; on Iranian mobile
+// networks that is a lot of dead sessions carried at any moment. These make it
+// about 5 minutes. A live device answers a probe from its kernel without
+// waking any app, and is probed at most once per idle period.
+const (
+	DefaultTCPKeepAliveIdle     = 120 // seconds of silence before the first probe
+	DefaultTCPKeepAliveInterval = 20  // seconds between unanswered probes
+	// A UDP flow (QUIC, DNS, calls) is kept this long after its last packet.
+	// sing-box keeps 5 minutes; QUIC gives up after 30 s of silence anyway.
+	DefaultUDPTimeout = 120
+)
+
+func secondsOr(v, def int) time.Duration {
+	if v <= 0 {
+		v = def
+	}
+	return time.Duration(v) * time.Second
+}
+
+// KeepAliveIdle, KeepAliveInterval and UDPIdle resolve the timeouts, applying
+// the defaults above to unset fields.
+func (o *SingOptions) KeepAliveIdle() time.Duration {
+	return secondsOr(o.TCPKeepAliveIdle, DefaultTCPKeepAliveIdle)
+}
+
+func (o *SingOptions) KeepAliveInterval() time.Duration {
+	return secondsOr(o.TCPKeepAliveInterval, DefaultTCPKeepAliveInterval)
+}
+
+func (o *SingOptions) UDPIdle() time.Duration {
+	return secondsOr(o.UDPTimeout, DefaultUDPTimeout)
+}
+
 func (o *SingOptions) DecoyEnabled() bool {
 	return o == nil || o.DecoySite == nil || *o.DecoySite
 }
