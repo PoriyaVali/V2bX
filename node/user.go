@@ -1,6 +1,9 @@
 package node
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+
 	"github.com/PoriyaVali/V2bX/api/panel"
 	log "github.com/sirupsen/logrus"
 )
@@ -30,17 +33,9 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		toReport = c.applyReportMinTraffic(userTraffic)
 	}
 	if len(toReport) > 0 {
-		err = c.apiClient.ReportUserTraffic(toReport)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Info("Report user traffic failed")
-		} else {
-			log.WithField("tag", c.tag).Infof("Report %d users traffic", len(toReport))
-			log.WithField("tag", c.tag).Debugf("User traffic: %+v", toReport)
-		}
+		c.queueTrafficReport(toReport)
 	}
+	c.flushTrafficReports()
 
 	// The limiter is the usual source of online addresses: every core routes its
 	// connections through CheckLimit, which records them. One does not — mdns
@@ -195,4 +190,61 @@ func (c *Controller) applyReportMinTraffic(in []panel.UserTraffic) []panel.UserT
 		}
 	}
 	return out
+}
+
+// maxPendingReports bounds how many unsent traffic batches a node holds while
+// the panel is unreachable: at a 41 s push interval, about four hours.
+const maxPendingReports = 360
+
+// pendingReport is one traffic batch and the id it is sent under. The id stays
+// the same across every attempt, which is what lets the panel count it once.
+type pendingReport struct {
+	id      string
+	traffic []panel.UserTraffic
+}
+
+func newReportID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// queueTrafficReport adds this cycle's batch behind any that have not gone out.
+//
+// The core's counters were already reset when the batch was read, so a batch
+// that failed to send used to be simply gone - traffic nobody was billed for.
+func (c *Controller) queueTrafficReport(traffic []panel.UserTraffic) {
+	c.pendingReports = append(c.pendingReports, pendingReport{id: newReportID(), traffic: traffic})
+	if over := len(c.pendingReports) - maxPendingReports; over > 0 {
+		var lost int64
+		for _, r := range c.pendingReports[:over] {
+			for _, t := range r.traffic {
+				lost += t.Upload + t.Download
+			}
+		}
+		log.WithField("tag", c.tag).Errorf(
+			"Panel unreachable for too long: dropping %d unsent traffic report(s), %d bytes", over, lost)
+		c.pendingReports = append([]pendingReport(nil), c.pendingReports[over:]...)
+	}
+}
+
+// flushTrafficReports sends the queued batches oldest first and stops at the
+// first failure, keeping the rest for the next cycle. Only the report task
+// touches the queue, so it needs no lock.
+func (c *Controller) flushTrafficReports() {
+	for len(c.pendingReports) > 0 {
+		r := c.pendingReports[0]
+		if err := c.apiClient.ReportUserTrafficWithID(r.id, r.traffic); err != nil {
+			log.WithFields(log.Fields{
+				"tag":     c.tag,
+				"err":     err,
+				"pending": len(c.pendingReports),
+			}).Info("Report user traffic failed; will resend")
+			return
+		}
+		log.WithField("tag", c.tag).Infof("Report %d users traffic", len(r.traffic))
+		log.WithField("tag", c.tag).Debugf("User traffic: %+v", r.traffic)
+		c.pendingReports = c.pendingReports[1:]
+	}
+	c.pendingReports = nil
 }

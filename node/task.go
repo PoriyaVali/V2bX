@@ -96,11 +96,13 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	// get user alive
 	newA, err := c.apiClient.GetUserAlive()
 	if err != nil {
+		// Keep the counts we have and carry on: aborting here skipped the user
+		// list sync below, so one failed alive poll delayed membership changes.
 		log.WithFields(log.Fields{
 			"tag": c.tag,
 			"err": err,
-		}).Error("Get alive list failed")
-		return nil
+		}).Warn("Get alive list failed; keeping the previous counts")
+		newA, err = nil, nil
 	}
 	// Hot path: if only thresholds/intervals changed, apply them in place and
 	// treat the node as unchanged so we skip the disruptive DelNode/re-add

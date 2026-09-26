@@ -102,29 +102,28 @@ func (c *Client) GetUserList() ([]UserInfo, error) {
 	return userlist.Users, nil
 }
 
-// GetUserAlive will fetch the alive_ip count for users
+// GetUserAlive fetches the fleet-wide alive_ip count per user.
+//
+// A failure is returned as an error. It used to come back as an empty map with
+// no error, which the caller installed - so a single failed poll reset every
+// user's device count to zero until the next one.
 func (c *Client) GetUserAlive() (map[int]int, error) {
-	c.AliveMap = &AliveMap{}
 	const path = "/api/v1/server/UniProxy/alivelist"
 	r, err := c.client.R().
 		ForceContentType("application/json").
 		Get(path)
-	if err != nil || r.StatusCode() >= 399 {
-		c.AliveMap.Alive = make(map[int]int)
-		return c.AliveMap.Alive, nil
+	if err = c.checkResponse(r, path, err); err != nil {
+		return nil, err
 	}
-	if r == nil || r.RawResponse == nil {
-		fmt.Printf("received nil response or raw response")
-		c.AliveMap.Alive = make(map[int]int)
-		return c.AliveMap.Alive, nil
+	alive := &AliveMap{}
+	if err := json.Unmarshal(r.Body(), alive); err != nil {
+		return nil, fmt.Errorf("decode alive list: %w", err)
 	}
-	defer r.RawResponse.Body.Close()
-	if err := json.Unmarshal(r.Body(), c.AliveMap); err != nil {
-		fmt.Printf("unmarshal user alive list error: %s", err)
-		c.AliveMap.Alive = make(map[int]int)
+	if alive.Alive == nil {
+		alive.Alive = make(map[int]int)
 	}
-
-	return c.AliveMap.Alive, nil
+	c.AliveMap = alive
+	return alive.Alive, nil
 }
 
 type UserTraffic struct {
@@ -133,22 +132,34 @@ type UserTraffic struct {
 	Download int64
 }
 
-// ReportUserTraffic reports the user traffic
+// ReportUserTraffic reports the user traffic without a report id.
 func (c *Client) ReportUserTraffic(userTraffic []UserTraffic) error {
+	return c.ReportUserTrafficWithID("", userTraffic)
+}
+
+// ReportIDHeader carries a report's id, so the panel can count a batch once
+// however many times it arrives. A resend is otherwise indistinguishable from
+// new traffic: the HTTP client retries on any error, including a timeout
+// after the panel had already recorded the batch, and a failed batch is
+// resent on the next cycle.
+const ReportIDHeader = "X-Report-Id"
+
+// ReportUserTrafficWithID reports one batch of user traffic. Send the same id
+// for every attempt at the same batch.
+func (c *Client) ReportUserTrafficWithID(reportID string, userTraffic []UserTraffic) error {
 	data := make(map[int][]int64, len(userTraffic))
 	for i := range userTraffic {
 		data[userTraffic[i].UID] = []int64{userTraffic[i].Upload, userTraffic[i].Download}
 	}
 	const path = "/api/v1/server/UniProxy/push"
-	r, err := c.client.R().
+	req := c.client.R().
 		SetBody(data).
-		ForceContentType("application/json").
-		Post(path)
-	err = c.checkResponse(r, path, err)
-	if err != nil {
-		return err
+		ForceContentType("application/json")
+	if reportID != "" {
+		req.SetHeader(ReportIDHeader, reportID)
 	}
-	return nil
+	r, err := req.Post(path)
+	return c.checkResponse(r, path, err)
 }
 
 func (c *Client) ReportNodeOnlineUsers(data *map[int][]string) error {
@@ -157,11 +168,7 @@ func (c *Client) ReportNodeOnlineUsers(data *map[int][]string) error {
 		SetBody(data).
 		ForceContentType("application/json").
 		Post(path)
-	err = c.checkResponse(r, path, err)
-
-	if err != nil {
-		return nil
-	}
-
-	return nil
+	// Return the error. It was swallowed, so a failed report was logged as
+	// "Reported" and nobody could tell the panel was not hearing from us.
+	return c.checkResponse(r, path, err)
 }

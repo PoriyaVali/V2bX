@@ -25,6 +25,7 @@ type Controller struct {
 	aliveMap                  map[int]int
 	info                      *panel.NodeInfo
 	reportAccum               map[int][2]int64 // UID -> [up,down] carried over below node_report_min_traffic
+	pendingReports            []pendingReport  // traffic batches not yet accepted by the panel, oldest first
 	nodeInfoMonitorPeriodic   *task.Task
 	userReportPeriodic        *task.Task
 	renewCertPeriodic         *task.Task
@@ -100,7 +101,10 @@ func (c *Controller) Start() (err error) {
 	}
 	c.aliveMap, err = c.apiClient.GetUserAlive()
 	if err != nil {
-		return fmt.Errorf("failed to get user alive list: %s", err)
+		// Not a reason to keep the node down: with no counts yet every device
+		// is admitted, and the next poll fills them in.
+		log.WithField("err", err).Warn("Get alive list failed; starting without device counts")
+		c.aliveMap, err = make(map[int]int), nil
 	}
 	if len(c.Options.Name) == 0 {
 		c.tag = c.buildNodeTag(node)

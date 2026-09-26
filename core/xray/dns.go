@@ -51,7 +51,9 @@ func updateDNSConfig(node *panel.NodeInfo) (err error) {
 			log.WithField("err", err).Error("Error marshaling dnsConfig to JSON")
 			return err
 		}
-		err = saveDnsConfig(dnsConfigJSON, dnsPath)
+		// Return it: this assigned to the block's own err, so a failed save
+		// was reported to the caller as success.
+		return saveDnsConfig(dnsConfigJSON, dnsPath)
 	}
 	return err
 }
@@ -65,7 +67,10 @@ func saveDnsConfig(dns []byte, dnsPath string) (err error) {
 	if !bytes.Equal(currentData, dns) {
 		coreDnsConfig := &coreConf.DNSConfig{}
 		if err = json.Unmarshal(dns, coreDnsConfig); err != nil {
+			// Stop here: carrying on built an empty config, accepted it and
+			// wrote the unparsable one to disk.
 			log.WithField("err", err).Error("Failed to unmarshal DNS config")
+			return err
 		}
 		_, err := coreDnsConfig.Build()
 		if err != nil {

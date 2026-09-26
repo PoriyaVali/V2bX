@@ -59,6 +59,18 @@ type fakePanel struct {
 	// current list, like the real panel. Off by default so tests that only care
 	// about "here is the list now" keep getting a plain 200.
 	etag bool
+	// pushFails makes the next N traffic reports answer 500.
+	pushFails int
+	// pushes records every traffic report attempt, in arrival order.
+	pushes []pushAttempt
+	// aliveFails makes the alive-list endpoint answer 500.
+	aliveFails bool
+}
+
+type pushAttempt struct {
+	id     string
+	body   map[int][]int64
+	status int
 }
 
 func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *fakePanel {
@@ -91,6 +103,13 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 		w.Write(body)
 	})
 	mux.HandleFunc("/api/v1/server/UniProxy/alivelist", func(w http.ResponseWriter, _ *http.Request) {
+		f.mu.Lock()
+		fail := f.aliveFails
+		f.mu.Unlock()
+		if fail {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"alive":{}}`))
 	})
@@ -102,7 +121,21 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 		f.mu.Unlock()
 		w.Write([]byte(`{"data":true}`))
 	})
-	mux.HandleFunc("/api/v1/server/UniProxy/push", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/api/v1/server/UniProxy/push", func(w http.ResponseWriter, r *http.Request) {
+		var body map[int][]int64
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.mu.Lock()
+		status := http.StatusOK
+		if f.pushFails > 0 {
+			f.pushFails--
+			status = http.StatusInternalServerError
+		}
+		f.pushes = append(f.pushes, pushAttempt{id: r.Header.Get(panel.ReportIDHeader), body: body, status: status})
+		f.mu.Unlock()
+		if status != http.StatusOK {
+			http.Error(w, "boom", status)
+			return
+		}
 		w.Write([]byte(`{"data":true}`))
 	})
 
