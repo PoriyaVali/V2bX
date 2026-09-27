@@ -819,14 +819,43 @@ install_bbr() {
         echo -e "${red}BBR not supported on Alpine | BBR در Alpine پشتیبانی نمی‌شود${plain}"
         return
     fi
-    echo -e "${green}Enabling BBR | فعال‌سازی BBR...${plain}"
+    # The same settings as `V2bX bbr`, written to one file that is replaced
+    # whole: running this again changes nothing. It used to append to
+    # /etc/sysctl.conf on every run.
+    echo -e "${green}Enabling BBR + FQ and low-latency TCP settings | فعال‌سازی BBR + FQ و تنظیمات کم‌تأخیر...${plain}"
     modprobe tcp_bbr 2>/dev/null
-    echo "tcp_bbr" >> /etc/modules-load.d/modules.conf 2>/dev/null
-    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
-    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    sysctl -p &>/dev/null
+    echo "tcp_bbr" > /etc/modules-load.d/v2bx-bbr.conf 2>/dev/null
+    # Lines earlier versions appended; the file below sets the same values.
+    if [[ -f /etc/sysctl.conf ]]; then
+        sed -i -e '/^net\.core\.default_qdisc=fq$/d' \
+               -e '/^net\.ipv4\.tcp_congestion_control=bbr$/d' /etc/sysctl.conf
+    fi
+    if [[ -f /etc/modules-load.d/modules.conf ]]; then
+        sed -i '/^tcp_bbr$/d' /etc/modules-load.d/modules.conf
+    fi
+    rm -f /etc/sysctl.d/99-bbr.conf
+    cat > /etc/sysctl.d/99-v2bx-network.conf << 'SYSCTLEOF'
+# Written by the V2bX installer (same as `V2bX bbr`). Remove this file and reboot to undo.
+
+# fair queueing: one busy download cannot hold back everyone's packets, and it paces BBR
+net.core.default_qdisc=fq
+
+# paces by measured bandwidth and RTT instead of backing off at every lost packet
+net.ipv4.tcp_congestion_control=bbr
+
+# keep at most 16 KiB queued unsent per socket: an interactive reply is not stuck behind a download sharing the connection
+net.ipv4.tcp_notsent_lowat=16384
+
+# a connection that paused keeps its speed instead of restarting slow
+net.ipv4.tcp_slow_start_after_idle=0
+
+# when large packets silently vanish on the path (common behind tunnels), find a size that passes
+net.ipv4.tcp_mtu_probing=1
+SYSCTLEOF
+    sysctl -p /etc/sysctl.d/99-v2bx-network.conf &>/dev/null
     if sysctl net.ipv4.tcp_congestion_control | grep -q "bbr"; then
         echo -e "${green}BBR enabled successfully | BBR با موفقیت فعال شد${plain}"
+        echo -e "  qdisc: $(sysctl -n net.core.default_qdisc 2>/dev/null)  notsent_lowat: $(sysctl -n net.ipv4.tcp_notsent_lowat 2>/dev/null)  slow_start_after_idle: $(sysctl -n net.ipv4.tcp_slow_start_after_idle 2>/dev/null)  mtu_probing: $(sysctl -n net.ipv4.tcp_mtu_probing 2>/dev/null)"
     else
         echo -e "${yellow}BBR may require a kernel upgrade. Current kernel: $(uname -r)${plain}"
     fi
@@ -1026,7 +1055,7 @@ show_menu() {
   ${green}9.${plain}  Generate config wizard | راهنمای ساخت تنظیمات
   ${green}10.${plain} Edit config | ویرایش تنظیمات
   ${green}11.${plain} Generate X25519 key | تولید کلید X25519
-  ${green}12.${plain} Install BBR | نصب BBR
+  ${green}12.${plain} BBR + low-latency TCP | BBR و تنظیمات کم‌تأخیر
   ${green}13.${plain} Allow all ports | باز کردن تمام پورت‌ها
   ${green}14.${plain} Certificate expiry | انقضای گواهی‌ها
   ${green}15.${plain} Setup Iran tunnel | راه‌اندازی تونل ایران
