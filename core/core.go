@@ -14,16 +14,13 @@ func NewCore(c []conf.CoreConfig) (Core, error) {
 	if len(c) == 0 {
 		return nil, errors.New("no have vail core")
 	}
-	// multi core
-	if len(c) > 1 {
-		return NewSelector(c)
-	}
-	// one core
-	if f, ok := cores[c[0].Type]; ok {
-		return f(&c[0])
-	} else {
-		return nil, errors.New("unknown core type")
-	}
+	// Always through the selector, one core or several. A lone core used to be
+	// handed out directly, which skipped what the selector does for every node
+	// - resolving which core it belongs to and parsing that core's options -
+	// so a node config without "Core" reached the core with its options unset
+	// and crashed it on a nil pointer. The lookup here was also case-sensitive
+	// where the selector's is not.
+	return NewSelector(c)
 }
 
 func RegisterCore(t string, f func(c *conf.CoreConfig) (Core, error)) {

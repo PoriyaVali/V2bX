@@ -12,11 +12,16 @@ import (
 
 type Selector struct {
 	cores map[string]Core
+	// order lists the cores' keys as the config lists them, so every walk over
+	// the cores - and above all the choice of core for a node - is the same
+	// on every run.
+	order []string
 	nodes sync.Map
 }
 
 func NewSelector(c []conf.CoreConfig) (Core, error) {
 	cs := make(map[string]Core, len(c))
+	order := make([]string, 0, len(c))
 	for _, t := range c {
 		f, ok := cores[strings.ToLower(t.Type)]
 		if !ok {
@@ -26,20 +31,24 @@ func NewSelector(c []conf.CoreConfig) (Core, error) {
 		if err != nil {
 			return nil, err
 		}
-		if t.Name == "" {
-			cs[t.Type] = core1
-		} else {
-			cs[t.Name] = core1
+		key := t.Type
+		if t.Name != "" {
+			key = t.Name
 		}
+		if _, dup := cs[key]; !dup {
+			order = append(order, key)
+		}
+		cs[key] = core1
 	}
 	return &Selector{
 		cores: cs,
+		order: order,
 	}, nil
 }
 
 func (s *Selector) Start() error {
-	for i := range s.cores {
-		err := s.cores[i].Start()
+	for _, name := range s.order {
+		err := s.cores[name].Start()
 		if err != nil {
 			return err
 		}
@@ -49,8 +58,8 @@ func (s *Selector) Start() error {
 
 func (s *Selector) Close() error {
 	var errs []error
-	for i := range s.cores {
-		if err := s.cores[i].Close(); err != nil {
+	for _, name := range s.order {
+		if err := s.cores[name].Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -74,8 +83,11 @@ func (s *Selector) AddNode(tag string, info *panel.NodeInfo, option *conf.Option
 			core = c
 		}
 	} else {
-		// use type to select core
-		for _, c := range s.cores {
+		// use type to select core: the first one in config order that fits.
+		// This ranged over a map and kept the LAST match, so when two cores
+		// could serve the protocol the node landed on either at random.
+		for _, name := range s.order {
+			c := s.cores[name]
 			if len(option.Core) == 0 {
 				if !isSupported(info.Type, c.Protocols()) {
 					continue
@@ -84,18 +96,30 @@ func (s *Selector) AddNode(tag string, info *panel.NodeInfo, option *conf.Option
 				continue
 			}
 			core = c
+			break
 		}
 	}
 	if core == nil {
 		return errors.New("the node type is not support")
 	}
 	if len(option.Core) == 0 {
+		// First placement of this node: parse its options for the core it
+		// landed on.
+		raw := option.RawOptions
+		if len(raw) == 0 {
+			raw = []byte("{}")
+		}
 		option.Core = core.Type()
-		err := option.UnmarshalJSON(option.RawOptions)
+		err := option.UnmarshalJSON(raw)
 		if err != nil {
 			return fmt.Errorf("unmarshal option error: %s", err)
 		}
 		option.RawOptions = nil
+		// Pin the choice. UnmarshalJSON clears Core for a core that has no
+		// options of its own (mdns, trusttunnel); with RawOptions already
+		// consumed, the next AddNode - every reload of the node - then tried
+		// to parse nothing, failed, and the node never came back.
+		option.Core = core.Type()
 	}
 	err := core.AddNode(tag, info, option)
 	if err != nil {
@@ -203,25 +227,22 @@ func (s *Selector) DelUsers(users []panel.UserInfo, tag string, info *panel.Node
 
 func (s *Selector) Protocols() []string {
 	protocols := make([]string, 0)
-	for i := range s.cores {
-		protocols = append(protocols, s.cores[i].Protocols()...)
+	for _, name := range s.order {
+		protocols = append(protocols, s.cores[name].Protocols()...)
 	}
 	return protocols
 }
 
 func (s *Selector) Type() string {
 	t := "Selector("
-	var flag bool
-	for n, c := range s.cores {
-		if flag {
+	for i, name := range s.order {
+		if i > 0 {
 			t += " "
-		} else {
-			flag = true
 		}
-		if len(n) == 0 {
-			t += c.Type()
+		if len(name) == 0 {
+			t += s.cores[name].Type()
 		} else {
-			t += n
+			t += name
 		}
 	}
 	t += ")"
