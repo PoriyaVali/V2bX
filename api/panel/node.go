@@ -265,6 +265,10 @@ type TrustTunnelNode struct {
 	// Required when CertType is "provided".
 	CertChainPath string `json:"cert_chain_path"`
 	CertKeyPath   string `json:"cert_key_path"`
+	// Whether this host can route IPv6. Subscribers are told the same thing
+	// in their link, so the endpoint has to agree with it. nil (a panel
+	// that does not send it) keeps the endpoint's default.
+	HasIPv6 *bool `json:"has_ipv6"`
 }
 
 type HysteriaNode struct {

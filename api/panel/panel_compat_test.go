@@ -177,3 +177,23 @@ func TestGetNodeInfo_AllRouteActions(t *testing.T) {
 		t.Errorf("default_out outbound = %s", n.RouteRules[2].Outbound)
 	}
 }
+
+func TestGetNodeInfo_TrustTunnelHasIPv6(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"server_port":443,"hostname":"h","cert_type":"self-signed","has_ipv6":false}`: "false",
+		`{"server_port":443,"hostname":"h","cert_type":"self-signed","has_ipv6":true}`:  "true",
+		`{"server_port":443,"hostname":"h","cert_type":"self-signed"}`:                  "unset",
+	} {
+		n, err := fetchNode(t, "trusttunnel", body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := "unset"
+		if v := n.TrustTunnel.HasIPv6; v != nil {
+			got = map[bool]string{true: "true", false: "false"}[*v]
+		}
+		if got != want {
+			t.Errorf("%s: has_ipv6 = %s, want %s", body, got, want)
+		}
+	}
+}

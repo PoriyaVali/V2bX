@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -162,7 +163,49 @@ func (t *TrustTunnel) generateConfig(dir string, p *panel.TrustTunnelNode, metri
 		return fmt.Errorf("wizard failed: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
-	return enableMetrics(filepath.Join(dir, "vpn.toml"), metricsPort)
+	vpn := filepath.Join(dir, "vpn.toml")
+	if err := enableMetrics(vpn, metricsPort); err != nil {
+		return err
+	}
+	if p.HasIPv6 != nil {
+		return setTopLevel(vpn, "ipv6_available", strconv.FormatBool(*p.HasIPv6))
+	}
+	return nil
+}
+
+// setTopLevel sets a top-level key of vpn.toml - one written before the first
+// [table] - to value, adding it there if the wizard did not write it.
+//
+// ipv6_available is the one set this way. The wizard always writes true, while
+// the panel tells subscribers whether the host has IPv6 at all: on a host
+// without it the endpoint accepted IPv6 destinations it could not reach, and
+// those connections hung until they timed out.
+func setTopLevel(path, key, value string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read vpn.toml: %w", err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	firstTable := len(lines)
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "[") {
+			firstTable = i
+			break
+		}
+	}
+	entry := key + " = " + value
+	set := false
+	for i := 0; i < firstTable; i++ {
+		k, _, ok := strings.Cut(lines[i], "=")
+		if ok && strings.TrimSpace(k) == key {
+			lines[i] = entry
+			set = true
+		}
+	}
+	if !set {
+		lines = append(lines[:firstTable], append([]string{entry, ""}, lines[firstTable:]...)...)
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600)
 }
 
 // enableMetrics uncomments the [metrics] block the wizard writes commented out.
