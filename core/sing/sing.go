@@ -41,8 +41,8 @@ type Sing struct {
 }
 
 type UserMap struct {
-	uidMap  map[string]int
-	mapLock sync.RWMutex
+	uidMap  map[string]int // format.UserTag(node tag, uuid) -> panel UID
+	mapLock sync.RWMutex   // guards uidMap and Sing.nodeReportMinTrafficBytes
 }
 
 func init() {

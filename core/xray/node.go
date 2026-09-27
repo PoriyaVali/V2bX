@@ -17,7 +17,12 @@ type DNSConfig struct {
 }
 
 func (c *Xray) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) error {
+	// Under the users lock, which GetUserTrafficSlice holds while it reads this
+	// map: one node's reload writing it while another node's report read it
+	// could end the process with "concurrent map read and map write".
+	c.users.mapLock.Lock()
 	c.nodeReportMinTrafficBytes[tag] = config.ReportMinTraffic * 1024
+	c.users.mapLock.Unlock()
 	err := updateDNSConfig(info)
 	if err != nil {
 		return fmt.Errorf("build dns error: %s", err)

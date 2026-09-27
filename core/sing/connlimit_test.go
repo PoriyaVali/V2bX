@@ -1,6 +1,7 @@
 package sing
 
 import (
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -54,13 +55,16 @@ func TestMaxConnsPerUser(t *testing.T) {
 }
 
 func TestLogEvery(t *testing.T) {
-	if !logEvery("k-test", time.Minute) {
+	// logGate is process-wide, so keys unique to this run: with fixed ones a
+	// second run in the same process (-count=2) found them already used.
+	k, other := fmt.Sprintf("k-test-%d", time.Now().UnixNano()), fmt.Sprintf("k-other-%d", time.Now().UnixNano())
+	if !logEvery(k, time.Minute) {
 		t.Fatal("first line suppressed")
 	}
-	if logEvery("k-test", time.Minute) {
+	if logEvery(k, time.Minute) {
 		t.Fatal("second line within the interval not suppressed")
 	}
-	if !logEvery("k-other", time.Minute) {
+	if !logEvery(other, time.Minute) {
 		t.Fatal("a different key was suppressed")
 	}
 }

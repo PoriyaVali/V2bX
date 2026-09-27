@@ -2,6 +2,7 @@ package hy2
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/PoriyaVali/V2bX/common/counter"
 	"github.com/PoriyaVali/V2bX/common/format"
@@ -13,10 +14,17 @@ import (
 var _ server.TrafficLogger = (*HookServer)(nil)
 
 type HookServer struct {
-	Tag                   string
-	logger                *zap.Logger
-	Counter               sync.Map
-	ReportMinTrafficBytes int64
+	Tag     string
+	logger  *zap.Logger
+	Counter sync.Map
+	// reportMin is the node's ReportMinTraffic in bytes. Atomic: a reload
+	// sets it while the report goroutine reads it.
+	reportMin atomic.Int64
+	// auth is the running node's user set. A connection whose user has been
+	// removed is ended at its next traffic log - hysteria checks users only at
+	// the handshake, so without this a removed user kept an open connection
+	// for as long as they cared to.
+	auth atomic.Pointer[V2bX]
 }
 
 func (h *HookServer) TraceStream(stream server.HyStream, stats *server.StreamStats) {
@@ -26,8 +34,9 @@ func (h *HookServer) UntraceStream(stream server.HyStream) {
 }
 
 func (h *HookServer) LogTraffic(id string, tx, rx uint64) (ok bool) {
-	var c interface{}
-	var exists bool
+	if a := h.auth.Load(); a != nil && a.uid(id) == 0 {
+		return false
+	}
 
 	limiterinfo, err := limiter.GetLimiter(h.Tag)
 	if err != nil {
@@ -44,18 +53,14 @@ func (h *HookServer) LogTraffic(id string, tx, rx uint64) (ok bool) {
 		}
 	}
 
-	if c, exists = h.Counter.Load(h.Tag); !exists {
-		c = counter.NewTrafficCounter()
-		h.Counter.Store(h.Tag, c)
-	}
-
-	if tc, ok := c.(*counter.TrafficCounter); ok {
-		tc.Rx(id, int(rx))
-		tc.Tx(id, int(tx))
-		return true
-	}
-
-	return false
+	// LoadOrStore: two first connections on a fresh node each stored their
+	// own counter with Load-then-Store, and the traffic counted into the one
+	// overwritten was never reported.
+	c, _ := h.Counter.LoadOrStore(h.Tag, counter.NewTrafficCounter())
+	tc := c.(*counter.TrafficCounter)
+	tc.Rx(id, int(rx))
+	tc.Tx(id, int(tx))
+	return true
 }
 
 func (s *HookServer) LogOnlineState(id string, online bool) {

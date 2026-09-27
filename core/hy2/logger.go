@@ -47,20 +47,27 @@ var logFormatMap = map[string]zapcore.EncoderConfig{
 	},
 }
 
-func (l *serverLogger) Connect(addr net.Addr, uuid string, tx uint64) {
+// checkLimit runs the limiter for one of the user's requests and records the
+// verdict for LogTraffic, which is where hysteria lets a connection be ended.
+//
+// A missing limiter is logged and let through. It used to be a Panic on
+// hysteria's connection goroutine, where nothing recovers it, so a client
+// arriving while a node was being torn down ended the whole process.
+func (l *serverLogger) checkLimit(addr net.Addr, uuid string) {
 	limiterinfo, err := limiter.GetLimiter(l.Tag)
 	if err != nil {
-		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
+		l.logger.Warn("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
+		return
 	}
-	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
-		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(true)
-		}
-	} else {
-		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(false)
-		}
+	ip := extractIPFromAddr(addr)
+	_, reject := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), ip, addr.Network() == "tcp", !localip.IsNodeOwned(ip))
+	if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
+		userLimit.(*limiter.UserLimitInfo).OverLimit.Store(reject)
 	}
+}
+
+func (l *serverLogger) Connect(addr net.Addr, uuid string, tx uint64) {
+	l.checkLimit(addr, uuid)
 	l.logger.Info("client connected", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.Uint64("tx", tx))
 }
 
@@ -69,19 +76,7 @@ func (l *serverLogger) Disconnect(addr net.Addr, uuid string, err error) {
 }
 
 func (l *serverLogger) TCPRequest(addr net.Addr, uuid, reqAddr string) {
-	limiterinfo, err := limiter.GetLimiter(l.Tag)
-	if err != nil {
-		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
-	}
-	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
-		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(true)
-		}
-	} else {
-		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(false)
-		}
-	}
+	l.checkLimit(addr, uuid)
 	l.logger.Debug("TCP request", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.String("reqAddr", reqAddr))
 }
 
@@ -94,19 +89,7 @@ func (l *serverLogger) TCPError(addr net.Addr, uuid, reqAddr string, err error) 
 }
 
 func (l *serverLogger) UDPRequest(addr net.Addr, uuid string, sessionId uint32, reqAddr string) {
-	limiterinfo, err := limiter.GetLimiter(l.Tag)
-	if err != nil {
-		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
-	}
-	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", !localip.IsNodeOwned(extractIPFromAddr(addr))); r {
-		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(true)
-		}
-	} else {
-		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
-			userLimit.(*limiter.UserLimitInfo).OverLimit.Store(false)
-		}
-	}
+	l.checkLimit(addr, uuid)
 	l.logger.Debug("UDP request", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.Uint32("sessionId", sessionId), zap.String("reqAddr", reqAddr))
 }
 

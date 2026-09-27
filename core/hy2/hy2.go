@@ -1,6 +1,9 @@
 package hy2
 
 import (
+	"errors"
+	"sync"
+
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	"go.uber.org/zap"
@@ -9,9 +12,17 @@ import (
 var _ vCore.Core = (*Hysteria2)(nil)
 
 type Hysteria2 struct {
-	Hy2nodes map[string]Hysteria2node
-	Auth     *V2bX
-	Logger   *zap.Logger
+	// mu guards Hy2nodes and hooks. Nodes are added and removed by one node's
+	// poll goroutine while other nodes' goroutines report and sync users; the
+	// maps were plain and unguarded, which Go can end with a fatal
+	// "concurrent map read and map write".
+	mu       sync.RWMutex
+	Hy2nodes map[string]*Hysteria2node
+	// hooks keeps each node's traffic ledger across a reload of that node.
+	// It used to live and die with the node, so every reload threw away the
+	// traffic counted since the last report, unbilled.
+	hooks  map[string]*HookServer
+	Logger *zap.Logger
 }
 
 func init() {
@@ -28,12 +39,17 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		return nil, err
 	}
 	return &Hysteria2{
-		Hy2nodes: make(map[string]Hysteria2node),
-		Auth: &V2bX{
-			usersMap: make(map[string]int),
-		},
-		Logger: log,
+		Hy2nodes: make(map[string]*Hysteria2node),
+		hooks:    make(map[string]*HookServer),
+		Logger:   log,
 	}, nil
+}
+
+// node returns the running node for tag, or nil.
+func (h *Hysteria2) node(tag string) *Hysteria2node {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.Hy2nodes[tag]
 }
 
 func (h *Hysteria2) Protocols() []string {
@@ -46,14 +62,20 @@ func (h *Hysteria2) Start() error {
 	return nil
 }
 
+// Close stops every node. One that fails to close no longer keeps the rest
+// running.
 func (h *Hysteria2) Close() error {
-	for _, n := range h.Hy2nodes {
-		err := n.Hy2server.Close()
-		if err != nil {
-			return err
+	h.mu.Lock()
+	nodes := h.Hy2nodes
+	h.Hy2nodes = make(map[string]*Hysteria2node)
+	h.mu.Unlock()
+	var errs []error
+	for _, n := range nodes {
+		if err := n.close(); err != nil {
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (h *Hysteria2) Type() string {
