@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"encoding/json"
@@ -223,17 +222,7 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 			if nodeInfo.VAllss.Encryption != "" {
 				switch nodeInfo.VAllss.Encryption {
 				case "mlkem768x25519plus":
-					encSettings := nodeInfo.VAllss.EncryptionSettings
-					parts := []string{
-						"mlkem768x25519plus",
-						encSettings.Mode,
-						encSettings.Ticket,
-					}
-					if encSettings.ServerPadding != "" {
-						parts = append(parts, encSettings.ServerPadding)
-					}
-					parts = append(parts, encSettings.PrivateKey)
-					decryption = strings.Join(parts, ".")
+					decryption = nodeInfo.VAllss.EncryptionSettings.ServerDecryption()
 				default:
 					return fmt.Errorf("vless decryption method %s is not support", nodeInfo.VAllss.Encryption)
 				}
@@ -256,12 +245,14 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 		}
 		inbound.Settings = (*json.RawMessage)(&s)
 	}
+	t := coreConf.TransportProtocol(v.Network)
+	inbound.StreamSetting = &coreConf.StreamConfig{Network: &t}
+	// Set before this return: buildInbound fills it in afterwards, and a
+	// reply with no network settings at all left it nil - a nil dereference
+	// that took the process down.
 	if len(v.NetworkSettings) == 0 {
 		return nil
 	}
-
-	t := coreConf.TransportProtocol(v.Network)
-	inbound.StreamSetting = &coreConf.StreamConfig{Network: &t}
 	switch v.Network {
 	case "tcp":
 		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.TCPSettings)

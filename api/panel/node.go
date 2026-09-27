@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"encoding/json"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Security type
@@ -91,7 +94,8 @@ type TlsSettings struct {
 	ShortId     string `json:"short_id"`
 	PrivateKey  string `json:"private_key"`
 	Mldsa65Seed string `json:"mldsa65Seed"`
-	Xver        uint64 `json:"xver,string"`
+	// Read by UnmarshalJSON, which takes it as a number or a string.
+	Xver uint64 `json:"xver"`
 
 	// Encrypted Client Hello. Ech is the panel's mode switch ("custom", or
 	// empty for off) and EchKey is the server key. The panel stores it as bare
@@ -101,11 +105,95 @@ type TlsSettings struct {
 	EchKey string `json:"ech_key"`
 }
 
+// UnmarshalJSON takes xver and server_port as either a JSON number or a
+// string.
+//
+// The panel's REALITY form saves its Proxy Protocol choice (0, 1, 2) as a
+// number, while xver was declared ",string" and server_port as a string. So
+// once an operator picked a Proxy Protocol value, the whole node config failed
+// to decode ("cannot unmarshal number") and the vless or anytls node never
+// came up, or stopped taking config changes.
+func (t *TlsSettings) UnmarshalJSON(b []byte) error {
+	type plain TlsSettings
+	var raw struct {
+		plain
+		// Shallower than plain's fields of the same names, so these win.
+		Xver       flexString `json:"xver"`
+		ServerPort flexString `json:"server_port"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*t = TlsSettings(raw.plain)
+	t.ServerPort = string(raw.ServerPort)
+	t.Xver = 0
+	if s := strings.TrimSpace(string(raw.Xver)); s != "" {
+		v, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return fmt.Errorf("tls_settings.xver: %q is not a whole number", s)
+		}
+		t.Xver = v
+	}
+	return nil
+}
+
+// flexString decodes a JSON string, number or null into its text.
+type flexString string
+
+func (f *flexString) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	switch {
+	case len(b) == 0 || string(b) == "null":
+		*f = ""
+		return nil
+	case b[0] == '"':
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*f = flexString(s)
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err != nil {
+		return fmt.Errorf("want a number or a string, got %s", b)
+	}
+	*f = flexString(n.String())
+	return nil
+}
+
 type EncSettings struct {
 	Mode          string `json:"mode"`
+	Rtt           string `json:"rtt"`
 	Ticket        string `json:"ticket"`
 	ServerPadding string `json:"server_padding"`
 	PrivateKey    string `json:"private_key"`
+}
+
+// ServerDecryption is the VLESS "decryption" string for mlkem768x25519plus.
+//
+// The panel leaves mode and ticket empty unless the operator fills them in
+// (it sets the ticket only for 1-RTT), and an empty part made xray reject the
+// whole string, so the node never came up. They default to what subscribers
+// are given for the same fields: "native" mode, and a ticket that matches the
+// RTT - 0-RTT needs tickets to resume with, 1-RTT ("0s") issues none.
+func (e EncSettings) ServerDecryption() string {
+	mode := e.Mode
+	if mode == "" {
+		mode = "native"
+	}
+	ticket := e.Ticket
+	if ticket == "" {
+		ticket = "0s"
+		if e.Rtt == "0rtt" {
+			ticket = "600s"
+		}
+	}
+	parts := []string{"mlkem768x25519plus", mode, ticket}
+	if e.ServerPadding != "" {
+		parts = append(parts, e.ServerPadding)
+	}
+	return strings.Join(append(parts, e.PrivateKey), ".")
 }
 
 type RealityConfig struct {
@@ -253,9 +341,10 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	} else {
 		return nil, fmt.Errorf("received nil response")
 	}
+	nodeType := hysteriaVersionType(c.NodeType, r.Body())
 	node = &NodeInfo{
 		Id:   c.NodeId,
-		Type: c.NodeType,
+		Type: nodeType,
 		RawDNS: RawDNS{
 			DNSMap:  make(map[string]map[string]interface{}),
 			DNSJson: []byte(""),
@@ -263,7 +352,7 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	}
 	// parse protocol params
 	var cm *CommonNode
-	switch c.NodeType {
+	switch nodeType {
 	case "vmess", "vless":
 		rsp := &VAllssNode{}
 		err = json.Unmarshal(r.Body(), rsp)
@@ -423,6 +512,38 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	cm.BaseConfig = nil
 
 	return node, nil
+}
+
+// hysteriaVersionType is the node type to decode a hysteria reply as.
+//
+// The panel keeps hysteria 1 and 2 as one node type and tells them apart by
+// the node's "version", while the node went by its own NodeType alone. A node
+// configured as "hysteria" whose panel entry is version 2 (or the reverse)
+// decoded the reply as the other protocol and served it, with no error: every
+// subscriber, configured from the panel's version, failed to connect. The
+// panel's version now decides; a reply without one keeps the configured type.
+func hysteriaVersionType(configured string, body []byte) string {
+	if configured != "hysteria" && configured != "hysteria2" {
+		return configured
+	}
+	var v struct {
+		Version any `json:"version"`
+	}
+	if json.Unmarshal(body, &v) != nil {
+		return configured
+	}
+	want := configured
+	switch anyToInt64(v.Version) {
+	case 1:
+		want = "hysteria"
+	case 2:
+		want = "hysteria2"
+	}
+	if want != configured {
+		log.Warnf("panel node is %s (version %v) but NodeType is %s: serving %s",
+			want, v.Version, configured, want)
+	}
+	return want
 }
 
 // anyToInt64 converts a msgpack/json-decoded number (int/uint/float/string)
