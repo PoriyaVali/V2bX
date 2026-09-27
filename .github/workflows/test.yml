@@ -75,6 +75,11 @@ jobs:
           GOEXPERIMENT: jsonv2
         run: go vet ./limiter/... ./node/... ./conf/... ./api/... ./common/... ./core/...
 
+      # api/ and core/ are included for their regression tests: the cores run
+      # for real there (a sing-box and an xray instance with live connections,
+      # hysteria2 and mdns servers on loopback), which is what caught billing
+      # and reload bugs no mock would.
+      #
       # The limiter is the one place where a data race is not a nuisance but a
       # correctness bug: CheckLimit runs on every connection while the node's
       # poll and speed-checker goroutines mutate the same per-user state. Run it
@@ -84,4 +89,4 @@ jobs:
       - name: Test (race detector)
         env:
           GOEXPERIMENT: jsonv2
-        run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/...
+        run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/... ./api/... ./core/...

@@ -6,7 +6,10 @@ type LimitConfig struct {
 	IPLimit        int  `json:"DeviceLimit"`
 	// ConnLimit caps one user's simultaneous connections on a node: 0 = the
 	// default (DefaultConnLimit), negative = no cap. It was parsed and never
-	// used, so a limit an operator set did nothing.
+	// used, so a limit an operator set did nothing. Enforced by the sing and
+	// xray cores. The standalone hysteria2 core cannot: its library reports a
+	// user's streams but offers no way to refuse one (a hysteria2 node on the
+	// sing core is capped like any other).
 	ConnLimit               int                      `json:"ConnLimit"`
 	EnableIpRecorder        bool                     `json:"EnableIpRecorder"`
 	IpRecorderConfig        *IpReportConfig          `json:"IpRecorderConfig"`
