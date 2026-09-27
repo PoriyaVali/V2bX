@@ -9,7 +9,10 @@ import (
 )
 
 func (c *Controller) reportUserTrafficTask() (err error) {
-	userTraffic, _ := c.server.GetUserTrafficSlice(c.tag, true)
+	// One consistent view of the node: the node-info goroutine may be replacing
+	// these while this runs.
+	tag, info, lim := c.state()
+	userTraffic, _ := c.server.GetUserTrafficSlice(tag, true)
 
 	// Feed the dynamic speed-limit accumulator with this cycle's raw per-user
 	// traffic (keyed by UID). SpeedChecker consumes and resets it on its own
@@ -29,13 +32,16 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	// traffic passes the threshold; the rest is carried over. Device counting
 	// below still uses the raw per-cycle userTraffic, so keep it separate.
 	toReport := userTraffic
-	if c.info != nil && c.info.NodeReportMinTraffic > 0 {
-		toReport = c.applyReportMinTraffic(userTraffic)
+	if info != nil && info.NodeReportMinTraffic > 0 {
+		toReport = c.applyReportMinTraffic(userTraffic, info.NodeReportMinTraffic)
 	}
 	if len(toReport) > 0 {
 		c.queueTrafficReport(toReport)
 	}
 	c.flushTrafficReports()
+	if lim == nil {
+		return nil
+	}
 
 	// The limiter is the usual source of online addresses: every core routes its
 	// connections through CheckLimit, which records them. One does not — mdns
@@ -45,7 +51,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	// answer for themselves are asked and their addresses merged in; cores that
 	// cannot are unaffected, since the assertion simply fails.
 	var onlineDevice []panel.OnlineUser
-	if fromLimiter, err := c.limiter.GetOnlineDevice(); err != nil {
+	if fromLimiter, err := lim.GetOnlineDevice(); err != nil {
 		log.Print(err)
 	} else if fromLimiter != nil {
 		onlineDevice = *fromLimiter
@@ -53,8 +59,8 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	if op, ok := c.server.(interface {
 		OnlineDevices(tag string) ([]panel.OnlineUser, error)
 	}); ok {
-		if fromCore, err := op.OnlineDevices(c.tag); err != nil {
-			log.WithFields(log.Fields{"tag": c.tag, "err": err}).
+		if fromCore, err := op.OnlineDevices(tag); err != nil {
+			log.WithFields(log.Fields{"tag": tag, "err": err}).
 				Info("Read online devices from core failed")
 		} else if len(fromCore) > 0 {
 			onlineDevice = append(onlineDevice, fromCore...)
@@ -64,8 +70,8 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		// device_online_min_traffic: prefer the panel value (dynamic), fall
 		// back to the node's config.json value when the panel doesn't send it.
 		deviceMin := c.Options.DeviceOnlineMinTraffic
-		if c.info != nil && c.info.DeviceOnlineMinTraffic > 0 {
-			deviceMin = c.info.DeviceOnlineMinTraffic
+		if info != nil && info.DeviceOnlineMinTraffic > 0 {
+			deviceMin = info.DeviceOnlineMinTraffic
 		}
 		result := onlineDevice
 		if deviceMin > 0 {
@@ -83,7 +89,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 			if dp, ok := c.server.(interface {
 				GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string]int64, error)
 			}); ok {
-				if perDevice, err := dp.GetDeviceTrafficSlice(c.tag, true); err == nil && len(perDevice) > 0 {
+				if perDevice, err := dp.GetDeviceTrafficSlice(tag, true); err == nil && len(perDevice) > 0 {
 					var kept []panel.OnlineUser
 					for _, online := range onlineDevice {
 						if perDevice[online.UID][online.IP] >= deviceMin*1000 {
@@ -124,12 +130,12 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		}
 		if err = c.apiClient.ReportNodeOnlineUsers(&data); err != nil {
 			log.WithFields(log.Fields{
-				"tag": c.tag,
+				"tag": tag,
 				"err": err,
 			}).Info("Report online users failed")
 		} else {
-			log.WithField("tag", c.tag).Infof("Total %d online users, %d Reported", len(onlineDevice), len(result))
-			log.WithField("tag", c.tag).Debugf("Online users: %+v", data)
+			log.WithField("tag", tag).Infof("Total %d online users, %d Reported", len(onlineDevice), len(result))
+			log.WithField("tag", tag).Debugf("Online users: %+v", data)
 		}
 	}
 
@@ -171,8 +177,8 @@ func compareUserList(old, new []panel.UserInfo) (deleted, added []panel.UserInfo
 // returns (reports) users whose accumulated total reached NodeReportMinTraffic
 // (kilobytes → ×1000 bytes). Sub-threshold users stay in the accumulator so no
 // traffic is lost — it is reported once the total crosses the threshold.
-func (c *Controller) applyReportMinTraffic(in []panel.UserTraffic) []panel.UserTraffic {
-	threshold := c.info.NodeReportMinTraffic * 1000
+func (c *Controller) applyReportMinTraffic(in []panel.UserTraffic, minKB int64) []panel.UserTraffic {
+	threshold := minKB * 1000
 	if c.reportAccum == nil {
 		c.reportAccum = make(map[int][2]int64)
 	}
@@ -222,7 +228,8 @@ func (c *Controller) queueTrafficReport(traffic []panel.UserTraffic) {
 				lost += t.Upload + t.Download
 			}
 		}
-		log.WithField("tag", c.tag).Errorf(
+		tag, _, _ := c.state()
+		log.WithField("tag", tag).Errorf(
 			"Panel unreachable for too long: dropping %d unsent traffic report(s), %d bytes", over, lost)
 		c.pendingReports = append([]pendingReport(nil), c.pendingReports[over:]...)
 	}
@@ -232,18 +239,19 @@ func (c *Controller) queueTrafficReport(traffic []panel.UserTraffic) {
 // first failure, keeping the rest for the next cycle. Only the report task
 // touches the queue, so it needs no lock.
 func (c *Controller) flushTrafficReports() {
+	tag, _, _ := c.state()
 	for len(c.pendingReports) > 0 {
 		r := c.pendingReports[0]
 		if err := c.apiClient.ReportUserTrafficWithID(r.id, r.traffic); err != nil {
 			log.WithFields(log.Fields{
-				"tag":     c.tag,
+				"tag":     tag,
 				"err":     err,
 				"pending": len(c.pendingReports),
 			}).Info("Report user traffic failed; will resend")
 			return
 		}
-		log.WithField("tag", c.tag).Infof("Report %d users traffic", len(r.traffic))
-		log.WithField("tag", c.tag).Debugf("User traffic: %+v", r.traffic)
+		log.WithField("tag", tag).Infof("Report %d users traffic", len(r.traffic))
+		log.WithField("tag", tag).Debugf("User traffic: %+v", r.traffic)
 		c.pendingReports = c.pendingReports[1:]
 	}
 	c.pendingReports = nil

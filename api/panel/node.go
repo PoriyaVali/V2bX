@@ -366,6 +366,16 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		node.Security = Tls
 	}
 
+	if cm == nil {
+		return nil, fmt.Errorf("unsupported node type: %s", c.NodeType)
+	}
+	// A panel that sends no base_config gets the defaults below. Reading
+	// through the nil pointer crashed the process - on a node's first start,
+	// where nothing recovers, that was every node the process served.
+	if cm.BaseConfig == nil {
+		cm.BaseConfig = &BaseConfig{}
+	}
+
 	// parse rules and dns
 	for i := range cm.Routes {
 		matchs := routeMatches(cm.Routes[i].Match)

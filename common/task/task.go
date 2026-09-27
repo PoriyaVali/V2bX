@@ -97,6 +97,13 @@ func (t *Task) Close() {
 	t.access.Unlock()
 }
 
+// Running reports whether the task is started and not closed.
+func (t *Task) Running() bool {
+	t.access.Lock()
+	defer t.access.Unlock()
+	return t.running
+}
+
 // SetInterval changes the pause between runs; the running loop picks it up
 // from its next wait. Assigning Interval directly raced with that loop.
 func (t *Task) SetInterval(d time.Duration) {

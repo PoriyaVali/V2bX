@@ -65,6 +65,11 @@ type fakePanel struct {
 	pushes []pushAttempt
 	// aliveFails makes the alive-list endpoint answer 500.
 	aliveFails bool
+	// port is the server_port the config endpoint serves; changing it is a
+	// node config change. 0 means 1234.
+	port int
+	// alive is what the alive-list endpoint reports (UID -> devices).
+	alive map[int]int
 }
 
 type pushAttempt struct {
@@ -81,10 +86,16 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 	// Byte-identical every poll, so GetNodeInfo reports "unchanged" after the
 	// first call and nodeInfoMonitor takes the compare-users path, as in production.
 	mux.HandleFunc("/api/v1/server/UniProxy/config", func(w http.ResponseWriter, _ *http.Request) {
+		f.mu.Lock()
+		port := f.port
+		f.mu.Unlock()
+		if port == 0 {
+			port = 1234
+		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"server_port":1234,"cipher":"aes-128-gcm","base_config":`+
+		fmt.Fprintf(w, `{"server_port":%d,"cipher":"aes-128-gcm","base_config":`+
 			`{"push_interval":41,"pull_interval":31,"node_report_min_traffic":0,"device_online_min_traffic":%d}}`,
-			deviceOnlineMinKB)
+			port, deviceOnlineMinKB)
 	})
 	mux.HandleFunc("/api/v1/server/UniProxy/user", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -105,13 +116,14 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 	mux.HandleFunc("/api/v1/server/UniProxy/alivelist", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
 		fail := f.aliveFails
+		body, _ := json.Marshal(map[string]map[int]int{"alive": f.alive})
 		f.mu.Unlock()
 		if fail {
 			http.Error(w, "boom", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"alive":{}}`))
+		w.Write(body)
 	})
 	mux.HandleFunc("/api/v1/server/UniProxy/alive", func(w http.ResponseWriter, r *http.Request) {
 		var got map[int][]string
@@ -142,6 +154,20 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
+}
+
+// setPort changes the node's server_port: a config change the node must
+// reload for.
+func (f *fakePanel) setPort(p int) {
+	f.mu.Lock()
+	f.port = p
+	f.mu.Unlock()
+}
+
+func (f *fakePanel) setAlive(a map[int]int) {
+	f.mu.Lock()
+	f.alive = a
+	f.mu.Unlock()
 }
 
 func (f *fakePanel) setUsers(u []panel.UserInfo) {
