@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/PoriyaVali/V2bX/common/format"
 )
 
 // Bytes counted while a report is being taken must land in that report or
@@ -12,7 +14,7 @@ import (
 func TestTrafficSlice_NoBytesLostUnderConcurrentReset(t *testing.T) {
 	s := &Sing{
 		hookServer:                &HookServer{},
-		users:                     &UserMap{uidMap: map[string]int{"u1": 1}},
+		users:                     &UserMap{uidMap: map[string]int{format.UserTag("in", "u1"): 1}},
 		nodeReportMinTrafficBytes: map[string]int64{},
 	}
 	storages := s.hookServer.trafficStorages("in", "u1", "", false)

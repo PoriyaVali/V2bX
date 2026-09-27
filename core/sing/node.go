@@ -476,7 +476,12 @@ func echKeyToPEM(key string) (string, error) {
 }
 
 func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) error {
+	// Under the users lock, which GetUserTrafficSlice holds while it reads this
+	// map: one node's reload writing it while another node's report read it
+	// could end the process with "concurrent map read and map write".
+	b.users.mapLock.Lock()
 	b.nodeReportMinTrafficBytes[tag] = config.ReportMinTraffic * 1024
+	b.users.mapLock.Unlock()
 	c, err := getInboundOptions(tag, info, config)
 	if err != nil {
 		return err

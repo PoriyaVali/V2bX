@@ -19,9 +19,17 @@ type node struct {
 // embedded server handles per-user auth and metering; this core maps panel
 // UUIDs to numeric UIDs for traffic reporting and manages node lifecycles.
 type Mdns struct {
-	mu       sync.RWMutex
-	nodes    map[string]*node
-	usersMap map[string]int // uuid -> panel UID
+	mu    sync.RWMutex
+	nodes map[string]*node
+	// users is tag -> uuid -> panel UID. It was one uuid-keyed map for every
+	// node, so removing a subscriber from one node erased their id for all of
+	// them, and their traffic on the nodes they were still on was dropped as
+	// "unknown user" at the next report.
+	users map[string]map[string]int
+	// carried holds traffic a node had counted but not yet reported when it
+	// was removed - a node reload closes the tunnel, and its counters with it.
+	// The next report for the tag sends it.
+	carried map[string]map[string][2]int64 // tag -> uuid -> [up, down]
 }
 
 func init() {
@@ -30,8 +38,9 @@ func init() {
 
 func New(_ *conf.CoreConfig) (vCore.Core, error) {
 	return &Mdns{
-		nodes:    make(map[string]*node),
-		usersMap: make(map[string]int),
+		nodes:   make(map[string]*node),
+		users:   make(map[string]map[string]int),
+		carried: make(map[string]map[string][2]int64),
 	}, nil
 }
 
@@ -48,6 +57,7 @@ func (m *Mdns) Close() error {
 		_ = n.server.Close()
 	}
 	m.nodes = make(map[string]*node)
-	m.usersMap = make(map[string]int)
+	m.users = make(map[string]map[string]int)
+	m.carried = make(map[string]map[string][2]int64)
 	return nil
 }

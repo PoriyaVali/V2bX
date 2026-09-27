@@ -7,6 +7,7 @@ import (
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/counter"
+	"github.com/PoriyaVali/V2bX/common/format"
 	"github.com/PoriyaVali/V2bX/core"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/anytls"
@@ -26,8 +27,12 @@ func (b *Sing) AddUsers(p *core.AddUsersParams) (added int, err error) {
 	}
 	b.users.mapLock.Lock()
 	defer b.users.mapLock.Unlock()
+	// Keyed by node AND uuid: the same subscriber is usually on several nodes
+	// of this core, and a uuid-only key meant removing them from one node
+	// erased their id for all of them - after which their traffic on the nodes
+	// they were still on was dropped at the next report, unbilled.
 	for i := range p.Users {
-		b.users.uidMap[p.Users[i].Uuid] = p.Users[i].Id
+		b.users.uidMap[format.UserTag(p.Tag, p.Users[i].Uuid)] = p.Users[i].Id
 	}
 	switch p.NodeInfo.Type {
 	case "vless":
@@ -154,12 +159,13 @@ func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 					up = traffic.UpCounter.Swap(0)
 					down = traffic.DownCounter.Swap(0)
 				}
-				if b.users.uidMap[uuid] == 0 {
+				uid := b.users.uidMap[format.UserTag(tag, uuid)]
+				if uid == 0 {
 					c.Delete(uuid)
 					return true
 				}
 				trafficSlice = append(trafficSlice, panel.UserTraffic{
-					UID:      b.users.uidMap[uuid],
+					UID:      uid,
 					Upload:   up,
 					Download: down,
 				})
@@ -210,7 +216,7 @@ func (b *Sing) DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo
 			c := v.(*counter.TrafficCounter)
 			c.Delete(users[i].Uuid)
 		}
-		delete(b.users.uidMap, users[i].Uuid)
+		delete(b.users.uidMap, format.UserTag(tag, users[i].Uuid))
 		uuids[i] = users[i].Uuid
 	}
 	err := del.DelUsers(uuids)
@@ -244,6 +250,6 @@ func (b *Sing) GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string
 	b.users.mapLock.RLock()
 	defer b.users.mapLock.RUnlock()
 	return hook.GetDeviceTraffic(tag, func(uuid string) int {
-		return b.users.uidMap[uuid]
+		return b.users.uidMap[format.UserTag(tag, uuid)]
 	}, reset), nil
 }

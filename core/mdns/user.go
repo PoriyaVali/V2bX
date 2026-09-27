@@ -9,8 +9,13 @@ func (m *Mdns) AddUsers(p *vCore.AddUsersParams) (added int, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	n := m.nodes[p.Tag]
+	users := m.users[p.Tag]
+	if users == nil {
+		users = make(map[string]int, len(p.Users))
+		m.users[p.Tag] = users
+	}
 	for _, u := range p.Users {
-		m.usersMap[u.Uuid] = u.Id
+		users[u.Uuid] = u.Id
 		if n != nil {
 			n.server.AddUser(u.Uuid)
 			n.server.SetUserSpeedLimit(u.Uuid, speedLimitBytes(u.SpeedLimit))
@@ -69,7 +74,7 @@ func (m *Mdns) OnlineDevices(tag string) ([]panel.OnlineUser, error) {
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return onlineUsers(byUUID, m.usersMap), nil
+	return onlineUsers(byUUID, m.users[tag]), nil
 }
 
 // GetDeviceTrafficSlice reports bytes carried per user, per address, since the
@@ -95,7 +100,7 @@ func (m *Mdns) GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return deviceTraffic(byUUID, m.usersMap), nil
+	return deviceTraffic(byUUID, m.users[tag]), nil
 }
 
 // deviceTraffic re-keys the tunnel's per-address totals from UUID to panel UID,
@@ -149,7 +154,8 @@ func (m *Mdns) DelUsers(users []panel.UserInfo, tag string, _ *panel.NodeInfo) e
 	defer m.mu.Unlock()
 	n := m.nodes[tag]
 	for _, u := range users {
-		delete(m.usersMap, u.Uuid)
+		delete(m.users[tag], u.Uuid)
+		delete(m.carried[tag], u.Uuid)
 		if n != nil {
 			n.server.DelUser(u.Uuid)
 		}
@@ -162,29 +168,53 @@ func (m *Mdns) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 	n := m.nodes[tag]
 	m.mu.RUnlock()
 	if n == nil {
+		// Mid-reload: what the old tunnel counted is carried, and goes out
+		// once the node is back.
 		return nil, nil
 	}
 
-	samples := n.server.Traffic(reset)
-	if len(samples) == 0 {
-		return nil, nil
+	totals := make(map[string][2]int64)
+	for _, s := range n.server.Traffic(reset) {
+		v := totals[s.UUID]
+		v[0] += s.Upload
+		v[1] += s.Download
+		totals[s.UUID] = v
 	}
 
-	out := make([]panel.UserTraffic, 0, len(samples))
-	m.mu.RLock()
-	for _, s := range samples {
-		uid, ok := m.usersMap[s.UUID]
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	carried := m.carried[tag]
+	for uuid, v := range carried {
+		t := totals[uuid]
+		t[0] += v[0]
+		t[1] += v[1]
+		totals[uuid] = t
+	}
+	if len(totals) == 0 {
+		return nil, nil
+	}
+	users := m.users[tag]
+	out := make([]panel.UserTraffic, 0, len(totals))
+	for uuid, v := range totals {
+		uid, ok := users[uuid]
 		if !ok {
-			continue // user removed since the sample; drop it
+			// Removed since the sample (DelUsers also drops what was carried
+			// for them), or re-added a moment from now after a reload - in
+			// which case what was carried waits for the next report.
+			continue
 		}
 		out = append(out, panel.UserTraffic{
 			UID:      uid,
-			Upload:   s.Upload,
-			Download: s.Download,
+			Upload:   v[0],
+			Download: v[1],
 		})
+		if reset {
+			delete(carried, uuid)
+		}
 	}
-	m.mu.RUnlock()
-
+	if len(carried) == 0 {
+		delete(m.carried, tag)
+	}
 	if len(out) == 0 {
 		return nil, nil
 	}

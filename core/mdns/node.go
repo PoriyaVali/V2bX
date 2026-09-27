@@ -56,6 +56,22 @@ func (m *Mdns) DelNode(tag string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if n, ok := m.nodes[tag]; ok {
+		// Take what the tunnel counted before closing it, or a reload would
+		// lose everything since the last report.
+		for _, s := range n.server.Traffic(true) {
+			if s.Upload == 0 && s.Download == 0 {
+				continue
+			}
+			c := m.carried[tag]
+			if c == nil {
+				c = make(map[string][2]int64)
+				m.carried[tag] = c
+			}
+			v := c[s.UUID]
+			v[0] += s.Upload
+			v[1] += s.Download
+			c[s.UUID] = v
+		}
 		_ = n.server.Close()
 		delete(m.nodes, tag)
 	}

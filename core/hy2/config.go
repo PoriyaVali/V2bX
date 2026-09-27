@@ -137,12 +137,20 @@ func (n *Hysteria2node) getConn(info *panel.NodeInfo, config *conf.Options) (net
 	if err != nil {
 		return nil, err
 	}
+	// The socket is closed on every failure below: left open it kept the port,
+	// and each retry of the node then failed with "address already in use".
 	switch strings.ToLower(info.Hysteria2.ObfsType) {
 	case "", "plain":
 		return conn, nil
 	case "salamander":
-		return obfs.WrapPacketConnSalamander(conn, []byte(info.Hysteria2.ObfsPassword))
+		pc, err := obfs.WrapPacketConnSalamander(conn, []byte(info.Hysteria2.ObfsPassword))
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+		return pc, nil
 	default:
+		conn.Close()
 		return nil, fmt.Errorf("unsupported obfuscation type")
 	}
 }
@@ -370,7 +378,11 @@ func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.Pac
 			},
 			ForceHTTPS: c.Masquerade.ForceHTTPS,
 		}
-		go runMasqTCPServer(&s, c.Masquerade.ListenHTTP, c.Masquerade.ListenHTTPS, n.Logger)
+		m, err := startMasqTCP(&s, c.Masquerade.ListenHTTP, c.Masquerade.ListenHTTPS, n.Logger)
+		if err != nil {
+			return nil, err
+		}
+		n.masq = m
 	}
 
 	return MasqHandler, nil
@@ -389,17 +401,27 @@ func (n *Hysteria2node) getHyConfig(info *panel.NodeInfo, config *conf.Options, 
 	if err != nil {
 		return nil, err
 	}
+	// From here a failure must give the port back, or the node's next attempt
+	// cannot bind it.
+	fail := func(err error) (*server.Config, error) {
+		conn.Close()
+		if n.masq != nil {
+			_ = n.masq.Close()
+			n.masq = nil
+		}
+		return nil, err
+	}
 	sniff, err := n.getRequestHook(c)
 	if err != nil {
-		return nil, err
+		return fail(err)
 	}
 	Outbound, err := n.getOutboundConfig(c)
 	if err != nil {
-		return nil, err
+		return fail(err)
 	}
 	Masq, err := n.getMasqHandler(tls, conn, c)
 	if err != nil {
-		return nil, err
+		return fail(err)
 	}
 	return &server.Config{
 		TLSConfig:             *tls,
@@ -415,26 +437,6 @@ func (n *Hysteria2node) getHyConfig(info *panel.NodeInfo, config *conf.Options, 
 		TrafficLogger:         n.TrafficLogger,
 		MasqHandler:           Masq,
 	}, nil
-}
-
-func runMasqTCPServer(s *masq.MasqTCPServer, httpAddr, httpsAddr string, logger *zap.Logger) {
-	errChan := make(chan error, 2)
-	if httpAddr != "" {
-		go func() {
-			logger.Info("masquerade HTTP server up and running", zap.String("listen", httpAddr))
-			errChan <- s.ListenAndServeHTTP(httpAddr)
-		}()
-	}
-	if httpsAddr != "" {
-		go func() {
-			logger.Info("masquerade HTTPS server up and running", zap.String("listen", httpsAddr))
-			errChan <- s.ListenAndServeHTTPS(httpsAddr)
-		}()
-	}
-	err := <-errChan
-	if err != nil {
-		logger.Fatal("failed to serve masquerade HTTP(S)", zap.Error(err))
-	}
 }
 
 func extractPortFromAddr(addr string) int {
