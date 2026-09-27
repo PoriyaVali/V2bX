@@ -843,7 +843,7 @@ net.core.default_qdisc=fq
 # paces by measured bandwidth and RTT instead of backing off at every lost packet
 net.ipv4.tcp_congestion_control=bbr
 
-# keep at most 16 KiB queued unsent per socket: an interactive reply is not stuck behind a download sharing the connection
+# at most 16 KiB queued unsent on connections this server opens; users' connections get it from V2bX itself
 net.ipv4.tcp_notsent_lowat=16384
 
 # a connection that paused keeps its speed instead of restarting slow

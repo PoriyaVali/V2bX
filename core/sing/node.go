@@ -486,6 +486,11 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	b.users.mapLock.Lock()
 	b.nodeReportMinTrafficBytes[tag] = config.ReportMinTraffic * 1024
 	b.users.mapLock.Unlock()
+	if n := config.SingOptions.NotSentLowat(); n > 0 {
+		b.hookServer.notSentLowat.Store(tag, n)
+	} else {
+		b.hookServer.notSentLowat.Delete(tag)
+	}
 	c, err := getInboundOptions(tag, info, config)
 	if err != nil {
 		return err

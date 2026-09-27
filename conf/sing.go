@@ -69,6 +69,15 @@ type SingOptions struct {
 	// Congestion control for subscribers' connections; "" = bbr, "none" =
 	// the system default. See TCPCongestionName.
 	TCPCongestion string `json:"TCPCongestion"`
+	// TCPNotSentLowat caps the bytes queued unsent on a subscriber's
+	// connection: 0 = DefaultTCPNotSentLowat, negative = the system default.
+	TCPNotSentLowat int `json:"TCPNotSentLowat"`
+}
+
+// NotSentLowat resolves TCPNotSentLowat: the bytes to set, or 0 to leave the
+// system default.
+func (o *SingOptions) NotSentLowat() int {
+	return notSentLowat(o.TCPNotSentLowat)
 }
 
 // DecoyEnabled reports whether the decoy should run. Pointer + nil check rather
@@ -122,13 +131,18 @@ func (o *SingOptions) UDPIdle() time.Duration {
 // users feel as lag. BBR paces by measured bandwidth and round-trip time
 // instead. A kernel without it keeps its default. "none" opts out.
 func (o *SingOptions) TCPCongestionName() string {
-	switch o.TCPCongestion {
+	return congestionName(o.TCPCongestion)
+}
+
+// congestionName resolves a node's TCPCongestion setting.
+func congestionName(configured string) string {
+	switch configured {
 	case "":
 		return "bbr"
 	case "none", "default", "system":
 		return ""
 	}
-	return o.TCPCongestion
+	return configured
 }
 
 func (o *SingOptions) DecoyEnabled() bool {

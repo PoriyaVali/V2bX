@@ -10,12 +10,14 @@ import (
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/format"
+	"github.com/PoriyaVali/V2bX/common/sockopt"
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	"github.com/PoriyaVali/V2bX/core/xray/app/dispatcher"
 	"github.com/PoriyaVali/V2bX/limiter"
 	"github.com/sagernet/sing-shadowsocks/shadowaead"
 	M "github.com/sagernet/sing/common/metadata"
+	"github.com/xtls/xray-core/app/proxyman"
 	coreConf "github.com/xtls/xray-core/infra/conf"
 )
 
@@ -235,5 +237,58 @@ func TestAccessLogPath(t *testing.T) {
 func TestDefaultConnIdle(t *testing.T) {
 	if got := conf.NewXrayConfig().ConnectionConfig.ConnIdle; got != 300 {
 		t.Fatalf("default connIdle = %d s, want 300", got)
+	}
+}
+
+// A subscriber's connection gets TCP_NOTSENT_LOWAT on its own socket, and the
+// node's listener gets the congestion control its connections inherit.
+func TestXray_SocketTuningReachesConnections(t *testing.T) {
+	x, tag, port := xrayNode(t, 0)
+	if _, ok := x.dispatcher.NotSentLowat.Load(tag); !ok {
+		t.Skip("TCP_NOTSENT_LOWAT not available on this kernel")
+	}
+	target := echoServer(t)
+	before := x.dispatcher.NotSentLowatSet()
+	c, ok := dialThrough(t, port, target)
+	if !ok {
+		t.Fatal("connection refused")
+	}
+	c.Close()
+	if x.dispatcher.NotSentLowatSet() == before {
+		t.Fatal("the connection's socket never got TCP_NOTSENT_LOWAT")
+	}
+}
+
+func TestBuildInbound_CongestionControl(t *testing.T) {
+	ss := &panel.ShadowsocksNode{Cipher: "aes-128-gcm"}
+	ss.ServerPort = 1234
+	info := &panel.NodeInfo{Type: "shadowsocks", Shadowsocks: ss, Common: &ss.CommonNode}
+	cc := func(setting string) string {
+		xo := conf.NewXrayOptions()
+		xo.TCPCongestion = setting
+		in, err := buildInbound(&conf.Options{ListenIP: "127.0.0.1", XrayOptions: xo}, info, "t")
+		if err != nil {
+			t.Fatalf("TCPCongestion %q: %v", setting, err)
+		}
+		rs, err := in.ReceiverSettings.GetInstance()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rs.(*proxyman.ReceiverConfig).GetStreamSettings().GetSocketSettings().GetTcpCongestion()
+	}
+	want := ""
+	if sockopt.Congestion("bbr") {
+		want = "bbr"
+	}
+	if got := cc(""); got != want {
+		t.Errorf("default congestion = %q, want %q", got, want)
+	}
+	if got := cc("none"); got != "" {
+		t.Errorf(`"none" set %q, want the system default`, got)
+	}
+	// An algorithm the kernel lacks must not reach xray, which would fail
+	// the listen and take the node down.
+	if got := cc("no-such-algorithm"); got != "" {
+		t.Errorf("an unavailable algorithm was passed to xray: %q", got)
 	}
 }
