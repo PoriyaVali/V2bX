@@ -3,6 +3,7 @@ package xray
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"encoding/json/v2"
@@ -54,6 +55,24 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	}, nil
 }
 
+// accessLogPath maps the configured AccessPath onto xray's setting.
+//
+// xray reads an empty path as "print to the console", so a node that left it
+// unset wrote one line per connection into the journal - whatever the log
+// level, which governs only the error log. On a busy node that is a steady
+// load on the journal and the disk, and a record of every destination every
+// user visited. Unset now means off; "console" (or "stdout") asks for the old
+// behaviour, and a file path works as before.
+func accessLogPath(configured string) string {
+	switch strings.ToLower(strings.TrimSpace(configured)) {
+	case "":
+		return "none"
+	case "console", "stdout":
+		return ""
+	}
+	return configured
+}
+
 func parseConnectionConfig(c *conf.XrayConnectionConfig) (policy *coreConf.Policy) {
 	policy = &coreConf.Policy{
 		StatsUserUplink:   true,
@@ -72,7 +91,7 @@ func getCore(c *conf.XrayConfig) *core.Instance {
 	// Log Config
 	coreLogConfig := &coreConf.LogConfig{
 		LogLevel:  c.LogConfig.Level,
-		AccessLog: c.LogConfig.AccessPath,
+		AccessLog: accessLogPath(c.LogConfig.AccessPath),
 		ErrorLog:  c.LogConfig.ErrorPath,
 	}
 	// DNS config

@@ -11,7 +11,9 @@ type XrayConfig struct {
 }
 
 type XrayLogConfig struct {
-	Level      string `json:"Level"`
+	Level string `json:"Level"`
+	// AccessPath is where xray logs each connection: a file path, "console"
+	// for the service log, or empty for no access log (the default).
 	AccessPath string `json:"AccessPath"`
 	ErrorPath  string `json:"ErrorPath"`
 }
@@ -37,8 +39,17 @@ func NewXrayConfig() *XrayConfig {
 		OutboundConfigPath: "",
 		RouteConfigPath:    "",
 		ConnectionConfig: &XrayConnectionConfig{
-			Handshake:    4,
-			ConnIdle:     30,
+			Handshake: 4,
+			// Seconds a connection may carry nothing before xray closes it.
+			// 300 is xray's own default. It was 30, which closed a browser's
+			// keep-alive connections, and apps' idle push connections, while
+			// they still meant to reuse them: the next request paid a new
+			// handshake to the node - one to three round trips from the user,
+			// a few hundred milliseconds on a mobile link - and chat apps
+			// showed "connecting" between messages. A vanished device is still
+			// let go: nothing comes from it, so it reaches this same limit -
+			// after five minutes, as sing's keepalive settings do.
+			ConnIdle:     300,
 			UplinkOnly:   2,
 			DownlinkOnly: 4,
 			BufferSize:   64,

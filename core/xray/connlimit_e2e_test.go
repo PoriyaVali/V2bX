@@ -212,3 +212,28 @@ func TestXray_DelUsersClosesOpenConnections(t *testing.T) {
 		t.Fatal("the removed user's connection is still open")
 	}
 }
+
+// An unset AccessPath means no access log. xray reads "" as "log every
+// connection to the console", which is what a node got whatever its level.
+func TestAccessLogPath(t *testing.T) {
+	cases := map[string]string{
+		"":                      "none",
+		"  ":                    "none",
+		"console":               "",
+		"STDOUT":                "",
+		"/var/log/v2bx/acc.log": "/var/log/v2bx/acc.log",
+		"none":                  "none",
+	}
+	for in, want := range cases {
+		if got := accessLogPath(in); got != want {
+			t.Errorf("accessLogPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Idle keep-alive connections are kept as long as xray itself would keep them.
+func TestDefaultConnIdle(t *testing.T) {
+	if got := conf.NewXrayConfig().ConnectionConfig.ConnIdle; got != 300 {
+		t.Fatalf("default connIdle = %d s, want 300", got)
+	}
+}

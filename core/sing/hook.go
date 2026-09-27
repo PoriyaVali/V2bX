@@ -264,7 +264,12 @@ const (
 // may hold at once (0 = no cap); the connection that would go over it is
 // refused, so a single runaway client cannot exhaust the node.
 func (h *HookServer) register(key string, c io.Closer, max int) (func(), registerResult) {
-	v, _ := h.conns.LoadOrStore(key, &userConns{m: make(map[io.Closer]struct{})})
+	// Load first: the set almost always exists already, and LoadOrStore alone
+	// built (and threw away) a fresh set and map on every connection.
+	v, ok := h.conns.Load(key)
+	if !ok {
+		v, _ = h.conns.LoadOrStore(key, &userConns{m: make(map[io.Closer]struct{})})
+	}
 	uc := v.(*userConns)
 	uc.mu.Lock()
 	if uc.closed {
@@ -290,7 +295,10 @@ var logGate sync.Map // key -> *atomic.Int64 (unix seconds of the last line)
 
 func logEvery(key string, every time.Duration) bool {
 	now := time.Now().Unix()
-	v, _ := logGate.LoadOrStore(key, new(atomic.Int64))
+	v, ok := logGate.Load(key)
+	if !ok {
+		v, _ = logGate.LoadOrStore(key, new(atomic.Int64))
+	}
 	last := v.(*atomic.Int64)
 	prev := last.Load()
 	if prev != 0 && now-prev < int64(every/time.Second) {
