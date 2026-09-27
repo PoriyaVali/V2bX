@@ -14,16 +14,21 @@ import (
 )
 
 type Controller struct {
-	server                    vCore.Core
-	apiClient                 *panel.Client
+	server    vCore.Core
+	apiClient *panel.Client
+	// stateMu guards tag, limiter and info. The node-info goroutine replaces
+	// them while the report, speed-check and status goroutines read them; they
+	// used to be plain fields shared between those goroutines, a data race the
+	// race detector reported on every node reload. Readers go through state().
+	stateMu                   sync.RWMutex
 	tag                       string
 	limiter                   *limiter.Limiter
+	info                      *panel.NodeInfo
 	traffic                   map[int]int64  // UID -> bytes accumulated in the current dynamic-speed window
 	uidToUUID                 map[int]string // UID -> UUID snapshot, so SpeedChecker can resolve users without touching userList
 	trafficMu                 sync.Mutex     // guards traffic + uidToUUID (accessed by the report and speed-checker goroutines)
 	userList                  []panel.UserInfo
 	aliveMap                  map[int]int
-	info                      *panel.NodeInfo
 	reportAccum               map[int][2]int64 // UID -> [up,down] carried over below node_report_min_traffic
 	pendingReports            []pendingReport  // traffic batches not yet accepted by the panel, oldest first
 	nodeInfoMonitorPeriodic   *task.Task
@@ -32,6 +37,18 @@ type Controller struct {
 	dynamicSpeedLimitPeriodic *task.Task
 	onlineIpReportPeriodic    *task.Task
 	statusReportPeriodic      *task.Task
+	// opMu serialises what the node-info goroutine does to the core with
+	// Close, so a reload that is under way cannot put the node back into the
+	// core after Close has taken it out. It also guards the three flags below.
+	opMu sync.Mutex
+	// nodeUp: the node is registered in the core right now.
+	nodeUp bool
+	// needsReload: the core does not reflect info/userList - a reload failed
+	// part-way - and the next poll must rebuild the node whatever the panel
+	// says. Without it a failed reload looked "unchanged" on the next poll and
+	// the node stayed out of the core until the panel's config changed again.
+	needsReload bool
+	closed      bool
 	*conf.Options
 }
 
@@ -43,6 +60,31 @@ func NewController(server vCore.Core, api *panel.Client, config *conf.Options) *
 		apiClient: api,
 	}
 	return controller
+}
+
+// state returns the node's tag, current node info and limiter. Safe from any
+// goroutine.
+func (c *Controller) state() (string, *panel.NodeInfo, *limiter.Limiter) {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.tag, c.info, c.limiter
+}
+
+// setInfo publishes the node info. Only the goroutine that owns the node's
+// lifecycle (Start, then nodeInfoMonitor) calls it, so that goroutine may keep
+// reading c.info directly.
+func (c *Controller) setInfo(info *panel.NodeInfo) {
+	c.stateMu.Lock()
+	c.info = info
+	c.stateMu.Unlock()
+}
+
+// setIdentity publishes the tag and limiter; same ownership rule as setInfo.
+func (c *Controller) setIdentity(tag string, l *limiter.Limiter) {
+	c.stateMu.Lock()
+	c.tag = tag
+	c.limiter = l
+	c.stateMu.Unlock()
 }
 
 // syncUIDIndex rebuilds the UID->UUID lookup that SpeedChecker uses to resolve
@@ -106,14 +148,14 @@ func (c *Controller) Start() (err error) {
 		log.WithField("err", err).Warn("Get alive list failed; starting without device counts")
 		c.aliveMap, err = make(map[int]int), nil
 	}
-	if len(c.Options.Name) == 0 {
-		c.tag = c.buildNodeTag(node)
-	} else {
-		c.tag = c.Options.Name
+	tag := c.Options.Name
+	if len(tag) == 0 {
+		tag = c.buildNodeTag(node)
 	}
 
 	// add limiter
-	l := limiter.AddLimiter(c.tag, &c.LimitConfig, c.userList, c.aliveMap)
+	l := limiter.AddLimiter(tag, &c.LimitConfig, c.userList, c.aliveMap)
+	c.setIdentity(tag, l)
 	// A start that fails part-way must leave nothing behind: the node is
 	// retried, and a leftover limiter or a node still registered in the core
 	// would make the next attempt fail with "already exists" forever.
@@ -123,17 +165,16 @@ func (c *Controller) Start() (err error) {
 			return
 		}
 		if nodeAdded {
-			if derr := c.server.DelNode(c.tag); derr != nil {
-				log.WithField("tag", c.tag).Error("Undo AddNode after failed start: ", derr)
+			if derr := c.server.DelNode(tag); derr != nil {
+				log.WithField("tag", tag).Error("Undo AddNode after failed start: ", derr)
 			}
 		}
-		limiter.DeleteLimiter(c.tag)
+		limiter.DeleteLimiter(tag)
 	}()
 	// add rule limiter
 	if err = l.UpdateRule(&node.Rules); err != nil {
 		return fmt.Errorf("update rule error: %s", err)
 	}
-	c.limiter = l
 	if node.Security == panel.Tls {
 		err = c.requestCert()
 		if err != nil {
@@ -141,21 +182,24 @@ func (c *Controller) Start() (err error) {
 		}
 	}
 	// Add new tag
-	err = c.server.AddNode(c.tag, node, c.Options)
+	err = c.server.AddNode(tag, node, c.Options)
 	if err != nil {
 		return fmt.Errorf("add new node error: %s", err)
 	}
 	nodeAdded = true
 	added, err := c.server.AddUsers(&vCore.AddUsersParams{
-		Tag:      c.tag,
+		Tag:      tag,
 		Users:    c.userList,
 		NodeInfo: node,
 	})
 	if err != nil {
 		return fmt.Errorf("add users error: %s", err)
 	}
-	log.WithField("tag", c.tag).Infof("Added %d new users", added)
-	c.info = node
+	log.WithField("tag", tag).Infof("Added %d new users", added)
+	c.setInfo(node)
+	c.opMu.Lock()
+	c.nodeUp = true
+	c.opMu.Unlock()
 	c.syncUIDIndex()
 	c.startTasks(node)
 	return nil
@@ -163,27 +207,42 @@ func (c *Controller) Start() (err error) {
 
 // Close implement the Close() function of the service interface
 func (c *Controller) Close() error {
-	limiter.DeleteLimiter(c.tag)
-	if c.nodeInfoMonitorPeriodic != nil {
-		c.nodeInfoMonitorPeriodic.Close()
+	// First wait out a reload that is already running and make sure no later
+	// one starts: the node must not come back into the core after this. It has
+	// to come before the tasks are stopped, because a reload that changes the
+	// poll interval restarts its own task.
+	c.opMu.Lock()
+	c.closed = true
+	up := c.nodeUp
+	c.nodeUp = false
+	c.opMu.Unlock()
+	for _, t := range []*task.Task{
+		c.nodeInfoMonitorPeriodic,
+		c.userReportPeriodic,
+		c.renewCertPeriodic,
+		c.dynamicSpeedLimitPeriodic,
+		c.onlineIpReportPeriodic,
+		// This one was left out, so every config reload and every retried start
+		// left a goroutine behind that reported server status for the rest of
+		// the process's life.
+		c.statusReportPeriodic,
+	} {
+		if t != nil {
+			t.Close()
+		}
 	}
-	if c.userReportPeriodic != nil {
-		c.userReportPeriodic.Close()
+	tag, _, _ := c.state()
+	var err error
+	if up {
+		if derr := c.server.DelNode(tag); derr != nil {
+			err = fmt.Errorf("del node error: %s", derr)
+		}
 	}
-	if c.renewCertPeriodic != nil {
-		c.renewCertPeriodic.Close()
-	}
-	if c.dynamicSpeedLimitPeriodic != nil {
-		c.dynamicSpeedLimitPeriodic.Close()
-	}
-	if c.onlineIpReportPeriodic != nil {
-		c.onlineIpReportPeriodic.Close()
-	}
-	err := c.server.DelNode(c.tag)
-	if err != nil {
-		return fmt.Errorf("del node error: %s", err)
-	}
-	return nil
+	// The limiter goes after the node, not before: a connection arriving in
+	// between would find no limiter - hysteria2 treated that as fatal, sing
+	// let the connection through unlimited and uncounted.
+	limiter.DeleteLimiter(tag)
+	return err
 }
 
 func (c *Controller) buildNodeTag(node *panel.NodeInfo) string {

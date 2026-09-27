@@ -8,11 +8,13 @@ import (
 	"github.com/PoriyaVali/V2bX/conf"
 )
 
-var l *Lego
-
-func init() {
-	var err error
-	l, err = NewLego(&conf.CertConfig{
+// testLego builds the client the live ACME tests use. It used to be built in
+// init(), which registers an account with Let's Encrypt and os.Exit(1)s on
+// failure - so without internet access every test in this package failed,
+// including the many that never touch ACME.
+func testLego(t *testing.T) *Lego {
+	t.Helper()
+	l, err := NewLego(&conf.CertConfig{
 		CertMode:   "dns",
 		Email:      "test@test.com",
 		CertDomain: "test.test.com",
@@ -24,9 +26,9 @@ func init() {
 		KeyFile:  "./cert/1.key",
 	})
 	if err != nil {
-		log.Println(err)
-		os.Exit(1)
+		t.Fatal(err)
 	}
+	return l
 }
 
 // requireACME skips unless the caller opted in. These two exercise the real
@@ -42,7 +44,7 @@ func requireACME(t *testing.T) {
 
 func TestLego_CreateCertByDns(t *testing.T) {
 	requireACME(t)
-	err := l.CreateCert()
+	err := testLego(t).CreateCert()
 	if err != nil {
 		t.Error(err)
 	}
@@ -50,5 +52,5 @@ func TestLego_CreateCertByDns(t *testing.T) {
 
 func TestLego_RenewCert(t *testing.T) {
 	requireACME(t)
-	log.Println(l.RenewCert())
+	log.Println(testLego(t).RenewCert())
 }

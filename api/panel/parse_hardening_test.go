@@ -128,3 +128,28 @@ func TestGetNodeInfo_UndecodableReplyIsNotRemembered(t *testing.T) {
 		t.Fatalf("the good config after a broken one was not applied: node=%v err=%v", n, err)
 	}
 }
+
+// A panel that omits base_config must get the default intervals, not a nil
+// pointer panic - on a node's first start nothing recovers from that panic,
+// so it took down every node the process served.
+func TestGetNodeInfo_MissingBaseConfig(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"server_port":1234,"cipher":"aes-128-gcm"}`))
+	}))
+	defer srv.Close()
+	c, err := New(&conf.ApiConfig{APIHost: srv.URL, NodeID: 1, Key: "k", NodeType: "shadowsocks", Timeout: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := c.GetNodeInfo()
+	if err != nil {
+		t.Fatalf("GetNodeInfo: %v", err)
+	}
+	if node.PushInterval != defaultInterval || node.PullInterval != defaultInterval {
+		t.Fatalf("intervals = %s/%s, want the default %s", node.PushInterval, node.PullInterval, defaultInterval)
+	}
+	if node.NodeReportMinTraffic != 0 || node.DeviceOnlineMinTraffic != 0 {
+		t.Fatalf("thresholds must stay off without base_config, got %d/%d",
+			node.NodeReportMinTraffic, node.DeviceOnlineMinTraffic)
+	}
+}

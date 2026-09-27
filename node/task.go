@@ -104,121 +104,30 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}).Warn("Get alive list failed; keeping the previous counts")
 		newA, err = nil, nil
 	}
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	if c.closed {
+		// Close ran while this poll was talking to the panel.
+		return nil
+	}
+	// A reload that failed part-way left the core out of step with c.info.
+	// Rebuild from that config even when the panel now answers "unchanged":
+	// the node used to stay out of the core until the panel's config changed
+	// again, because the retry looked like a no-op next to what c.info held.
+	if newN == nil && c.needsReload && c.info != nil {
+		newN = c.info
+	}
 	// Hot path: if only thresholds/intervals changed, apply them in place and
 	// treat the node as unchanged so we skip the disruptive DelNode/re-add
 	// (which would drop every active connection). Users/alive still update.
-	if newN != nil && c.info != nil && onlyHotFieldsChanged(c.info, newN) {
+	// Only for a node the core fully reflects - a half-applied one needs the
+	// full rebuild below whatever changed.
+	if newN != nil && !c.needsReload && c.nodeUp && c.info != nil && onlyHotFieldsChanged(c.info, newN) {
 		c.applyHotConfig(newN)
 		newN = nil
 	}
 	if newN != nil {
-		c.info = newN
-		// nodeInfo changed
-		//
-		// Same distinction as below: adopt the list whenever the panel actually
-		// sent one, including an empty one. A nil check would not do - a reply
-		// carrying no users decodes to a nil slice, so the node would rebuild
-		// itself around the previous membership and re-add users the panel had
-		// just dropped.
-		if userListFresh {
-			c.userList = newU
-			c.syncUIDIndex()
-		}
-		if c.LimitConfig.EnableDynamicSpeedLimit {
-			c.trafficMu.Lock()
-			c.traffic = make(map[int]int64)
-			c.trafficMu.Unlock()
-		}
-		// Remove old node
-		log.WithField("tag", c.tag).Info("Node changed, reload")
-		err = c.server.DelNode(c.tag)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Error("Delete node failed")
-			// Don't crash the whole process (all other nodes) over one node's
-			// reload failure; force a re-fetch so this node retries next cycle.
-			c.apiClient.ResetNodeCache()
-			return nil
-		}
-
-		// Update limiter
-		if len(c.Options.Name) == 0 {
-			c.tag = c.buildNodeTag(newN)
-			// Remove Old limiter
-			limiter.DeleteLimiter(c.tag)
-			// Add new Limiter
-			l := limiter.AddLimiter(c.tag, &c.LimitConfig, c.userList, newA)
-			c.limiter = l
-		}
-		// update alive list
-		if newA != nil {
-			c.limiter.SetAliveList(newA)
-		}
-		// Update rule
-		err = c.limiter.UpdateRule(&newN.Rules)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Error("Update Rule failed")
-			c.apiClient.ResetNodeCache()
-			return nil
-		}
-
-		// check cert
-		if newN.Security == panel.Tls {
-			err = c.requestCert()
-			if err != nil {
-				log.WithFields(log.Fields{
-					"tag": c.tag,
-					"err": err,
-				}).Error("Request cert failed")
-				c.apiClient.ResetNodeCache()
-				return nil
-			}
-		}
-		// add new node
-		err = c.server.AddNode(c.tag, newN, c.Options)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Error("Add node failed")
-			// Graceful: keep other nodes alive and retry this node next cycle
-			// (the old node was already removed above, so it's down until retry).
-			c.apiClient.ResetNodeCache()
-			return nil
-		}
-		_, err = c.server.AddUsers(&vCore.AddUsersParams{
-			Tag:      c.tag,
-			Users:    c.userList,
-			NodeInfo: newN,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Error("Add users failed")
-			c.apiClient.ResetNodeCache()
-			return nil
-		}
-		// Check interval
-		if c.nodeInfoMonitorPeriodic.Interval != newN.PullInterval &&
-			newN.PullInterval != 0 {
-			c.nodeInfoMonitorPeriodic.SetInterval(newN.PullInterval)
-			c.nodeInfoMonitorPeriodic.Close()
-			_ = c.nodeInfoMonitorPeriodic.Start(false)
-		}
-		if c.userReportPeriodic.Interval != newN.PushInterval &&
-			newN.PushInterval != 0 {
-			c.userReportPeriodic.SetInterval(newN.PushInterval)
-			c.userReportPeriodic.Close()
-			_ = c.userReportPeriodic.Start(false)
-		}
-		log.WithField("tag", c.tag).Infof("Added %d new users", len(c.userList))
-		// exit
+		c.reloadNode(newN, newU, userListFresh, newA)
 		return nil
 	}
 	// update alive list
@@ -292,13 +201,119 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	return nil
 }
 
+// reloadNode rebuilds the node in the core around newN. It runs on the
+// node-info goroutine with opMu held. Any step that fails leaves needsReload
+// set, so the next poll carries on from here instead of trusting a config
+// that never made it into the core.
+func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, userListFresh bool, newA map[int]int) {
+	c.needsReload = true
+	c.setInfo(newN)
+	tag, l := c.tag, c.limiter
+	if l == nil {
+		// Never went through Start (only tests drive the monitor like this).
+		tag = c.Options.Name
+		if len(tag) == 0 {
+			tag = c.buildNodeTag(newN)
+		}
+		l = limiter.AddLimiter(tag, &c.LimitConfig, nil, newA)
+		c.setIdentity(tag, l)
+	}
+	log.WithField("tag", tag).Info("Node changed, reload")
+
+	// The limiter is kept across the reload and brought up to date in place.
+	// It used to be rebuilt, and only for nodes without a Name: on a named node
+	// a user who joined in the same poll as a config change was never added to
+	// it and was refused as unknown until the process restarted; on the others
+	// every device registration was thrown away, so a device_limit=1 user
+	// reconnecting after the reload was counted against their own device.
+	if userListFresh {
+		deleted, added := compareUserList(c.userList, newU)
+		l.UpdateUser(tag, added, deleted)
+		l.UpdateUserLimits(tag, newU)
+		c.userList = newU
+		c.syncUIDIndex()
+	}
+	if c.LimitConfig.EnableDynamicSpeedLimit {
+		c.trafficMu.Lock()
+		c.traffic = make(map[int]int64)
+		c.trafficMu.Unlock()
+	}
+	if newA != nil {
+		l.SetAliveList(newA)
+	}
+	if err := l.UpdateRule(&newN.Rules); err != nil {
+		log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Update Rule failed")
+		c.apiClient.ResetNodeCache()
+		return
+	}
+
+	// Remove old node
+	if c.nodeUp {
+		if err := c.server.DelNode(tag); err != nil {
+			// Don't crash the whole process (all other nodes) over one node's
+			// reload failure; the next poll retries.
+			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Delete node failed")
+			c.apiClient.ResetNodeCache()
+			return
+		}
+		c.nodeUp = false
+	}
+	// check cert
+	if newN.Security == panel.Tls {
+		if err := c.requestCert(); err != nil {
+			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Request cert failed")
+			c.apiClient.ResetNodeCache()
+			return
+		}
+	}
+	// add new node
+	if err := c.server.AddNode(tag, newN, c.Options); err != nil {
+		// The old node was already removed above, so it's down until the next
+		// poll rebuilds it; the other nodes are untouched.
+		log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Add node failed")
+		c.apiClient.ResetNodeCache()
+		return
+	}
+	c.nodeUp = true
+	if _, err := c.server.AddUsers(&vCore.AddUsersParams{
+		Tag:      tag,
+		Users:    c.userList,
+		NodeInfo: newN,
+	}); err != nil {
+		// needsReload stays set: the next poll takes the node down and brings
+		// it back with its users, rather than leaving it up with nobody on it.
+		log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Add users failed")
+		c.apiClient.ResetNodeCache()
+		return
+	}
+	c.needsReload = false
+	c.applyIntervals(newN)
+	log.WithField("tag", tag).Infof("Added %d new users", len(c.userList))
+}
+
+// applyIntervals restarts the poll and report tasks on the panel's intervals
+// when they changed.
+func (c *Controller) applyIntervals(newN *panel.NodeInfo) {
+	if t := c.nodeInfoMonitorPeriodic; t != nil && newN.PullInterval != 0 && t.Interval != newN.PullInterval {
+		t.SetInterval(newN.PullInterval)
+		t.Close()
+		_ = t.Start(false)
+	}
+	if t := c.userReportPeriodic; t != nil && newN.PushInterval != 0 && t.Interval != newN.PushInterval {
+		t.SetInterval(newN.PushInterval)
+		t.Close()
+		_ = t.Start(false)
+	}
+}
+
 func (c *Controller) reportNodeStatusTask() error {
 	status, err := serverstatus.GetSystemStatus()
 	if err != nil {
 		return nil
 	}
 	if err := c.apiClient.ReportNodeStatus(status); err != nil {
-		log.WithField("tag", c.tag).WithError(err).Warn("Report node status failed")
+		tag, _, _ := c.state()
+		log.WithField("tag", tag).WithError(err).Warn("Report node status failed")
 	}
 	return nil
 }
@@ -310,6 +325,10 @@ func (c *Controller) reportNodeStatusTask() error {
 // is keyed by UID; UID->UUID comes from the lock-protected snapshot so we never
 // touch userList (owned by the nodeInfoMonitor goroutine) from here.
 func (c *Controller) SpeedChecker() error {
+	tag, _, l := c.state()
+	if l == nil {
+		return nil
+	}
 	expire := time.Now().Add(time.Duration(c.LimitConfig.DynamicSpeedLimitConfig.ExpireTime) * time.Minute)
 	c.trafficMu.Lock()
 	defer c.trafficMu.Unlock()
@@ -319,7 +338,7 @@ func (c *Controller) SpeedChecker() error {
 			if !ok {
 				continue
 			}
-			if err := c.limiter.UpdateDynamicSpeedLimit(c.tag, uuid,
+			if err := l.UpdateDynamicSpeedLimit(tag, uuid,
 				c.LimitConfig.DynamicSpeedLimitConfig.SpeedLimit, expire); err != nil {
 				log.WithField("err", err).Error("Update dynamic speed limit failed")
 			}
@@ -346,22 +365,20 @@ func onlyHotFieldsChanged(cur, newN *panel.NodeInfo) bool {
 
 // applyHotConfig updates the live thresholds and (if changed) the task
 // intervals without reloading the node, so active connections are untouched.
+//
+// It publishes a modified copy rather than editing c.info in place: the report
+// goroutine reads the thresholds while this runs.
 func (c *Controller) applyHotConfig(newN *panel.NodeInfo) {
-	c.info.NodeReportMinTraffic = newN.NodeReportMinTraffic
-	c.info.DeviceOnlineMinTraffic = newN.DeviceOnlineMinTraffic
-	if c.nodeInfoMonitorPeriodic != nil && newN.PullInterval != 0 &&
-		c.nodeInfoMonitorPeriodic.Interval != newN.PullInterval {
-		c.info.PullInterval = newN.PullInterval
-		c.nodeInfoMonitorPeriodic.SetInterval(newN.PullInterval)
-		c.nodeInfoMonitorPeriodic.Close()
-		_ = c.nodeInfoMonitorPeriodic.Start(false)
+	next := *c.info
+	next.NodeReportMinTraffic = newN.NodeReportMinTraffic
+	next.DeviceOnlineMinTraffic = newN.DeviceOnlineMinTraffic
+	if newN.PullInterval != 0 {
+		next.PullInterval = newN.PullInterval
 	}
-	if c.userReportPeriodic != nil && newN.PushInterval != 0 &&
-		c.userReportPeriodic.Interval != newN.PushInterval {
-		c.info.PushInterval = newN.PushInterval
-		c.userReportPeriodic.SetInterval(newN.PushInterval)
-		c.userReportPeriodic.Close()
-		_ = c.userReportPeriodic.Start(false)
+	if newN.PushInterval != 0 {
+		next.PushInterval = newN.PushInterval
 	}
+	c.setInfo(&next)
+	c.applyIntervals(newN)
 	log.WithField("tag", c.tag).Info("Applied hot config (thresholds/intervals) without node reload")
 }
