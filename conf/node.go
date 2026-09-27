@@ -6,11 +6,16 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"encoding/json"
 
 	"github.com/PoriyaVali/V2bX/common/json5"
 )
+
+// includeClient fetches a node's Include URL. With a timeout, so a panel that
+// hangs cannot hold up a start or a reload indefinitely.
+var includeClient = &http.Client{Timeout: 30 * time.Second}
 
 type NodeConfig struct {
 	ApiConfig ApiConfig `json:"-"`
@@ -40,28 +45,31 @@ func (n *NodeConfig) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 	if len(rn.Include) != 0 {
-		file, _ := strings.CutPrefix(rn.Include, ":")
-		switch file {
-		case "http", "https":
-			rsp, err := http.Get(file)
+		// A URL is fetched, anything else is a file. The URL case never ran:
+		// it compared the whole value against "http"/"https" after stripping a
+		// leading ":", so every URL was handed to os.Open and failed.
+		var src io.Reader
+		if strings.HasPrefix(rn.Include, "http://") || strings.HasPrefix(rn.Include, "https://") {
+			rsp, err := includeClient.Get(rn.Include)
 			if err != nil {
-				return err
+				return fmt.Errorf("fetch include %s error: %s", rn.Include, err)
 			}
 			defer rsp.Body.Close()
-			data, err = io.ReadAll(json5.NewTrimNodeReader(rsp.Body))
-			if err != nil {
-				return fmt.Errorf("open include file error: %s", err)
+			if rsp.StatusCode != http.StatusOK {
+				return fmt.Errorf("fetch include %s error: %s", rn.Include, rsp.Status)
 			}
-		default:
+			src = rsp.Body
+		} else {
 			f, err := os.Open(rn.Include)
 			if err != nil {
 				return fmt.Errorf("open include file error: %s", err)
 			}
 			defer f.Close()
-			data, err = io.ReadAll(json5.NewTrimNodeReader(f))
-			if err != nil {
-				return fmt.Errorf("open include file error: %s", err)
-			}
+			src = f
+		}
+		data, err = io.ReadAll(json5.NewTrimNodeReader(src))
+		if err != nil {
+			return fmt.Errorf("open include file error: %s", err)
 		}
 		err = json.Unmarshal(data, &rn)
 		if err != nil {
@@ -159,6 +167,9 @@ func (o *Options) UnmarshalJSON(data []byte) error {
 	err := json.Unmarshal(data, (*opt)(o))
 	if err != nil {
 		return err
+	}
+	if o.CertConfig != nil {
+		o.CertConfig.ExpandPaths()
 	}
 	switch o.Core {
 	case "xray":

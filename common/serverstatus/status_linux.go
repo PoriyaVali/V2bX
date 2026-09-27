@@ -4,14 +4,22 @@ package serverstatus
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
-var lastIdle, lastTotal uint64
+// The previous /proc/stat sample, shared by every node's status task. cpuMu
+// serialises them: each node reports on its own goroutine, and these were
+// read and written with no lock at all.
+var (
+	cpuMu               sync.Mutex
+	lastIdle, lastTotal uint64
+)
 
 func GetSystemStatus() (*SystemStatus, error) {
 	cpu, _ := getCPU()
@@ -30,6 +38,9 @@ func getCPU() (float64, error) {
 		sc := bufio.NewScanner(f)
 		sc.Scan()
 		fields := strings.Fields(sc.Text())
+		if len(fields) < 5 {
+			return 0, 0, errors.New("unexpected /proc/stat format")
+		}
 		for i, v := range fields[1:] {
 			n, _ := strconv.ParseUint(v, 10, 64)
 			total += n
@@ -40,6 +51,8 @@ func getCPU() (float64, error) {
 		return
 	}
 
+	cpuMu.Lock()
+	defer cpuMu.Unlock()
 	if lastTotal == 0 {
 		lastIdle, lastTotal, _ = read()
 		time.Sleep(200 * time.Millisecond)

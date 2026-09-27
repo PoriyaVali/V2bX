@@ -2,6 +2,10 @@ package conf
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -144,5 +148,54 @@ func TestANestedBlockWithoutTheKeyKeepsTheDefault(t *testing.T) {
 	                    "SingOptions":{"EnableTFO":false,"EnableSniff":true}}`)
 	if !n.Options.SingOptions.ProxyProtocol {
 		t.Error("a nested block that never mentions ProxyProtocol switched it off")
+	}
+}
+
+// {domain} and {email} in the certificate paths are filled in when the config
+// is read, so the files the ACME code writes are the ones the existence check,
+// the renewal and the cores read.
+func TestOptions_CertPathPlaceholders(t *testing.T) {
+	var nc NodeConfig
+	raw := `{"ApiHost":"x","NodeID":1,"NodeType":"vless","Core":"sing","CertConfig":{"CertMode":"dns",` +
+		`"CertDomain":"n1.example.com","Email":"ops@example.com",` +
+		`"CertFile":"/etc/V2bX/{domain}.cer","KeyFile":"/etc/V2bX/{domain}-{email}.key"}}`
+	if err := json.Unmarshal([]byte(raw), &nc); err != nil {
+		t.Fatal(err)
+	}
+	cc := nc.Options.CertConfig
+	if cc.CertFile != "/etc/V2bX/n1.example.com.cer" || cc.KeyFile != "/etc/V2bX/n1.example.com-ops@example.com.key" {
+		t.Fatalf("paths = %q, %q", cc.CertFile, cc.KeyFile)
+	}
+}
+
+// Include can point at a URL. It never worked: every URL went to os.Open.
+func TestNodeConfig_IncludeFromURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"ApiHost":"https://panel.example","NodeID":42,"NodeType":"vless",` +
+			`"ApiKey":"k", // comments are fine, as in a local include
+		}`))
+	}))
+	defer srv.Close()
+	n := parseNode(t, `{"Include":"`+srv.URL+`/node.json"}`)
+	if n.ApiConfig.NodeID != 42 || n.ApiConfig.APIHost != "https://panel.example" {
+		t.Fatalf("include from URL not applied: %+v", n.ApiConfig)
+	}
+}
+
+func TestNodeConfig_IncludeURLErrorStatus(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	var n NodeConfig
+	if err := json.Unmarshal([]byte(`{"Include":"`+srv.URL+`/missing.json"}`), &n); err == nil {
+		t.Fatal("a 404 include must be an error, not an empty node")
+	}
+}
+
+func TestNodeConfig_IncludeFromFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "node.json")
+	os.WriteFile(path, []byte(`{"NodeID":7,"NodeType":"trojan"}`), 0o600)
+	n := parseNode(t, `{"Include":"`+path+`"}`)
+	if n.ApiConfig.NodeID != 7 {
+		t.Fatalf("include from file not applied: %+v", n.ApiConfig)
 	}
 }

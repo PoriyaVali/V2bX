@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"sync"
 	"syscall"
 
 	"github.com/PoriyaVali/V2bX/common/memguard"
@@ -81,10 +82,23 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 	if err = vc.Start(); err != nil {
 		return fmt.Errorf("start core: %w", err)
 	}
+	// lifecycle keeps a config reload and the shutdown from overlapping: the
+	// reload runs on the watcher's goroutine and replaces nodes and vc, which
+	// the shutdown below closes. stopping tells a reload that was waiting for
+	// the lock that there is nothing left to reload.
+	var (
+		lifecycle sync.Mutex
+		stopping  bool
+	)
 	// A closure, not `defer vc.Close()`: that form binds the core that exists
 	// right now, so after a reload the process would close the old one on exit
 	// and leave the running one open.
-	defer func() { _ = vc.Close() }()
+	defer func() {
+		lifecycle.Lock()
+		defer lifecycle.Unlock()
+		stopping = true
+		_ = vc.Close()
+	}()
 	log.Info("Core ", vc.Type(), " started")
 	nodes := node.New()
 	if err = nodes.Start(c.NodeConfig, vc); err != nil {
@@ -96,6 +110,11 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 	sdns := os.Getenv("SING_DNS_PATH")
 	if watch {
 		err = c.Watch(config, xdns, sdns, func() {
+			lifecycle.Lock()
+			defer lifecycle.Unlock()
+			if stopping {
+				return
+			}
 			// Everything below runs after the old nodes and core are gone, so a
 			// failure here would leave the process alive and serving nobody -
 			// and systemd, seeing it alive, would never step in. Exit instead:
@@ -132,6 +151,9 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, syscall.SIGINT, syscall.SIGTERM)
 	<-osSignals
+	lifecycle.Lock()
+	stopping = true
 	nodes.Close()
+	lifecycle.Unlock()
 	return nil
 }

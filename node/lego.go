@@ -111,10 +111,12 @@ func (l *Lego) RenewCert() error {
 	if err != nil {
 		return fmt.Errorf("read cert file error: %s", err)
 	}
-	if e, err := l.CheckCert(file); !e {
-		return nil
-	} else if err != nil {
+	// The error first: a certificate that cannot be parsed used to count as
+	// "not due", so a damaged file was never replaced and nobody was told.
+	if e, err := l.CheckCert(file); err != nil {
 		return fmt.Errorf("check cert error: %s", err)
+	} else if !e {
+		return nil
 	}
 	res, err := l.client.Certificate.Renew(certificate.Resource{
 		Domain:      l.config.CertDomain,
@@ -159,11 +161,14 @@ func (l *Lego) writeCert(certificates *certificate.Resource) error {
 	if err != nil {
 		return fmt.Errorf("check path error: %s", err)
 	}
-	err = os.WriteFile(l.parseParams(l.config.KeyFile), certificates.PrivateKey, 0644)
-	if err != nil {
+	// 0600: the certificate's private key. It was written readable by every
+	// account on the machine. WriteFile keeps the mode of a file that already
+	// exists, so a key written before this is tightened too.
+	keyPath := l.parseParams(l.config.KeyFile)
+	if err = os.WriteFile(keyPath, certificates.PrivateKey, 0600); err != nil {
 		return err
 	}
-	return nil
+	return os.Chmod(keyPath, 0600)
 }
 
 type User struct {
@@ -245,20 +250,28 @@ func (u *User) Save(path string) error {
 		return fmt.Errorf("check path error: %s", err)
 	}
 	u.KeyEncoded, _ = EncodePrivate(u.key.(*ecdsa.PrivateKey))
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	defer func() { u.KeyEncoded = "" }()
+	// 0600, and closed: the file holds the ACME account's private key. It was
+	// world-readable and the descriptor was never closed.
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
-	err = json.NewEncoder(f).Encode(u)
-	if err != nil {
+	if err = json.NewEncoder(f).Encode(u); err != nil {
+		f.Close()
 		return fmt.Errorf("marshal json error: %s", err)
 	}
-	u.KeyEncoded = ""
-	return nil
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
 }
 
 func (u *User) DecodePrivate(pemEncodedPriv string) (*ecdsa.PrivateKey, error) {
 	blockPriv, _ := pem.Decode([]byte(pemEncodedPriv))
+	if blockPriv == nil {
+		return nil, fmt.Errorf("no PEM block in the saved account key")
+	}
 	x509EncodedPriv := blockPriv.Bytes
 	privateKey, err := x509.ParseECPrivateKey(x509EncodedPriv)
 	return privateKey, err
