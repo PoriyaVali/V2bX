@@ -2,6 +2,15 @@ name: Build and Release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Publish a release with this tag (e.g. v1.6.1), made on the commit this runs on. Empty: build only."
+        required: false
+        default: ""
+      notes:
+        description: "Release notes (Markdown)"
+        required: false
+        default: ""
   push:
     branches:
       - master
@@ -23,7 +32,35 @@ on:
 
 jobs:
 
+  # Running this workflow by hand with a tag publishes a release in one go.
+  # The release starts as a draft and is published only once every binary is
+  # attached, so `v2bx update` never finds a latest release without them. It
+  # cannot lean on the `release` trigger below: GitHub starts no workflow for
+  # a release made with GITHUB_TOKEN.
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "tag must look like v1.6.0, got: $TAG"
+            exit 1
+          fi
+          printf '%s\n' "$NOTES" > notes.md
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
+            --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+
   build:
+    needs: release
+    # Runs on every event; waits for the draft only when there is one.
+    if: ${{ !cancelled() && needs.release.result != 'failure' }}
     strategy:
       matrix:
         # Include amd64 on all platforms.
@@ -128,14 +165,12 @@ jobs:
       - name: Get project dependencies
         run: |
           go mod download
-      - name: Get release version
-        if: ${{ github.event_name == 'release' }}
+      - name: Get version
+        env:
+          # The release's tag, else empty (then the commit).
+          TAG: ${{ github.event_name == 'release' && github.ref_name || inputs.tag }}
         run: |
-          echo "version=$(echo $GITHUB_REF | cut -d / -f 3)" >> $GITHUB_ENV
-      - name: Get other version
-        if: ${{ github.event_name != 'release' }}
-        run: |
-          echo "version=${{ github.sha }}" >> $GITHUB_ENV
+          echo "version=${TAG:-$GITHUB_SHA}" >> $GITHUB_ENV
       - name: Build V2bX
         run: |
           echo "version: $version"
@@ -196,3 +231,36 @@ jobs:
           file: ./V2bX-${{ steps.get_filename.outputs.ASSET_NAME }}.zip*
           tag: ${{ github.ref }}
           file_glob: true
+      - name: Upload binaries to draft release
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "./V2bX-$ASSET_NAME.zip" "./V2bX-$ASSET_NAME.zip.dgst"
+
+  publish:
+    needs: [release, build]
+    # Only when every build uploaded its binaries; otherwise the draft stays a
+    # draft and servers keep the release they have.
+    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+      - name: Build the Docker image for it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        # The `release` trigger of that workflow does not fire for this release
+        # (see the release job), and a dispatch on the tag builds the same image.
+        run: |
+          gh workflow run "Publish Docker image.yml" --repo "$GITHUB_REPOSITORY" --ref "$TAG"
