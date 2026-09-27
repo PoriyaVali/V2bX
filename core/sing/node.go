@@ -67,6 +67,10 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		TCPKeepAliveInterval: badoption.Duration(c.SingOptions.KeepAliveInterval()),
 		UDPTimeout:           option.UDPTimeoutCompat(c.SingOptions.UDPIdle()),
 		TCPCongestion:        c.SingOptions.TCPCongestionName(),
+		// Set by the listener on every connection it accepts, whatever the
+		// protocol above - including anytls and mux, whose streams share one
+		// connection and so gain the most. See conf.DefaultTCPNotSentLowat.
+		TCPNotSentLowat: c.SingOptions.NotSentLowat(),
 		// Wire the SingOptions sniff/domain settings into the inbound. Without
 		// this, sniffing is off so the destination stays an IP — domain and
 		// protocol audit rules (hook.go) never match and logs show raw IPs.
@@ -486,11 +490,6 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	b.users.mapLock.Lock()
 	b.nodeReportMinTrafficBytes[tag] = config.ReportMinTraffic * 1024
 	b.users.mapLock.Unlock()
-	if n := config.SingOptions.NotSentLowat(); n > 0 {
-		b.hookServer.notSentLowat.Store(tag, n)
-	} else {
-		b.hookServer.notSentLowat.Delete(tag)
-	}
 	c, err := getInboundOptions(tag, info, config)
 	if err != nil {
 		return err

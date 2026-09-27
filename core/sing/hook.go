@@ -12,7 +12,6 @@ import (
 
 	"github.com/PoriyaVali/V2bX/common/format"
 	"github.com/PoriyaVali/V2bX/common/rate"
-	"github.com/PoriyaVali/V2bX/common/sockopt"
 
 	"github.com/PoriyaVali/V2bX/limiter"
 
@@ -25,11 +24,8 @@ import (
 var _ adapter.ConnectionTracker = (*HookServer)(nil)
 
 type HookServer struct {
-	// notSentLowat is each inbound's TCP_NOTSENT_LOWAT in bytes (tag -> int),
-	// set on every connection it routes whose socket can be reached.
-	notSentLowat sync.Map
-	counter      sync.Map //map[string]*counter.TrafficCounter
-	conns        sync.Map //map[string]*userConns, keyed by format.UserTag
+	counter sync.Map //map[string]*counter.TrafficCounter
+	conns   sync.Map //map[string]*userConns, keyed by format.UserTag
 
 	// Per-source-address traffic, so device_online_min_traffic can mean what the
 	// admin panel says it means: "only report the IPs of devices whose OWN
@@ -46,11 +42,6 @@ type HookServer struct {
 	deviceCounter sync.Map //map[string]*counter.TrafficCounter, keyed by inbound tag; inner key: uuid|ip
 	deviceIdle    sync.Map //map[string]int, consecutive silent cycles per uuid|ip
 }
-
-// notSentLowatSet counts connections whose socket got TCP_NOTSENT_LOWAT.
-// A protocol that multiplexes its streams over one connection (anytls, mux)
-// hands the hook a stream, not the socket, and is not counted here.
-var notSentLowatSet atomic.Int64
 
 // deviceKey is the inner key of deviceCounter: one entry per (user, source
 // address). The separator cannot appear in a uuid, and an IPv6 literal keeps its
@@ -350,9 +341,6 @@ func (h *HookServer) ModeList() []string {
 }
 
 func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) net.Conn {
-	if v, ok := h.notSentLowat.Load(m.Inbound); ok && sockopt.SetNotSentLowat(conn, v.(int)) {
-		notSentLowatSet.Add(1)
-	}
 	l, err := limiter.GetLimiter(m.Inbound)
 	if err != nil {
 		log.Warn("get limiter for ", m.Inbound, " error: ", err)
