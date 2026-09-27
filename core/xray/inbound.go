@@ -12,7 +12,9 @@ import (
 	"encoding/json"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/sockopt"
 	"github.com/PoriyaVali/V2bX/conf"
+	log "github.com/sirupsen/logrus"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/core"
 	coreConf "github.com/xtls/xray-core/infra/conf"
@@ -88,6 +90,21 @@ func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*
 			TFO:                 option.XrayOptions.EnableTFO,
 		} //Enable proxy protocol
 		in.StreamSetting.SocketSettings = socketConfig
+	}
+	// Congestion control for the node's connections, set on the listener
+	// (accepted connections inherit it) - bbr by default, as sing nodes do.
+	// Only when this kernel accepts it: xray fails the whole listen on a
+	// refused socket option, which would take the node down over a tuning.
+	if cc := option.XrayOptions.TCPCongestionName(); cc != "" {
+		if sockopt.Congestion(cc) {
+			if in.StreamSetting.SocketSettings == nil {
+				in.StreamSetting.SocketSettings = &coreConf.SocketConfig{}
+			}
+			in.StreamSetting.SocketSettings.TCPCongestion = cc
+		} else {
+			log.WithFields(log.Fields{"tag": tag, "congestion": cc}).
+				Warn("TCP congestion control not available on this kernel; keeping the system default")
+		}
 	}
 	// Set TLS or Reality settings
 	switch nodeInfo.Security {

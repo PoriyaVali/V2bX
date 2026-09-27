@@ -39,8 +39,12 @@ var networkTuning = []sysctlSetting{
 		"fair queueing: one busy download cannot hold back everyone's packets, and it paces BBR"},
 	{"net.ipv4.tcp_congestion_control", "bbr",
 		"paces by measured bandwidth and RTT instead of backing off at every lost packet"},
+	// Measured: connections a server ACCEPTS did not follow this sysctl on the
+	// kernel tested (only a per-connection setsockopt took effect), so it is
+	// not what speeds up users' downloads - V2bX sets that on their sockets
+	// itself (TCPNotSentLowat). It does cover connections this server opens.
 	{"net.ipv4.tcp_notsent_lowat", "16384",
-		"keep at most 16 KiB queued unsent per socket: an interactive reply is not stuck behind megabytes of a download sharing the same connection (mux, anytls, h2)"},
+		"at most 16 KiB queued unsent on connections this server opens; users' connections get it from V2bX itself"},
 	{"net.ipv4.tcp_slow_start_after_idle", "0",
 		"a connection that paused keeps its speed instead of restarting slow - the next page or message over a kept-alive connection arrives at full rate"},
 	{"net.ipv4.tcp_mtu_probing", "1",

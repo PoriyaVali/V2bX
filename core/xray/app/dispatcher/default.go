@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/PoriyaVali/V2bX/common/counter"
 	"github.com/PoriyaVali/V2bX/common/localip"
 	"github.com/PoriyaVali/V2bX/common/rate"
+	"github.com/PoriyaVali/V2bX/common/sockopt"
 	"github.com/PoriyaVali/V2bX/limiter"
 
 	"github.com/xtls/xray-core/app/dispatcher"
@@ -30,6 +32,7 @@ import (
 	routing_session "github.com/xtls/xray-core/features/routing/session"
 	"github.com/xtls/xray-core/features/stats"
 	"github.com/xtls/xray-core/transport"
+	"github.com/xtls/xray-core/transport/internet/stat"
 	"github.com/xtls/xray-core/transport/pipe"
 )
 
@@ -109,6 +112,32 @@ type DefaultDispatcher struct {
 	fdns         dns.FakeDNSEngine
 	Counter      sync.Map
 	LinkManagers sync.Map // map[string]*LinkManager
+	// NotSentLowat is each inbound's TCP_NOTSENT_LOWAT in bytes (tag -> int).
+	// It is set on every connection dispatched from that inbound whose socket
+	// can be reached: a listener's value does not carry over to the
+	// connections it accepts, so xray's own sockopt settings cannot do it.
+	NotSentLowat sync.Map
+	// notSentLowatSet counts connections whose socket got it. Connections
+	// whose transport hides the socket (websocket, gRPC) are not counted.
+	notSentLowatSet atomic.Int64
+}
+
+// NotSentLowatSet is how many connections have had TCP_NOTSENT_LOWAT set.
+func (d *DefaultDispatcher) NotSentLowatSet() int64 { return d.notSentLowatSet.Load() }
+
+// tuneSocket applies the inbound's per-connection socket settings.
+func (d *DefaultDispatcher) tuneSocket(in *session.Inbound) {
+	v, ok := d.NotSentLowat.Load(in.Tag)
+	if !ok || in.Conn == nil {
+		return
+	}
+	var conn any = in.Conn
+	if cc, ok := conn.(*stat.CounterConnection); ok {
+		conn = cc.Connection
+	}
+	if sockopt.SetNotSentLowat(conn, v.(int)) {
+		d.notSentLowatSet.Add(1)
+	}
 }
 
 func init() {
@@ -203,6 +232,7 @@ func (d *DefaultDispatcher) getLink(ctx context.Context, network net.Network) (*
 			common.Interrupt(inboundLink.Reader)
 			return nil, nil, nil, errors.New("get limiter ", sessionInbound.Tag, " error: ", err)
 		}
+		d.tuneSocket(sessionInbound)
 		// Speed Limit and Device Limit
 		w, reject := limit.CheckLimit(user.Email,
 			sessionInbound.Source.Address.IP().String(),
@@ -385,6 +415,7 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 			common.Interrupt(outbound.Reader)
 			return errors.New("get limiter ", sessionInbound.Tag, " error: ", err)
 		}
+		d.tuneSocket(sessionInbound)
 		// Speed Limit and Device Limit
 		w, reject := limit.CheckLimit(user.Email,
 			sessionInbound.Source.Address.IP().String(),
