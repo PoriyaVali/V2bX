@@ -367,11 +367,11 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	if l != nil {
 		destStr := m.Destination.AddrString()
 		protocol := m.Protocol
-		if l.CheckDomainRule(destStr) {
+		if reject, kind := l.CheckDestinationRule(destStr, m.Destination.Port); reject {
 			log.Error(fmt.Sprintf(
-				"User %s access domain %s reject by rule",
+				"User %s access %s reject by %s rule",
 				m.User,
-				destStr))
+				m.Destination, kind))
 			conn.Close()
 			return conn
 		}
@@ -427,17 +427,24 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 	}
 	if l != nil {
 		destStr := m.Destination.AddrString()
-		protocol := m.Destination.Network()
-		if l.CheckDomainRule(destStr) {
+		if reject, kind := l.CheckDestinationRule(destStr, m.Destination.Port); reject {
 			log.Error(fmt.Sprintf(
-				"User %s access domain %s reject by rule",
+				"User %s access %s reject by %s rule",
 				m.User,
-				destStr))
+				m.Destination, kind))
 			conn.Close()
 			return conn
 		}
+		// The sniffed protocol, as for TCP. This read the destination's
+		// network ("udp") instead, so a "quic" or "bittorrent" rule never
+		// matched a packet connection; the network name is still honoured
+		// for rules written that way.
+		protocol := m.Protocol
+		if protocol == "" {
+			protocol = m.Destination.Network()
+		}
 		if len(protocol) != 0 {
-			if l.CheckProtocolRule(protocol) {
+			if l.CheckProtocolRule(protocol) || l.CheckProtocolRule(m.Destination.Network()) {
 				log.Error(fmt.Sprintf(
 					"User %s access protocol %s reject by rule",
 					m.User,

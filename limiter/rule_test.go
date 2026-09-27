@@ -68,3 +68,40 @@ func TestUpdateRule_ConcurrentWithChecks(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+func TestCheckDestinationRule(t *testing.T) {
+	l := &Limiter{}
+	_ = l.UpdateRule(&panel.Rules{
+		Domain: []string{"domain:tracker.example", "full:exact.example", "keyword:casino", "geosite:no-such-list"},
+		IP:     []string{"10.0.0.0/8", "192.0.2.7", "2001:db8::/32", "not-an-ip", "geoip:no-such-code"},
+		Port:   []string{"25", "6881-6889", "70000", "9-1"},
+	})
+	cases := []struct {
+		host string
+		port uint16
+		want string
+	}{
+		{"tracker.example", 443, "domain"},
+		{"a.tracker.example", 443, "domain"},
+		{"badtracker.example", 443, ""},
+		{"exact.example", 443, "domain"},
+		{"sub.exact.example", 443, ""},
+		{"my-CASINO.example", 443, "domain"},
+		{"10.1.2.3", 443, "ip"},
+		{"192.0.2.7", 443, "ip"},
+		{"192.0.2.8", 443, ""},
+		{"2001:db8::1", 443, "ip"},
+		{"[2001:db8::1]", 443, "ip"},
+		// An address rule judges addresses, not names.
+		{"ten.example", 443, ""},
+		{"example.com", 25, "port"},
+		{"example.com", 6885, "port"},
+		{"example.com", 6890, ""},
+	}
+	for _, c := range cases {
+		reject, kind := l.CheckDestinationRule(c.host, c.port)
+		if kind != c.want || reject != (c.want != "") {
+			t.Errorf("CheckDestinationRule(%q, %d) = %v %q, want %q", c.host, c.port, reject, kind, c.want)
+		}
+	}
+}

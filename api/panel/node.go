@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,8 @@ type NodeInfo struct {
 	DeviceOnlineMinTraffic int64
 	RawDNS                 RawDNS
 	Rules                  Rules
+	// Only the xray core can apply these; see RouteRule.
+	RouteRules []RouteRule
 
 	// origin
 	VAllss      *VAllssNode
@@ -285,9 +288,45 @@ type RawDNS struct {
 	DNSJson []byte
 }
 
+// Rules are the panel's blocking rules for a node, enforced for every core
+// that routes connections through the limiter (xray and sing).
 type Rules struct {
-	Regexp   []string
+	// Domains from "block" written bare or as "regexp:", read as regular
+	// expressions (the "regexp:" prefix removed).
+	Regexp []string
+	// Domains from "block" in xray's rule syntax: "domain:", "full:",
+	// "keyword:", "geosite:", "ext:".
+	Domain []string
+	// Sniffed protocols: "protocol" rules, and "block" entries written as
+	// "protocol:<name>".
 	Protocol []string
+	// Destination addresses from "block_ip": an IP, a CIDR or "geoip:<code>".
+	IP []string
+	// Destination ports from "block_port": a port or a range "1000-2000".
+	Port []string
+}
+
+// RouteRule sends matching traffic of a node to an outbound of its own: the
+// panel's "route" (by domain), "route_ip" (by address) and "default_out"
+// (everything else). Outbound is an xray outbound object.
+type RouteRule struct {
+	Id       int
+	Action   string
+	Match    []string
+	Outbound json.RawMessage
+}
+
+// domainRulePrefixes are the xray rule forms a "block" entry may use besides
+// a bare or "regexp:" pattern.
+var domainRulePrefixes = []string{"domain:", "full:", "keyword:", "geosite:", "ext:", "ext-domain:", "ext-site:", "dotless:"}
+
+func isPrefixedDomainRule(v string) bool {
+	for _, p := range domainRulePrefixes {
+		if strings.HasPrefix(v, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // ResetNodeCache clears the cached node ETag/body hash so the next GetNodeInfo
@@ -467,37 +506,68 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 
 	// parse rules and dns
 	for i := range cm.Routes {
-		matchs := routeMatches(cm.Routes[i].Match)
-		if len(matchs) == 0 {
-			// Nothing to match. An empty or null match used to crash the
-			// process here (an unchecked type assertion, then matchs[0]).
+		route := cm.Routes[i]
+		matchs := routeMatches(route.Match)
+		// default_out matches everything, so it has no match list; every
+		// other action with nothing to match is a no-op. An empty or null
+		// match used to crash the process here (an unchecked type assertion,
+		// then matchs[0]).
+		if len(matchs) == 0 && route.Action != "default_out" {
 			continue
 		}
-		switch cm.Routes[i].Action {
+		switch route.Action {
 		case "block":
 			for _, v := range matchs {
-				if strings.HasPrefix(v, "protocol:") {
-					// protocol
+				switch {
+				case strings.HasPrefix(v, "protocol:"):
 					node.Rules.Protocol = append(node.Rules.Protocol, strings.TrimPrefix(v, "protocol:"))
-				} else {
-					// domain
+				case isPrefixedDomainRule(v):
+					node.Rules.Domain = append(node.Rules.Domain, v)
+				default:
 					node.Rules.Regexp = append(node.Rules.Regexp, strings.TrimPrefix(v, "regexp:"))
 				}
 			}
+		// The next three were offered by the panel and ignored here, so an
+		// operator's rule blocking an address range, a port or BitTorrent did
+		// nothing, with no error anywhere.
+		case "block_ip":
+			node.Rules.IP = append(node.Rules.IP, matchs...)
+		case "block_port":
+			node.Rules.Port = append(node.Rules.Port, matchs...)
+		case "protocol":
+			node.Rules.Protocol = append(node.Rules.Protocol, matchs...)
+		case "route", "route_ip", "default_out":
+			if strings.TrimSpace(route.ActionValue) == "" {
+				log.WithField("route", route.Id).Warnf("panel %s rule has no outbound; skipped", route.Action)
+				continue
+			}
+			node.RouteRules = append(node.RouteRules, RouteRule{
+				Id:       route.Id,
+				Action:   route.Action,
+				Match:    matchs,
+				Outbound: json.RawMessage(route.ActionValue),
+			})
 		case "dns":
 			var domains []string
 			domains = append(domains, matchs...)
 			if matchs[0] != "main" {
 				node.RawDNS.DNSMap[strconv.Itoa(i)] = map[string]interface{}{
-					"address": cm.Routes[i].ActionValue,
+					"address": route.ActionValue,
 					"domains": domains,
 				}
 			} else {
 				dns := []byte(strings.Join(matchs[1:], ""))
 				node.RawDNS.DNSJson = dns
 			}
+		default:
+			log.WithField("route", route.Id).Warnf("panel route action %q is not supported; skipped", route.Action)
 		}
 	}
+	// A default outbound catches everything, so it goes last whatever its
+	// place in the panel's list; the specific rules must be tried first.
+	sort.SliceStable(node.RouteRules, func(a, b int) bool {
+		return node.RouteRules[a].Action != "default_out" && node.RouteRules[b].Action == "default_out"
+	})
 
 	// set interval
 	node.PushInterval = intervalToTime(cm.BaseConfig.PushInterval)

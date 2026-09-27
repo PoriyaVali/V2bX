@@ -490,6 +490,7 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	b.users.mapLock.Lock()
 	b.nodeReportMinTrafficBytes[tag] = config.ReportMinTraffic * 1024
 	b.users.mapLock.Unlock()
+	warnPanelRoutesUnsupported(tag, info)
 	c, err := getInboundOptions(tag, info, config)
 	if err != nil {
 		return err
@@ -548,4 +549,22 @@ func (b *Sing) DelNode(tag string) error {
 		return fmt.Errorf("delete inbound error: %s", err)
 	}
 	return nil
+}
+
+// warnPanelRoutesUnsupported says so when the panel sends this node rules the
+// sing core cannot apply. Its routing is fixed when the core starts, so the
+// panel's per-node outbounds (route, route_ip, default_out) and DNS servers
+// have nowhere to go; the blocking rules are enforced (see hook.go). Without
+// this the rules were dropped with no trace, and an operator had no way to
+// learn why traffic was not leaving where they had sent it.
+func warnPanelRoutesUnsupported(tag string, info *panel.NodeInfo) {
+	dns := len(info.RawDNS.DNSMap) + len(info.RawDNS.DNSJson)
+	if len(info.RouteRules) == 0 && dns == 0 {
+		return
+	}
+	log.WithFields(log.Fields{
+		"tag":         tag,
+		"route_rules": len(info.RouteRules),
+		"dns_rules":   dns > 0,
+	}).Warn("The panel's route/route_ip/default_out and dns rules are applied by the xray core only; this node runs on sing. Set Core to xray for this node to apply them")
 }

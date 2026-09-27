@@ -8,6 +8,7 @@ import (
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/conf"
+	log "github.com/sirupsen/logrus"
 )
 
 type Selector struct {
@@ -126,7 +127,30 @@ func (s *Selector) AddNode(tag string, info *panel.NodeInfo, option *conf.Option
 		return err
 	}
 	s.nodes.Store(tag, core)
+	warnRulesNotEnforced(tag, core.Type(), info)
 	return nil
+}
+
+// warnRulesNotEnforced says so when a node carries panel rules its core does
+// not apply. The blocking rules are enforced where connections are routed
+// through the limiter - the xray and sing cores - and the per-node outbounds
+// by xray alone (sing warns for those itself). Without this an operator had
+// no way to learn that a rule set in the panel did nothing on this node.
+func warnRulesNotEnforced(tag, coreType string, info *panel.NodeInfo) {
+	if coreType == "xray" || coreType == "sing" {
+		return
+	}
+	r := info.Rules
+	blocking := len(r.Regexp) + len(r.Domain) + len(r.Protocol) + len(r.IP) + len(r.Port)
+	if blocking == 0 && len(info.RouteRules) == 0 {
+		return
+	}
+	log.WithFields(log.Fields{
+		"tag":         tag,
+		"core":        coreType,
+		"block_rules": blocking,
+		"route_rules": len(info.RouteRules),
+	}).Warn("The panel's route rules are not applied by this core; they take effect on xray (all of them) and sing (blocking only)")
 }
 
 func (s *Selector) DelNode(tag string) error {

@@ -49,6 +49,7 @@ func (c *Xray) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	if err != nil {
 		return fmt.Errorf("add outbound error: %s", err)
 	}
+	c.addRouteRules(tag, info.RouteRules)
 	return nil
 }
 
@@ -84,6 +85,7 @@ func (c *Xray) addOutbound(config *core.OutboundHandlerConfig) error {
 
 func (c *Xray) DelNode(tag string) error {
 	c.dispatcher.NotSentLowat.Delete(tag)
+	c.removeRouteRules(tag)
 	err := c.removeInbound(tag)
 	if err != nil {
 		return fmt.Errorf("remove in error: %s", err)

@@ -38,6 +38,9 @@ type Xray struct {
 	dispatcher                *dispatcher.DefaultDispatcher
 	users                     *UserMap
 	nodeReportMinTrafficBytes map[string]int64
+	// Outbound (and rule) tags each node's panel route rules installed.
+	routeMu   sync.Mutex
+	routeTags map[string][]string
 }
 
 type UserMap struct {
@@ -52,6 +55,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 			uidMap: make(map[string]int),
 		},
 		nodeReportMinTrafficBytes: make(map[string]int64),
+		routeTags:                 make(map[string][]string),
 	}, nil
 }
 

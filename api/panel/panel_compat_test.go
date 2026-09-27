@@ -135,3 +135,45 @@ func TestGetNodeInfo_HysteriaVersionDecides(t *testing.T) {
 		}
 	}
 }
+
+// Every route action the panel offers must reach the node. Only block and
+// dns did; the rest were dropped without a word.
+func TestGetNodeInfo_AllRouteActions(t *testing.T) {
+	body := `{"server_port":1234,"cipher":"aes-128-gcm","routes":[
+	  {"id":9,"match":[],"action":"default_out","action_value":"{\"protocol\":\"blackhole\"}"},
+	  {"id":1,"match":["regexp:^ads\\.","*.bad.example","domain:tracker.example","geosite:category-ads","protocol:bittorrent"],"action":"block"},
+	  {"id":2,"match":["10.0.0.0/8","geoip:cn"],"action":"block_ip"},
+	  {"id":3,"match":["25","6881-6889"],"action":"block_port"},
+	  {"id":4,"match":["bittorrent","quic"],"action":"protocol"},
+	  {"id":5,"match":["geosite:netflix"],"action":"route","action_value":"{\"protocol\":\"freedom\"}"},
+	  {"id":6,"match":["1.1.1.1"],"action":"route_ip","action_value":"{\"protocol\":\"freedom\"}"},
+	  {"id":7,"match":["x.example"],"action":"route","action_value":""},
+	  {"id":8,"match":["x"],"action":"teleport"}
+	]}`
+	n, err := fetchNode(t, "shadowsocks", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq := func(what string, got, want []string) {
+		t.Helper()
+		if strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("%s = %q, want %q", what, got, want)
+		}
+	}
+	eq("regexp", n.Rules.Regexp, []string{"^ads\\.", "*.bad.example"})
+	eq("domain", n.Rules.Domain, []string{"domain:tracker.example", "geosite:category-ads"})
+	eq("ip", n.Rules.IP, []string{"10.0.0.0/8", "geoip:cn"})
+	eq("port", n.Rules.Port, []string{"25", "6881-6889"})
+	eq("protocol", n.Rules.Protocol, []string{"bittorrent", "bittorrent", "quic"})
+
+	var got []string
+	for _, r := range n.RouteRules {
+		got = append(got, r.Action+":"+strings.Join(r.Match, ","))
+	}
+	// default_out last, whatever its place in the panel's list; the route
+	// with no outbound and the unknown action are skipped.
+	eq("route rules", got, []string{"route:geosite:netflix", "route_ip:1.1.1.1", "default_out:"})
+	if string(n.RouteRules[2].Outbound) != `{"protocol":"blackhole"}` {
+		t.Errorf("default_out outbound = %s", n.RouteRules[2].Outbound)
+	}
+}

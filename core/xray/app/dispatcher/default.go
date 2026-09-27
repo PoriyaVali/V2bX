@@ -567,11 +567,11 @@ func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.
 			} else {
 				destStr = destination.Address.IP().String()
 			}
-			if l.CheckDomainRule(destStr) {
+			if reject, kind := l.CheckDestinationRule(destStr, destination.Port.Value()); reject {
 				errors.LogError(ctx, fmt.Sprintf(
-					"User %s access domain %s reject by rule",
+					"User %s access %s %s reject by %s rule",
 					sessionInbound.User.Email,
-					destStr))
+					destination.Network, destination.NetAddr(), kind))
 				common.Close(link.Writer)
 				common.Interrupt(link.Reader)
 				return

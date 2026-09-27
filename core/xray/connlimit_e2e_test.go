@@ -56,6 +56,13 @@ func freePort(t *testing.T) int {
 // xrayNode runs a real xray core with one shadowsocks node and one user.
 func xrayNode(t *testing.T, connLimit int) (*Xray, string, int) {
 	t.Helper()
+	return xrayNodeWith(t, connLimit, nil)
+}
+
+// xrayNodeWith is xrayNode with the node info adjusted by edit before the
+// node is added.
+func xrayNodeWith(t *testing.T, connLimit int, edit func(*panel.NodeInfo)) (*Xray, string, int) {
+	t.Helper()
 	limiter.Init()
 	const tag = "e2e-ss"
 	users := []panel.UserInfo{{Id: 1, Uuid: e2eUUID}}
@@ -76,6 +83,9 @@ func xrayNode(t *testing.T, connLimit int) (*Xray, string, int) {
 	ss := &panel.ShadowsocksNode{Cipher: "aes-128-gcm"}
 	ss.ServerPort = port
 	info := &panel.NodeInfo{Type: "shadowsocks", Shadowsocks: ss, Common: &ss.CommonNode}
+	if edit != nil {
+		edit(info)
+	}
 	xo := conf.NewXrayOptions()
 	xo.DisableSniffing = true
 	if err := x.AddNode(tag, info, &conf.Options{ListenIP: "127.0.0.1", XrayOptions: xo}); err != nil {
