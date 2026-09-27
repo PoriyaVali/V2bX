@@ -64,3 +64,20 @@ func TestSing_RemovingAUserFromOneNodeKeepsTheirTrafficOnAnother(t *testing.T) {
 		t.Fatalf("traffic on node A after removal = %+v, want none", got)
 	}
 }
+
+// A tcp node with an HTTP header but no path builds (without a path) instead of
+// panicking on request.Path[0].
+func TestSing_HTTPHeaderWithoutPath(t *testing.T) {
+	v := &panel.VAllssNode{
+		Network:         "tcp",
+		NetworkSettings: []byte(`{"header":{"type":"http","request":{"method":"GET","headers":{"Host":["a.com"]}}}}`),
+	}
+	info := &panel.NodeInfo{Type: "vless", VAllss: v, Common: &v.CommonNode}
+	in, err := getInboundOptions("t", info, &conf.Options{ListenIP: "127.0.0.1", SingOptions: conf.NewSingOptions()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.Type != "vless" {
+		t.Fatalf("inbound type = %q", in.Type)
+	}
+}

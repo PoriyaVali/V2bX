@@ -190,7 +190,11 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 							return option.Inbound{}, fmt.Errorf("decode HttpRequest error: %s", err)
 						}
 						t.HTTPOptions.Host = request.Headers.Host
-						t.HTTPOptions.Path = request.Path[0]
+						// An empty path list indexed [0] and panicked, which on
+						// a node's first start took the whole process down.
+						if len(request.Path) > 0 {
+							t.HTTPOptions.Path = request.Path[0]
+						}
 						t.HTTPOptions.Method = request.Method
 					}
 				} else {

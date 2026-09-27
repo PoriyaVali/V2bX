@@ -57,7 +57,10 @@ func startHandle(_ *cobra.Command, _ []string) {
 		return
 	}
 	if r {
+		// Stop here. It used to carry on, "start" the running service and
+		// then report "started successfully" as if it had done something.
 		fmt.Println(Ok("V2bX is already running. Use 'V2bX restart' to restart. | V2bX در حال اجرا است، برای راه‌اندازی مجدد از restart استفاده کنید"))
+		return
 	}
 	_, err = exec.RunCommandByShell("systemctl start V2bX.service")
 	if err != nil {
