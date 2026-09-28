@@ -118,6 +118,10 @@ github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260824201104-b413c0b09af5 h1:S/TcE8V
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260824201104-b413c0b09af5/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260825150537-e713042f5724 h1:OXdxsb+XvRpAk2HJiI5t5P1stucw2kCH54rCOn9VQhQ=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260825150537-e713042f5724/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132350-c34d08b10db1 h1:6AFS4v0wGZKhIaZeSJN6wLEAivIIa0I9LhCnbaTRsfQ=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132350-c34d08b10db1/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132906-525b9c4caf42 h1:T9GPPiMc/DfDlVPkUtrKIQp+sPBzXB2W6Rgns+dAocM=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132906-525b9c4caf42/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v1.251202.1 h1:JIgTTWHOHT9vP9w/mC8FslQomUu1jXo+CstDvzDXovA=
 github.com/PoriyaVali/Xray-core v1.251202.1/go.mod h1:kclzboEF0g6VBrp9/NXm8C0Aj64SDBt52OfthH1LSr4=
 github.com/PoriyaVali/Xray-core v1.260728.0 h1:Y0nKxC9XiWj+eYcU/P4l9Sl6zJG1PxIN41xcT4aVZZs=
