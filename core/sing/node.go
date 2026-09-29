@@ -71,14 +71,9 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		// protocol above - including anytls and mux, whose streams share one
 		// connection and so gain the most. See conf.DefaultTCPNotSentLowat.
 		TCPNotSentLowat: c.SingOptions.NotSentLowat(),
-		// Wire the SingOptions sniff/domain settings into the inbound. Without
-		// this, sniffing is off so the destination stays an IP — domain and
-		// protocol audit rules (hook.go) never match and logs show raw IPs.
-		InboundOptions: option.InboundOptions{
-			SniffEnabled:             c.SingOptions.SniffEnabled,
-			SniffOverrideDestination: c.SingOptions.SniffOverrideDestination,
-			DomainStrategy:           c.SingOptions.DomainStrategy,
-		},
+		// No InboundOptions: sing-box 1.13 removed the legacy sniff and
+		// domain_strategy fields and ignores them. Sniffing is a route rule
+		// now, added for every inbound when the box is built (addSniffRule).
 		// Recover the real client IP behind the Hedioum tunnel via PROXY protocol.
 		// AcceptNoHeader keeps direct (non-tunnel) connections working.
 		ProxyProtocol:               c.SingOptions.ProxyProtocol,

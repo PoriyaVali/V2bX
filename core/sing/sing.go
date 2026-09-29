@@ -131,6 +131,9 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 			return nil, err
 		}
 	}
+	if err := addSniffRule(&options); err != nil {
+		return nil, err
+	}
 	os.Setenv("SING_DNS_PATH", "")
 	b, err := box.New(box.Options{
 		Context: ctx,

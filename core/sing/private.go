@@ -46,3 +46,32 @@ func addPrivateDestinationRules(options *option.Options) error {
 	options.Route.Rules = append(rules, options.Route.Rules...)
 	return nil
 }
+
+// addSniffRule puts a sniff action in front of every other route rule.
+//
+// Each node's listener asks for sniffing through the legacy inbound fields
+// (SniffEnabled, SniffOverrideDestination), which sing-box 1.13 removed: the
+// fields are still in the Go struct, so this compiled, but nothing reads them
+// any more and sniffing was simply off. The panel's domain rules then only saw
+// a client's own destination - an app that resolves names itself and connects
+// to the IP walked past every one - and its protocol rules (bittorrent, tls,
+// quic) never matched at all, the hook having no sniffed protocol to test.
+//
+// A rule action is how 1.13 sniffs. Nodes are added after the box starts, so
+// the rule cannot name their inbounds and applies to every inbound; the
+// per-node EnableSniff therefore no longer turns sniffing off for one node.
+// The sniffed name is recorded, not dialled: the destination stays what the
+// client asked for, and the hook checks the panel's rules against both.
+// A sniff rule already in the node's config does no harm: sing-box skips a
+// second sniff of the same connection, and ports it knows to be server-first.
+func addSniffRule(options *option.Options) error {
+	if options.Route == nil {
+		options.Route = &option.RouteOptions{}
+	}
+	var rule option.Rule
+	if err := json.Unmarshal([]byte(`{"action":"sniff"}`), &rule); err != nil {
+		return fmt.Errorf("sniff rule: %w", err)
+	}
+	options.Route.Rules = append([]option.Rule{rule}, options.Route.Rules...)
+	return nil
+}
