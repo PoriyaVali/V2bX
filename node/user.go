@@ -15,6 +15,11 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	userTraffic, trafficErr := c.server.GetUserTrafficSlice(tag, true)
 	if trafficErr != nil {
 		log.WithFields(log.Fields{"tag": tag, "err": trafficErr}).Warn("Read user traffic failed")
+		// The batches earlier cycles could not send do not need the core. Send
+		// them anyway: a node that stays down (a reload that failed after
+		// DelNode) held its users' billed traffic in memory until it came back,
+		// and lost it if the process restarted first.
+		c.flushTrafficReports()
 		return nil
 	}
 

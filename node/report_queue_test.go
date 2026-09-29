@@ -1,7 +1,9 @@
 package node
 
 import (
+	"errors"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
@@ -74,6 +76,47 @@ func TestReport_QueueIsBounded(t *testing.T) {
 	}
 	if c.pendingReports[0].traffic[0].Upload != 5 {
 		t.Fatalf("oldest kept batch is #%d, want #5", c.pendingReports[0].traffic[0].Upload)
+	}
+}
+
+// unreadableCore answers like the Selector for a node it does not hold: between
+// a reload's DelNode and AddNode, or after a reload failed in between.
+type unreadableCore struct {
+	stubCore
+	unreadable atomic.Bool
+}
+
+func (u *unreadableCore) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic, error) {
+	if u.unreadable.Load() {
+		return nil, errors.New("the node is not have")
+	}
+	return u.stubCore.GetUserTrafficSlice(tag, reset)
+}
+
+// A cycle that cannot read the core still resends what earlier cycles could
+// not send. Those batches no longer depend on the core, and holding them back
+// until the node was up again kept billed traffic in memory only.
+func TestReport_QueuedBatchIsResentWhenTheCoreCannotBeRead(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u1"}})
+	core := &unreadableCore{}
+	c := newSyncedController(t, f, core)
+
+	f.mu.Lock()
+	f.pushFails = 100
+	f.mu.Unlock()
+	core.setTraffic([]panel.UserTraffic{{UID: 1, Upload: 100, Download: 200}})
+	_ = c.reportUserTrafficTask()
+	if len(c.pendingReports) != 1 {
+		t.Fatalf("failed batch not kept: %d pending", len(c.pendingReports))
+	}
+
+	f.mu.Lock()
+	f.pushFails = 0
+	f.mu.Unlock()
+	core.unreadable.Store(true)
+	_ = c.reportUserTrafficTask()
+	if len(c.pendingReports) != 0 {
+		t.Fatalf("%d batch(es) still pending: the resend waited for the core", len(c.pendingReports))
 	}
 }
 
