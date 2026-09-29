@@ -154,7 +154,10 @@ func (c *Controller) Start() (err error) {
 	}
 
 	// add limiter
-	l := limiter.AddLimiter(tag, &c.LimitConfig, c.userList, c.aliveMap)
+	l, err := limiter.AddLimiterExclusive(tag, &c.LimitConfig, c.userList, c.aliveMap)
+	if err != nil {
+		return err
+	}
 	c.setIdentity(tag, l)
 	// A start that fails part-way must leave nothing behind: the node is
 	// retried, and a leftover limiter or a node still registered in the core
@@ -169,7 +172,7 @@ func (c *Controller) Start() (err error) {
 				log.WithField("tag", tag).Error("Undo AddNode after failed start: ", derr)
 			}
 		}
-		limiter.DeleteLimiter(tag)
+		limiter.DeleteLimiterIf(tag, l)
 	}()
 	// add rule limiter
 	if err = l.UpdateRule(&node.Rules); err != nil {
@@ -216,7 +219,7 @@ func (c *Controller) Close() error {
 	up := c.nodeUp
 	c.nodeUp = false
 	c.opMu.Unlock()
-	for _, t := range []*task.Task{
+	tasks := []*task.Task{
 		c.nodeInfoMonitorPeriodic,
 		c.userReportPeriodic,
 		c.renewCertPeriodic,
@@ -226,9 +229,18 @@ func (c *Controller) Close() error {
 		// left a goroutine behind that reported server status for the rest of
 		// the process's life.
 		c.statusReportPeriodic,
-	} {
+	}
+	for _, t := range tasks {
 		if t != nil {
 			t.Close()
+		}
+	}
+	// Close only signals a task because interval changes restart a task from
+	// inside its own Execute. During controller shutdown we can and must join
+	// every in-flight Execute before deleting the node/core state it uses.
+	for _, t := range tasks {
+		if t != nil {
+			t.Wait()
 		}
 	}
 	tag, _, _ := c.state()
@@ -241,7 +253,7 @@ func (c *Controller) Close() error {
 	// The limiter goes after the node, not before: a connection arriving in
 	// between would find no limiter - hysteria2 treated that as fatal, sing
 	// let the connection through unlimited and uncounted.
-	limiter.DeleteLimiter(tag)
+	limiter.DeleteLimiterIf(tag, c.limiter)
 	return err
 }
 

@@ -27,6 +27,29 @@ func onlineIPCount(l *Limiter, taguuid string) int {
 	return n
 }
 
+func TestAddLimiterExclusiveDoesNotReplaceOwner(t *testing.T) {
+	Init()
+	first, err := AddLimiterExclusive("same", &conf.LimitConfig{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AddLimiterExclusive("same", &conf.LimitConfig{}, nil, nil); err == nil {
+		t.Fatal("duplicate tag was accepted")
+	}
+	got, err := GetLimiter("same")
+	if err != nil || got != first {
+		t.Fatalf("first limiter was replaced: got %p, err %v", got, err)
+	}
+	DeleteLimiterIf("same", new(Limiter))
+	if got, err = GetLimiter("same"); err != nil || got != first {
+		t.Fatal("a non-owner deleted the limiter")
+	}
+	DeleteLimiterIf("same", first)
+	if _, err = GetLimiter("same"); err == nil {
+		t.Fatal("owner did not delete the limiter")
+	}
+}
+
 func TestCheckLimit_UnknownUser_Rejected(t *testing.T) {
 	l, _ := newTestLimiter(2, 0)
 	if _, reject := l.CheckLimit("does-not-exist", "1.1.1.1", true, true); !reject {
