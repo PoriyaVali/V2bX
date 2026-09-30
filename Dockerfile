@@ -1,7 +1,7 @@
 # Build stage
 # Same Go as the release build. This was 1.25.11 while go.mod asks for 1.26,
 # so every image build since v1.4 stopped at the first go command.
-FROM golang:1.26.8-alpine AS builder
+FROM golang:1.27.1-alpine AS builder
 WORKDIR /app
 ENV CGO_ENABLED=0
 # Download, not tidy: tidy rewrites go.mod inside the image, so the image was

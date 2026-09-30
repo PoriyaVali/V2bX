@@ -39,7 +39,12 @@ func NewSingConfig() *SingConfig {
 }
 
 type SingOptions struct {
-	TCPFastOpen              bool                   `json:"EnableTFO"`
+	TCPFastOpen bool `json:"EnableTFO"`
+	// EnableSniff, SniffOverrideDestination and DomainStrategy still load
+	// from existing config files but no longer change anything: they were
+	// sing-box's legacy inbound fields, which 1.13 removed. Every node now
+	// sniffs through a route rule (core/sing addSniffRule); destinations are
+	// resolved by the private-address rules unless AllowPrivateDestinations.
 	SniffEnabled             bool                   `json:"EnableSniff"`
 	SniffOverrideDestination bool                   `json:"SniffOverrideDestination"`
 	EnableDNS                bool                   `json:"EnableDNS"`

@@ -405,6 +405,17 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 		user = sessionInbound.User
 	}
 
+	// Every link gets the timeout wrapper, as upstream's WrapLink does, not
+	// only a user's: sniffing below reads through it as a buf.TimeoutReader,
+	// and an inbound with no V2bX users (an operator's own socks, http or
+	// dokodemo inbound) hands over a plain reader - the unguarded assertion
+	// panicked and took the process down on that inbound's first connection.
+	// The wrapper does not pass Interrupt on, so a refused connection below
+	// interrupts the inbound's own reader.
+	rawReader := outbound.Reader
+	timeoutReader := &buf.TimeoutWrapperReader{Reader: rawReader}
+	outbound.Reader = timeoutReader
+
 	var limit *limiter.Limiter
 	var err error
 	if user != nil && len(user.Email) > 0 {
@@ -412,7 +423,7 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 		if err != nil {
 			errors.LogInfo(ctx, "get limiter ", sessionInbound.Tag, " error: ", err)
 			common.Close(outbound.Writer)
-			common.Interrupt(outbound.Reader)
+			common.Interrupt(rawReader)
 			return errors.New("get limiter ", sessionInbound.Tag, " error: ", err)
 		}
 		d.tuneSocket(sessionInbound)
@@ -424,7 +435,7 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 		if reject {
 			errors.LogInfo(ctx, "Limited ", user.Email, " by conn or ip")
 			common.Close(outbound.Writer)
-			common.Interrupt(outbound.Reader)
+			common.Interrupt(rawReader)
 			return errors.New("Limited ", user.Email, " by conn or ip")
 		}
 		lm := d.linkManager(user.Email)
@@ -440,13 +451,13 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 		ts := d.trafficCounter(sessionInbound.Tag).GetCounter(user.Email)
 		downcounter := &counter.XrayTrafficCounter{V: &ts.DownCounter}
 		outbound.Reader = &CounterReader{
-			Reader:  &buf.TimeoutWrapperReader{Reader: outbound.Reader},
+			Reader:  timeoutReader,
 			Counter: &ts.UpCounter,
 		}
 		if err := lm.AddLink(managedWriter, outbound.Reader, limit.MaxConns); err != nil {
 			errors.LogInfo(ctx, "Refused ", user.Email, ": ", err)
 			common.Close(outbound.Writer)
-			common.Interrupt(outbound.Reader)
+			common.Interrupt(rawReader)
 			return errors.New("Refused ", user.Email, ": ", err)
 		}
 		outbound.Writer = &dispatcher.SizeStatWriter{
@@ -551,8 +562,13 @@ func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.
 	outbounds := session.OutboundsFromContext(ctx)
 	ob := outbounds[len(outbounds)-1]
 
+	// xray dispatches with no inbound at all (DNS over TCP/DoH outside a
+	// connection, reverse bridges), and an operator's own inbound has a user
+	// with no email; neither has a limiter. Upstream handles both, and the
+	// panel's rules only apply to a node's users - the same test getLink and
+	// DispatchLink make.
 	sessionInbound := session.InboundFromContext(ctx)
-	if sessionInbound.User != nil {
+	if sessionInbound != nil && sessionInbound.User != nil && len(sessionInbound.User.Email) > 0 {
 		if l == nil {
 			var err error
 			l, err = limiter.GetLimiter(sessionInbound.Tag)

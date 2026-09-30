@@ -365,13 +365,12 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 		conn = rate.NewConnRateLimiter(conn, b)
 	}
 	if l != nil {
-		destStr := m.Destination.AddrString()
 		protocol := m.Protocol
-		if reject, kind := l.CheckDestinationRule(destStr, m.Destination.Port); reject {
+		if reject, kind := checkDestination(l, m); reject {
 			log.Error(fmt.Sprintf(
 				"User %s access %s reject by %s rule",
 				m.User,
-				m.Destination, kind))
+				destinationForLog(m), kind))
 			conn.Close()
 			return conn
 		}
@@ -426,12 +425,11 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 		conn = rate.NewPacketConnRateLimiter(conn, b)
 	}
 	if l != nil {
-		destStr := m.Destination.AddrString()
-		if reject, kind := l.CheckDestinationRule(destStr, m.Destination.Port); reject {
+		if reject, kind := checkDestination(l, m); reject {
 			log.Error(fmt.Sprintf(
 				"User %s access %s reject by %s rule",
 				m.User,
-				m.Destination, kind))
+				destinationForLog(m), kind))
 			conn.Close()
 			return conn
 		}
@@ -476,4 +474,27 @@ func (h *HookServer) logRefused(inbound, user, taguuid string, res registerResul
 		log.Warn("[", inbound, "] user ", user, " already holds ", max,
 			" connections (ConnLimit); refusing more")
 	}
+}
+
+// checkDestination applies the panel's destination rules to the address the
+// client asked for and, when that is an IP, to the domain sniffing found in
+// the connection too: sing-box records the sniffed name in m.Domain and dials
+// the original IP, so checking the address alone let an app that resolves
+// names itself past every domain rule.
+func checkDestination(l *limiter.Limiter, m adapter.InboundContext) (bool, string) {
+	if reject, kind := l.CheckDestinationRule(m.Destination.AddrString(), m.Destination.Port); reject {
+		return true, kind
+	}
+	if m.Domain != "" && m.Destination.IsIP() {
+		return l.CheckDestinationRule(m.Domain, m.Destination.Port)
+	}
+	return false, ""
+}
+
+// destinationForLog names the destination as the rule saw it.
+func destinationForLog(m adapter.InboundContext) string {
+	if m.Domain != "" && m.Destination.IsIP() {
+		return m.Domain + " (" + m.Destination.String() + ")"
+	}
+	return m.Destination.String()
 }
