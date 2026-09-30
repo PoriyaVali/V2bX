@@ -105,7 +105,9 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("run nodes: %w", err)
 	}
 	log.Info("Nodes started")
-	metrics.Start(c.MetricsConfig.Listen)
+	if err := metrics.Start(c.MetricsConfig.Listen); err != nil {
+		return fmt.Errorf("start metrics: %w", err)
+	}
 	xdns := os.Getenv("XRAY_DNS_PATH")
 	sdns := os.Getenv("SING_DNS_PATH")
 	if watch {
@@ -114,6 +116,10 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 			defer lifecycle.Unlock()
 			if stopping {
 				return
+			}
+			if err := metrics.Start(c.MetricsConfig.Listen); err != nil {
+				log.WithField("err", err).Error("Reconfigure metrics failed; exiting so the service restarts")
+				os.Exit(1)
 			}
 			// Everything below runs after the old nodes and core are gone, so a
 			// failure here would leave the process alive and serving nobody -

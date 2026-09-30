@@ -12,7 +12,16 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	// One consistent view of the node: the node-info goroutine may be replacing
 	// these while this runs.
 	tag, info, lim := c.state()
-	userTraffic, _ := c.server.GetUserTrafficSlice(tag, true)
+	userTraffic, trafficErr := c.server.GetUserTrafficSlice(tag, true)
+	if trafficErr != nil {
+		log.WithFields(log.Fields{"tag": tag, "err": trafficErr}).Warn("Read user traffic failed")
+		// The batches earlier cycles could not send do not need the core. Send
+		// them anyway: a node that stays down (a reload that failed after
+		// DelNode) held its users' billed traffic in memory until it came back,
+		// and lost it if the process restarted first.
+		c.flushTrafficReports()
+		return nil
+	}
 
 	// Feed the dynamic speed-limit accumulator with this cycle's raw per-user
 	// traffic (keyed by UID). SpeedChecker consumes and resets it on its own

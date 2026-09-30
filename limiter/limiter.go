@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -69,6 +70,12 @@ func newUserLimitInfo(u *panel.UserInfo) *UserLimitInfo {
 }
 
 func AddLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveList map[int]int) *Limiter {
+	info := newLimiter(tag, l, users, aliveList)
+	limiters.Store(tag, info)
+	return info
+}
+
+func newLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveList map[int]int) *Limiter {
 	info := &Limiter{
 		SpeedLimit:    l.SpeedLimit,
 		MaxConns:      l.MaxConnsPerUser(),
@@ -81,8 +88,18 @@ func AddLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveLi
 	for i := range users {
 		info.UserLimitInfo.Store(format.UserTag(tag, users[i].Uuid), newUserLimitInfo(&users[i]))
 	}
-	limiters.Store(tag, info)
 	return info
+}
+
+// AddLimiterExclusive reserves tag without replacing a limiter belonging to
+// another live node. Node names are operator supplied, so duplicate names must
+// fail locally rather than corrupt the first node's limits.
+func AddLimiterExclusive(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveList map[int]int) (*Limiter, error) {
+	info := newLimiter(tag, l, users, aliveList)
+	if _, loaded := limiters.LoadOrStore(tag, info); loaded {
+		return nil, fmt.Errorf("limiter for node tag %q already exists", tag)
+	}
+	return info, nil
 }
 
 var errLimiterNotFound = errors.New("not found")
@@ -97,6 +114,11 @@ func GetLimiter(tag string) (info *Limiter, err error) {
 
 func DeleteLimiter(tag string) {
 	limiters.Delete(tag)
+}
+
+// DeleteLimiterIf removes tag only when it still belongs to owner.
+func DeleteLimiterIf(tag string, owner *Limiter) {
+	limiters.CompareAndDelete(tag, owner)
 }
 
 // NodeStat is a point-in-time metrics snapshot for one node's limiter.

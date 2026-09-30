@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,30 @@ import (
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/PoriyaVali/V2bX/limiter"
 )
+
+func TestStartCanMoveAndDisableEndpoint(t *testing.T) {
+	reserve, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := reserve.Addr().String()
+	reserve.Close()
+	if err := Start(addr); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Start("") })
+	resp, err := http.Get("http://" + addr + "/metrics")
+	if err != nil {
+		t.Fatalf("metrics endpoint did not start: %v", err)
+	}
+	resp.Body.Close()
+	if err := Start(""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := http.Get("http://" + addr + "/metrics"); err == nil {
+		t.Fatal("metrics endpoint remained reachable after it was disabled")
+	}
+}
 
 func TestMetricsEndpoint(t *testing.T) {
 	limiter.Init()

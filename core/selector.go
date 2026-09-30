@@ -24,6 +24,13 @@ func NewSelector(c []conf.CoreConfig) (Core, error) {
 	cs := make(map[string]Core, len(c))
 	order := make([]string, 0, len(c))
 	for _, t := range c {
+		key := t.Type
+		if t.Name != "" {
+			key = t.Name
+		}
+		if _, dup := cs[key]; dup {
+			return nil, fmt.Errorf("duplicate core name %q", key)
+		}
 		f, ok := cores[strings.ToLower(t.Type)]
 		if !ok {
 			return nil, errors.New("unknown core type: " + t.Type)
@@ -32,13 +39,7 @@ func NewSelector(c []conf.CoreConfig) (Core, error) {
 		if err != nil {
 			return nil, err
 		}
-		key := t.Type
-		if t.Name != "" {
-			key = t.Name
-		}
-		if _, dup := cs[key]; !dup {
-			order = append(order, key)
-		}
+		order = append(order, key)
 		cs[key] = core1
 	}
 	return &Selector{

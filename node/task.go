@@ -215,7 +215,13 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 		if len(tag) == 0 {
 			tag = c.buildNodeTag(newN)
 		}
-		l = limiter.AddLimiter(tag, &c.LimitConfig, nil, newA)
+		var addErr error
+		l, addErr = limiter.AddLimiterExclusive(tag, &c.LimitConfig, nil, newA)
+		if addErr != nil {
+			log.WithFields(log.Fields{"tag": tag, "err": addErr}).Error("Add limiter failed")
+			c.apiClient.ResetNodeCache()
+			return
+		}
 		c.setIdentity(tag, l)
 	}
 	log.WithField("tag", tag).Info("Node changed, reload")

@@ -19,6 +19,7 @@ type Task struct {
 	access   sync.Mutex
 	running  bool
 	stop     chan struct{}
+	done     chan struct{}
 }
 
 func (t *Task) interval() time.Duration {
@@ -42,10 +43,13 @@ func (t *Task) Start(first bool) error {
 	// then Start - what a pull-interval change does) found the NEW channel
 	// open and carried on next to the loop Start had just created.
 	stop := make(chan struct{})
+	done := make(chan struct{})
 	t.stop = stop
+	t.done = done
 	t.access.Unlock()
 
 	go func() {
+		defer close(done)
 		if first {
 			if err := t.run(); err != nil {
 				t.halt(stop)
@@ -95,6 +99,18 @@ func (t *Task) Close() {
 		close(t.stop)
 	}
 	t.access.Unlock()
+}
+
+// Wait joins the most recently started loop. It is separate from Close because
+// a task may Close and restart itself from inside Execute when its interval
+// changes; making Close wait would deadlock that supported path.
+func (t *Task) Wait() {
+	t.access.Lock()
+	done := t.done
+	t.access.Unlock()
+	if done != nil {
+		<-done
+	}
 }
 
 // Running reports whether the task is started and not closed.

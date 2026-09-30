@@ -4,6 +4,7 @@ package metrics
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,30 +15,45 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var startOnce sync.Once
+var (
+	serverMu sync.Mutex
+	server   *http.Server
+	listen   string
+)
 
-// Start launches an HTTP endpoint serving GET /metrics (Prometheus text format)
-// at addr (e.g. ":11111" or "127.0.0.1:11111"). It is a no-op when addr is
-// empty, and only starts once.
-func Start(addr string) {
-	if addr == "" {
-		return
+// Start applies the desired metrics address. Calling it again moves, enables or
+// disables the endpoint, which makes Metrics.Listen obey config hot reloads.
+func Start(addr string) error {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+	if addr == listen && (addr == "" || server != nil) {
+		return nil
 	}
-	startOnce.Do(func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/metrics", handleMetrics)
-		srv := &http.Server{
-			Addr:              addr,
-			Handler:           mux,
-			ReadHeaderTimeout: 5 * time.Second,
+	if server != nil {
+		if err := server.Close(); err != nil {
+			return fmt.Errorf("close metrics server: %w", err)
 		}
-		go func() {
-			log.WithField("addr", addr).Info("Metrics endpoint listening on /metrics")
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.WithField("err", err).Error("Metrics server stopped")
-			}
-		}()
-	})
+		server = nil
+		listen = ""
+	}
+	if addr == "" {
+		return nil
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen for metrics on %s: %w", addr, err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metrics", handleMetrics)
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	server, listen = srv, addr
+	go func() {
+		log.WithField("addr", addr).Info("Metrics endpoint listening on /metrics")
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			log.WithField("err", err).Error("Metrics server stopped")
+		}
+	}()
+	return nil
 }
 
 func escapeLabel(s string) string {

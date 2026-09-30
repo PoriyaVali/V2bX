@@ -4,7 +4,32 @@ import (
 	"testing"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/conf"
 )
+
+func TestNewSelectorRejectsDuplicateNamesBeforeConstructingSecondCore(t *testing.T) {
+	const typ = "duplicate-test"
+	old, existed := cores[typ]
+	t.Cleanup(func() {
+		if existed {
+			cores[typ] = old
+		} else {
+			delete(cores, typ)
+		}
+	})
+	constructed := 0
+	cores[typ] = func(*conf.CoreConfig) (Core, error) {
+		constructed++
+		return &placeCore{typ: typ}, nil
+	}
+	_, err := NewSelector([]conf.CoreConfig{{Type: typ, Name: "same"}, {Type: typ, Name: "same"}})
+	if err == nil {
+		t.Fatal("duplicate core name was accepted")
+	}
+	if constructed != 1 {
+		t.Fatalf("constructed %d cores; duplicate should be rejected before construction", constructed)
+	}
+}
 
 // A core that answers for itself, standing in for mdns.
 type selfReportingCore struct {
