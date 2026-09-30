@@ -378,8 +378,8 @@ require (
 	masterdnsvpn-go v0.0.0-20260707155520-295de16bc4db
 )
 
-replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.15-v2bx.3.0.20260929202922-607a93f5e698
+replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.21-v2bx.1
 
-replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v0.0.0-20260929195729-984a784a2e8d
+replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v1.260909.0
 
-replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132906-525b9c4caf42
+replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260929100612-dc4a5d93133d

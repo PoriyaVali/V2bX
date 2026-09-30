@@ -122,12 +122,16 @@ github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132350-c34d08b10db1 h1:6AFS4v0
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132350-c34d08b10db1/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132906-525b9c4caf42 h1:T9GPPiMc/DfDlVPkUtrKIQp+sPBzXB2W6Rgns+dAocM=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132906-525b9c4caf42/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260929100612-dc4a5d93133d h1:S7J9ZI1tvJn6SZ8CszS4kSodP9lwpzHLFjkYdAPAvxg=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260929100612-dc4a5d93133d/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v0.0.0-20260929195729-984a784a2e8d h1:5NaaUmYcNCj0lyuYTeDL2vAQv/pciOmCbx+MtIBUdzI=
 github.com/PoriyaVali/Xray-core v0.0.0-20260929195729-984a784a2e8d/go.mod h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=
 github.com/PoriyaVali/Xray-core v1.251202.1 h1:JIgTTWHOHT9vP9w/mC8FslQomUu1jXo+CstDvzDXovA=
 github.com/PoriyaVali/Xray-core v1.251202.1/go.mod h1:kclzboEF0g6VBrp9/NXm8C0Aj64SDBt52OfthH1LSr4=
 github.com/PoriyaVali/Xray-core v1.260728.0 h1:Y0nKxC9XiWj+eYcU/P4l9Sl6zJG1PxIN41xcT4aVZZs=
 github.com/PoriyaVali/Xray-core v1.260728.0/go.mod h1:wukQoBGnQ6GaLTGuKwv8rCTgf80QxPj+6iznDZHQEWo=
+github.com/PoriyaVali/Xray-core v1.260909.0 h1:Lw3to4Dx0kVmc8kHcWJ08BKQFQBxgbU9VIbl9sPeWrU=
+github.com/PoriyaVali/Xray-core v1.260909.0/go.mod h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.7 h1:q8KulEwbxXX5NZ4J4mqlT4cOkg2WVz+6qS0x2DeMEHA=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.7/go.mod h1:Bh3B7QDfevBhkc3NQTSywIk8dan6EIxTlBK4hmKRFYI=
 github.com/PoriyaVali/sing-box v1.13.14-v2bx.8 h1:CPdvJrcmswtkHyqS1simKqcm6UdsNfDFvt95z53dfyE=
@@ -142,6 +146,8 @@ github.com/PoriyaVali/sing-box v1.13.15-v2bx.3.0.20260929160913-a53a62e48f76 h1:
 github.com/PoriyaVali/sing-box v1.13.15-v2bx.3.0.20260929160913-a53a62e48f76/go.mod h1:eVLqbA6Vl7bTozV5HP0gX1EZGS6MVOFCaJGKZ8X1TNs=
 github.com/PoriyaVali/sing-box v1.13.15-v2bx.3.0.20260929202922-607a93f5e698 h1:hxLx9zN1HEXGBEXvewCz9tlQ/k9dy1Ws5UDGYpa45UE=
 github.com/PoriyaVali/sing-box v1.13.15-v2bx.3.0.20260929202922-607a93f5e698/go.mod h1:3QuzuhcfVrYNDkKPuPsMd/goaOGSTEUyDBbFlBaGx48=
+github.com/PoriyaVali/sing-box v1.13.21-v2bx.1 h1:26Ht+sWMKlq9koK3HEPLBQvejYeJfbVB61WHp8T13nk=
+github.com/PoriyaVali/sing-box v1.13.21-v2bx.1/go.mod h1:3QuzuhcfVrYNDkKPuPsMd/goaOGSTEUyDBbFlBaGx48=
 github.com/Shopify/sarama v1.19.0/go.mod h1:FVkBWblsNy7DGZRfXLU0O9RCGt5g3g3yEuWXgklEdEo=
 github.com/Shopify/sarama v1.30.1/go.mod h1:hGgx05L/DiW8XYBXeJdKIN6V2QUy2H6JqME5VT1NLRw=
 github.com/Shopify/toxiproxy v2.1.4+incompatible/go.mod h1:OXgGpZ6Cli1/URJOF1DMxUHB2q5Ap20/P/eIdh4G0pI=
