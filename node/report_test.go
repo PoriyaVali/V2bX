@@ -66,7 +66,7 @@ type fakePanel struct {
 	// aliveFails makes the alive-list endpoint answer 500.
 	aliveFails bool
 	// userFails makes user polls fail before their cached response is applied.
-	userFails bool
+	userFails    bool
 	aliveReports int
 	// port is the server_port the config endpoint serves; changing it is a
 	// node config change. 0 means 1234.

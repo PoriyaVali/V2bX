@@ -297,7 +297,7 @@ install_V2bX() (
         return 1
     fi
     if [[ ! -f "${install_stage}/unpacked/V2bX" ]] ||
-       ! chmod +x "${install_stage}/unpacked/V2bX" ||
+       ! chmod 0755 "${install_stage}/unpacked/V2bX" ||
        ! "${install_stage}/unpacked/V2bX" version >/dev/null; then
         echo -e "${red}Release binary validation failed | بررسی فایل اجرایی ناموفق بود${plain}" >&2
         return 1
@@ -306,7 +306,7 @@ install_V2bX() (
     mkdir -p /etc/V2bX /usr/local/V2bX || return 1
     install_tmp=$(mktemp /usr/local/V2bX/.V2bX.new.XXXXXX) || return 1
     cp "${install_stage}/unpacked/V2bX" "${install_tmp}" &&
-        chmod +x "${install_tmp}" || return 1
+        chmod 0755 "${install_tmp}" || return 1
     if [[ -f /usr/local/V2bX/V2bX ]]; then
         install_backup=$(mktemp /usr/local/V2bX/.V2bX.previous.XXXXXX) || return 1
         cp -p /usr/local/V2bX/V2bX "${install_backup}" || return 1
