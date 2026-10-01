@@ -101,6 +101,7 @@ jobs:
         run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/... ./api/... ./core/...
 
       - name: Go formatting (changed files)
+        if: always()
         run: |
           mapfile -t go_files < <(git diff --name-only --diff-filter=ACMRT HEAD^ HEAD -- '*.go')
           if (( ${#go_files[@]} )); then

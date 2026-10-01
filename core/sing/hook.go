@@ -241,6 +241,7 @@ func (c *trackedConn) WriterReplaceable() bool { return true }
 type trackedPacketConn struct {
 	N.PacketConn
 	release func()
+	mu      sync.Mutex
 	once    sync.Once
 }
 
