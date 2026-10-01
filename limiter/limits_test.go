@@ -131,7 +131,7 @@ func TestDynamicSpeedLimit_AppliesThenLifts(t *testing.T) {
 	}
 }
 
-// The grace list is keyed by IP alone. Matching it back to the uid is what stops
+// The grace list belongs to both an IP and a UID. Its user scope stops
 // user B being admitted over their device limit just because user A was recently
 // online from the same public address — routine behind CGNAT.
 func TestGraceList_IsBoundToUid(t *testing.T) {

@@ -42,6 +42,12 @@ type AliveMap struct {
 	Alive map[int]int `json:"alive"`
 }
 
+// ResetUserCache makes the next poll fetch a full list after an application
+// failure. A parsed response is not necessarily a successfully applied list.
+func (c *Client) ResetUserCache() {
+	c.userEtag = ""
+}
+
 // GetUserList will pull user from v2board
 func (c *Client) GetUserList() ([]UserInfo, error) {
 	const path = "/api/v1/server/UniProxy/user"

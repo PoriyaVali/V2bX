@@ -7,6 +7,7 @@ on:
       - dev_new
     paths:
       - "**/*.go"
+      - "**/*.sh"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/test.yml"
@@ -14,6 +15,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "**/*.go"
+      - "**/*.sh"
       - "go.mod"
       - "go.sum"
   workflow_dispatch:
@@ -29,6 +31,13 @@ jobs:
     steps:
       - name: Checkout codebase
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Installer regression tests
+        run: |
+          bash -n install.sh scripts/test-install-update.sh
+          bash scripts/test-install-update.sh
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -90,3 +99,11 @@ jobs:
         env:
           GOEXPERIMENT: jsonv2
         run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/... ./api/... ./core/...
+
+      - name: Go formatting (changed files)
+        run: |
+          mapfile -t go_files < <(git diff --name-only --diff-filter=ACMRT HEAD^ HEAD -- '*.go')
+          if (( ${#go_files[@]} )); then
+            gofmt -d "${go_files[@]}"
+            test -z "$(gofmt -l "${go_files[@]}")"
+          fi

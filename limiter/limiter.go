@@ -10,6 +10,7 @@ import (
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/format"
+	"github.com/PoriyaVali/V2bX/common/rate"
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/juju/ratelimit"
 )
@@ -32,13 +33,13 @@ type Limiter struct {
 	SpeedLimit   int
 	MaxConns     int       // one user's simultaneous connections; 0 = no cap
 	UserOnlineIP *sync.Map // Key: TagUUID, value: {Key: Ip, value: Uid}
-	// The grace list: addresses online in the previous report cycle (Key: Ip,
+	// The grace list: addresses online in the previous report cycle (Key: graceKey,
 	// value: Uid). Replaced as a whole each cycle while connections read it,
 	// so it sits behind an atomic pointer - a plain field swapped under them
 	// was a data race (reproduced with -race).
 	oldUserOnline atomic.Pointer[sync.Map]
 	UserLimitInfo *sync.Map    // Key: TagUUID value: *UserLimitInfo
-	SpeedLimiter  *sync.Map    // key: TagUUID, value: *ratelimit.Bucket
+	SpeedLimiter  *sync.Map    // key: TagUUID, value: *speedBucket
 	AliveList     map[int]int  // Key: Uid, value: alive_ip
 	aliveMu       sync.RWMutex // guards AliveList (read per-connection, replaced by the node task)
 
@@ -193,7 +194,7 @@ func (l *Limiter) UpdateUserLimits(tag string, users []panel.UserInfo) {
 		u.DeviceLimit.Store(int64(users[i].DeviceLimit))
 		if old := u.SpeedLimit.Swap(int64(users[i].SpeedLimit)); old != int64(users[i].SpeedLimit) {
 			// The bucket is cached per user, not per rate, and is never rebuilt on
-			// its own — drop it so the next connection builds one at the new rate.
+			// its own — drop it so active connections pick up the new rate.
 			l.SpeedLimiter.Delete(key)
 		}
 	}
@@ -231,12 +232,11 @@ func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire ti
 // leaves no transient online-IP entry for the report to catch — which is what
 // used to pin their alive count and deadlock a single device after a restart.
 func (l *Limiter) admitNewIP(ip string, uid, deviceLimit, aliveIp int) bool {
-	// The grace list is keyed by IP alone, so it must be matched back to this
-	// user: admitting on a bare IP hit let a DIFFERENT user in over their device
-	// limit whenever the two shared a public address — routine behind CGNAT.
+	// Scope the entry to its user: several subscribers routinely share a
+	// carrier's public IP, and must each retain their own returning-device slot.
 	grace := l.graceList()
-	if v, ok := grace.Load(ip); ok && v.(int) == uid {
-		grace.Delete(ip)
+	key := graceKey{uid: uid, ip: ip}
+	if _, ok := grace.LoadAndDelete(key); ok {
 		return true
 	}
 	if deviceLimit > 0 && deviceLimit <= aliveIp {
@@ -285,29 +285,12 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 	// check if ipv4 mapped ipv6
 	ip = strings.TrimPrefix(ip, "::ffff:")
 
-	// check and gen speed limit Bucket
-	nodeLimit := l.SpeedLimit
-	userLimit := 0
 	deviceLimit := 0
 	var uid int
 	if v, ok := l.UserLimitInfo.Load(taguuid); ok {
 		u := v.(*UserLimitInfo)
 		uid = u.UID
 		deviceLimit = int(u.DeviceLimit.Load())
-		dynamic := int(u.DynamicSpeedLimit.Load())
-		// The dynamic-limit window is over: clear it and fall back to the user's
-		// own limit. This used to Delete the whole UserLimitInfo whenever the user
-		// had no personal speed limit — which sent their NEXT connection into the
-		// unknown-user branch below and rejected it forever: a permanent ban for
-		// exactly the common case (speed_limit = 0, i.e. unlimited).
-		if exp := u.ExpireTime.Load(); exp != 0 && exp < time.Now().Unix() {
-			if u.ExpireTime.CompareAndSwap(exp, 0) { // exactly one goroutine wins
-				u.DynamicSpeedLimit.Store(0)
-				l.SpeedLimiter.Delete(taguuid) // drop the throttled bucket so the limit actually lifts
-			}
-			dynamic = 0
-		}
-		userLimit = determineSpeedLimit(int(u.SpeedLimit.Load()), dynamic)
 	} else {
 		return nil, true
 	}
@@ -342,18 +325,78 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 		}
 	}
 
-	limit := int64(determineSpeedLimit(nodeLimit, userLimit)) * 1000000 / 8 // Byte/s
+	return l.speedBucket(taguuid), false
+}
+
+type speedBucket struct {
+	rate   int64
+	bucket *ratelimit.Bucket
+}
+
+// RateLimiter is safe to keep on an established connection, even when the
+// user is unlimited now. All of the user's connections share speedBucket.
+func (l *Limiter) RateLimiter(taguuid string) *rate.LiveLimiter {
+	return rate.NewLiveLimiter(func() *ratelimit.Bucket {
+		return l.speedBucket(taguuid)
+	})
+}
+
+func (l *Limiter) speedBucket(taguuid string) *ratelimit.Bucket {
+	v, ok := l.UserLimitInfo.Load(taguuid)
+	if !ok {
+		return nil
+	}
+	u := v.(*UserLimitInfo)
+	dynamic := int(u.DynamicSpeedLimit.Load())
+	if exp := u.ExpireTime.Load(); exp != 0 && exp < time.Now().Unix() {
+		if u.ExpireTime.CompareAndSwap(exp, 0) {
+			u.DynamicSpeedLimit.Store(0)
+			l.SpeedLimiter.Delete(taguuid)
+		}
+		dynamic = 0
+	}
+	userLimit := determineSpeedLimit(int(u.SpeedLimit.Load()), dynamic)
+	limit := int64(determineSpeedLimit(l.SpeedLimit, userLimit)) * 1000000 / 8
 	if limit <= 0 {
-		return nil, false
+		return nil
 	}
-	// Reuse the cached bucket; only build one the first time so a hot
-	// connection path doesn't allocate a NewBucketWithQuantum on every call.
-	if v, ok := l.SpeedLimiter.Load(taguuid); ok {
-		return v.(*ratelimit.Bucket), false
+	// Cache the rate alongside the bucket. A concurrent update can invalidate
+	// the cache before an old lookup publishes its bucket; checking the rate
+	// on every lookup prevents that stale entry from sticking indefinitely.
+	for {
+		if v, ok := l.SpeedLimiter.Load(taguuid); ok {
+			old := v.(*speedBucket)
+			if old.rate == limit {
+				return old.bucket
+			}
+			next := &speedBucket{rate: limit, bucket: newSpeedBucket(limit)}
+			if l.SpeedLimiter.CompareAndSwap(taguuid, old, next) {
+				return next.bucket
+			}
+		} else {
+			next := &speedBucket{rate: limit, bucket: newSpeedBucket(limit)}
+			if actual, loaded := l.SpeedLimiter.LoadOrStore(taguuid, next); !loaded {
+				return next.bucket
+			} else if actual.(*speedBucket).rate == limit {
+				return actual.(*speedBucket).bucket
+			}
+		}
 	}
-	Bucket = newSpeedBucket(limit)
-	actual, _ := l.SpeedLimiter.LoadOrStore(taguuid, Bucket)
-	return actual.(*ratelimit.Bucket), false
+}
+
+type graceKey struct {
+	uid int
+	ip  string
+}
+
+// SetOnlineDeviceGrace includes addresses tracked by a core itself, so active
+// long-lived connections keep their returning-device slot across report cycles.
+func (l *Limiter) SetOnlineDeviceGrace(devices []panel.OnlineUser) {
+	next := new(sync.Map)
+	for _, device := range devices {
+		next.Store(graceKey{uid: device.UID, ip: strings.TrimPrefix(device.IP, "::ffff:")}, device.UID)
+	}
+	l.oldUserOnline.Store(next)
 }
 
 // graceList returns the current grace list (never nil).
@@ -390,7 +433,7 @@ func (l *Limiter) GetOnlineDevice() (*[]panel.OnlineUser, error) {
 		v.(*sync.Map).Range(func(key, value interface{}) bool {
 			uid := value.(int)
 			ip := key.(string)
-			next.Store(ip, uid)
+			next.Store(graceKey{uid: uid, ip: ip}, uid)
 			onlineUser = append(onlineUser, panel.OnlineUser{UID: uid, IP: ip})
 			return true
 		})

@@ -123,6 +123,7 @@ func (t *TrustTunnel) DelNode(tag string) error {
 	t.mu.Lock()
 	n, ok := t.nodes[tag]
 	delete(t.nodes, tag)
+	delete(t.usersMap, tag)
 	t.mu.Unlock()
 
 	if ok {

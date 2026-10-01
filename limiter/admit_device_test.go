@@ -70,7 +70,7 @@ func TestAdmitDevice_GraceListIsMatchedToTheUser(t *testing.T) {
 		{Id: 2, Uuid: "u2", DeviceLimit: 1},
 	}
 	l := AddLimiter(tag, &conf.LimitConfig{}, users, map[int]int{1: 1, 2: 1})
-	l.graceList().Store("5.127.0.9", 1)
+	l.graceList().Store(graceKey{uid: 1, ip: "5.127.0.9"}, 1)
 
 	if l.AdmitDevice(format.UserTag(tag, "u2"), "5.127.0.9") {
 		t.Error("user 2 was let in on user 1's grace entry for a shared address")
@@ -83,7 +83,7 @@ func TestAdmitDevice_GraceListIsMatchedToTheUser(t *testing.T) {
 // IPv4-mapped IPv6 must match the plain form, or a returning device looks new.
 func TestAdmitDevice_MappedAddressMatchesThePlainForm(t *testing.T) {
 	l, key := newTestLimiter(1, 1)
-	l.graceList().Store("5.127.0.9", 1)
+	l.graceList().Store(graceKey{uid: 1, ip: "5.127.0.9"}, 1)
 	if !l.AdmitDevice(key, "::ffff:5.127.0.9") {
 		t.Error("the mapped form did not match the grace entry for the same device")
 	}

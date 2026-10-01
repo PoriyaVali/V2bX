@@ -240,8 +240,7 @@ func (b *Sing) DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo
 // in order to mean "devices whose own traffic passed the threshold" rather than
 // "every address of a user whose TOTAL passed it".
 //
-// Returns nil when nothing has been counted for the tag, which callers treat as
-// "no per-device data" and fall back to the old per-user behaviour.
+// An empty map is a valid zero-byte sample; nil denotes an unsupported core.
 func (b *Sing) GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string]int64, error) {
 	hook := b.hookServer
 	if hook == nil {
@@ -249,7 +248,25 @@ func (b *Sing) GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string
 	}
 	b.users.mapLock.RLock()
 	defer b.users.mapLock.RUnlock()
-	return hook.GetDeviceTraffic(tag, func(uuid string) int {
+	data := hook.GetDeviceTraffic(tag, func(uuid string) int {
 		return b.users.uidMap[format.UserTag(tag, uuid)]
-	}, reset), nil
+	}, reset)
+	if data == nil {
+		// An empty map means this core supports per-device accounting but saw
+		// zero bytes. Nil is reserved for cores without that capability.
+		data = make(map[int]map[string]int64)
+	}
+	return data, nil
+}
+
+// OnlineDevices keeps established connections visible in every report cycle.
+func (b *Sing) OnlineDevices(tag string) ([]panel.OnlineUser, error) {
+	if b.hookServer == nil {
+		return nil, nil
+	}
+	b.users.mapLock.RLock()
+	defer b.users.mapLock.RUnlock()
+	return b.hookServer.OnlineDevices(tag, func(uuid string) int {
+		return b.users.uidMap[format.UserTag(tag, uuid)]
+	}), nil
 }

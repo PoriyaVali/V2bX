@@ -3,6 +3,7 @@ package node
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	log "github.com/sirupsen/logrus"
@@ -41,8 +42,13 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	// traffic passes the threshold; the rest is carried over. Device counting
 	// below still uses the raw per-cycle userTraffic, so keep it separate.
 	toReport := userTraffic
-	if info != nil && info.NodeReportMinTraffic > 0 {
-		toReport = c.applyReportMinTraffic(userTraffic, info.NodeReportMinTraffic)
+	var reportMin int64
+	if info != nil {
+		reportMin = info.NodeReportMinTraffic
+	}
+	if reportMin > 0 || len(c.reportAccum) > 0 {
+		// A zero threshold flushes what earlier cycles accumulated below it.
+		toReport = c.applyReportMinTraffic(userTraffic, reportMin)
 	}
 	if len(toReport) > 0 {
 		c.queueTrafficReport(toReport)
@@ -52,13 +58,8 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		return nil
 	}
 
-	// The limiter is the usual source of online addresses: every core routes its
-	// connections through CheckLimit, which records them. One does not — mdns
-	// paces itself inside the tunnel and never calls the limiter — so its users
-	// appeared nowhere in this report and no device limit could be enforced on
-	// them, while every other protocol in the fleet enforced one. Cores that can
-	// answer for themselves are asked and their addresses merged in; cores that
-	// cannot are unaffected, since the assertion simply fails.
+	// Merge addresses seen at admission with the core's active connections.
+	// Established connections must remain visible without a fresh handshake.
 	var onlineDevice []panel.OnlineUser
 	if fromLimiter, err := lim.GetOnlineDevice(); err != nil {
 		log.Print(err)
@@ -75,41 +76,59 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 			onlineDevice = append(onlineDevice, fromCore...)
 		}
 	}
+	// Drain every cycle, including when filtering is disabled or no fresh
+	// handshake was seen. Otherwise per-IP counters keep growing indefinitely.
+	var perDevice map[int]map[string]int64
+	if dp, ok := c.server.(interface {
+		GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string]int64, error)
+	}); ok {
+		raw, err := dp.GetDeviceTrafficSlice(tag, true)
+		if err != nil {
+			log.WithFields(log.Fields{"tag": tag, "err": err}).Warn("Read device traffic failed")
+		} else if raw != nil {
+			perDevice = make(map[int]map[string]int64, len(raw))
+			for uid, ips := range raw {
+				perDevice[uid] = make(map[string]int64, len(ips))
+				for ip, n := range ips {
+					ip = strings.TrimPrefix(ip, "::ffff:")
+					perDevice[uid][ip] += n
+					if n > 0 {
+						onlineDevice = append(onlineDevice, panel.OnlineUser{UID: uid, IP: ip})
+					}
+				}
+			}
+		}
+	}
+	// The limiter, active connections and byte samples can describe the same
+	// address. Send each user/address pair once.
+	seen := make(map[panel.OnlineUser]struct{}, len(onlineDevice))
+	unique := onlineDevice[:0]
+	for _, online := range onlineDevice {
+		online.IP = strings.TrimPrefix(online.IP, "::ffff:")
+		if _, exists := seen[online]; !exists {
+			seen[online] = struct{}{}
+			unique = append(unique, online)
+		}
+	}
+	onlineDevice = unique
+	lim.SetOnlineDeviceGrace(onlineDevice)
 	if len(onlineDevice) > 0 {
-		// device_online_min_traffic: prefer the panel value (dynamic), fall
-		// back to the node's config.json value when the panel doesn't send it.
 		deviceMin := c.Options.DeviceOnlineMinTraffic
 		if info != nil && info.DeviceOnlineMinTraffic > 0 {
 			deviceMin = info.DeviceOnlineMinTraffic
 		}
 		result := onlineDevice
-		if deviceMin > 0 {
-			// Per-DEVICE first, which is what the panel's own description of this
-			// setting promises. Falling back to the per-user gate below only when
-			// the core cannot supply per-address traffic.
-			//
-			// The per-user gate is what made a rotating carrier address look like a
-			// crowd: pass the threshold once and EVERY address that user was seen
-			// from got reported, so one phone behind a NAT pool that hands out a
-			// different egress IP per connection was counted as a dozen devices and
-			// the customer was locked out of their own account. Judging each address
-			// on its own traffic drops the transient ones that carried a few
-			// kilobytes and keeps the one or two doing real work.
-			if dp, ok := c.server.(interface {
-				GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[string]int64, error)
-			}); ok {
-				if perDevice, err := dp.GetDeviceTrafficSlice(tag, true); err == nil && len(perDevice) > 0 {
-					var kept []panel.OnlineUser
-					for _, online := range onlineDevice {
-						if perDevice[online.UID][online.IP] >= deviceMin*1000 {
-							kept = append(kept, online)
-						}
-					}
-					result = kept
-					deviceMin = 0 // handled; skip the per-user fallback
+		if deviceMin > 0 && perDevice != nil {
+			var kept []panel.OnlineUser
+			for _, online := range onlineDevice {
+				if perDevice[online.UID][online.IP] >= deviceMin*1000 {
+					kept = append(kept, online)
 				}
 			}
+			result = kept
+			deviceMin = 0
 		}
+
 		if deviceMin > 0 {
 			// Report a user's devices only when we hold a traffic sample for them
 			// that reaches the threshold. This used to be phrased as a deny-set

@@ -8,18 +8,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// minInterval stands in for an Interval that is zero or negative. Without it
-// time.After(0) fires at once and the task runs back to back with no pause -
-// against the panel, that is every node sending requests as fast as it can.
 const minInterval = time.Minute
 
 type Task struct {
 	Interval time.Duration
 	Execute  func() error
 	access   sync.Mutex
+	execute  sync.Mutex
 	running  bool
 	stop     chan struct{}
 	done     chan struct{}
+	wake     chan struct{}
+	loops    map[chan struct{}]struct{}
 }
 
 func (t *Task) interval() time.Duration {
@@ -38,51 +38,50 @@ func (t *Task) Start(first bool) error {
 		return nil
 	}
 	t.running = true
-	// Each loop keeps the channel it was started with. It used to read t.stop
-	// on every pass, so a task restarted from inside its own Execute (Close,
-	// then Start - what a pull-interval change does) found the NEW channel
-	// open and carried on next to the loop Start had just created.
 	stop := make(chan struct{})
 	done := make(chan struct{})
-	t.stop = stop
-	t.done = done
+	wake := make(chan struct{}, 1)
+	t.stop, t.done, t.wake = stop, done, wake
+	if t.loops == nil {
+		t.loops = make(map[chan struct{}]struct{})
+	}
+	t.loops[done] = struct{}{}
 	t.access.Unlock()
 
 	go func() {
-		defer close(done)
+		defer func() {
+			t.access.Lock()
+			delete(t.loops, done)
+			close(done)
+			t.access.Unlock()
+		}()
 		if first {
-			if err := t.run(); err != nil {
+			if err := t.run(stop); err != nil {
 				t.halt(stop)
 				return
 			}
 		}
 
 		for {
+			timer := time.NewTimer(t.interval())
 			select {
-			case <-time.After(t.interval()):
+			case <-timer.C:
+			case <-wake:
+				timer.Stop()
+				continue
 			case <-stop:
+				timer.Stop()
 				return
 			}
-
-			// Closed while waiting for the timer: do not run once more.
-			select {
-			case <-stop:
-				return
-			default:
-			}
-
-			if err := t.run(); err != nil {
+			if err := t.run(stop); err != nil {
 				t.halt(stop)
 				return
 			}
 		}
 	}()
-
 	return nil
 }
 
-// halt stops the loop that owns stop, unless the task has since been
-// restarted with a different one.
 func (t *Task) halt(stop chan struct{}) {
 	t.access.Lock()
 	defer t.access.Unlock()
@@ -101,40 +100,48 @@ func (t *Task) Close() {
 	t.access.Unlock()
 }
 
-// Wait joins the most recently started loop. It is separate from Close because
-// a task may Close and restart itself from inside Execute when its interval
-// changes; making Close wait would deadlock that supported path.
+// Wait joins every loop present at the call, including an older loop whose
+// Execute was still running when the task restarted. Call Close first.
 func (t *Task) Wait() {
 	t.access.Lock()
-	done := t.done
+	done := make([]chan struct{}, 0, len(t.loops))
+	for ch := range t.loops {
+		done = append(done, ch)
+	}
 	t.access.Unlock()
-	if done != nil {
-		<-done
+	for _, ch := range done {
+		<-ch
 	}
 }
 
-// Running reports whether the task is started and not closed.
 func (t *Task) Running() bool {
 	t.access.Lock()
 	defer t.access.Unlock()
 	return t.running
 }
 
-// SetInterval changes the pause between runs; the running loop picks it up
-// from its next wait. Assigning Interval directly raced with that loop.
 func (t *Task) SetInterval(d time.Duration) {
 	t.access.Lock()
 	t.Interval = d
+	if t.wake != nil {
+		select {
+		case t.wake <- struct{}{}:
+		default:
+		}
+	}
 	t.access.Unlock()
 }
 
-// run executes one pass and turns a panic into a logged error.
-//
-// Every node's periodic work runs here - pulling users, reporting traffic,
-// renewing certificates - and a panic in any of it used to take the whole
-// process down, and with it every node the server carries. One bad pass now
-// costs that pass only; the loop carries on at the next interval.
-func (t *Task) run() (err error) {
+// run serializes execution across generations. A loop stopped while waiting
+// for the previous Execute must not execute once it acquires the lock.
+func (t *Task) run(stop <-chan struct{}) (err error) {
+	t.execute.Lock()
+	defer t.execute.Unlock()
+	select {
+	case <-stop:
+		return nil
+	default:
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			log.WithField("stack", string(debug.Stack())).Error("task panicked; continuing at the next interval: ", r)

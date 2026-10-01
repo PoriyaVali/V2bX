@@ -25,8 +25,11 @@ func credentialsFor(u panel.UserInfo) (string, string) { return u.Uuid, u.Uuid }
 func (t *TrustTunnel) AddUsers(p *vCore.AddUsersParams) (added int, err error) {
 	t.mu.Lock()
 	n := t.nodes[p.Tag]
+	if t.usersMap[p.Tag] == nil {
+		t.usersMap[p.Tag] = make(map[string]int)
+	}
 	for _, u := range p.Users {
-		t.usersMap[u.Uuid] = u.Id
+		t.usersMap[p.Tag][u.Uuid] = u.Id
 	}
 	t.mu.Unlock()
 
@@ -51,7 +54,7 @@ func (t *TrustTunnel) DelUsers(users []panel.UserInfo, tag string, _ *panel.Node
 	t.mu.Lock()
 	n := t.nodes[tag]
 	for _, u := range users {
-		delete(t.usersMap, u.Uuid)
+		delete(t.usersMap[tag], u.Uuid)
 	}
 	t.mu.Unlock()
 
@@ -163,7 +166,7 @@ func (t *TrustTunnel) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserT
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	for name, u := range drained {
-		uid, ok := t.usersMap[name]
+		uid, ok := t.usersMap[tag][name]
 		if !ok {
 			continue // user removed since the traffic was recorded
 		}

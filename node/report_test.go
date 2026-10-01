@@ -65,6 +65,9 @@ type fakePanel struct {
 	pushes []pushAttempt
 	// aliveFails makes the alive-list endpoint answer 500.
 	aliveFails bool
+	// userFails makes user polls fail before their cached response is applied.
+	userFails bool
+	aliveReports int
 	// port is the server_port the config endpoint serves; changing it is a
 	// node config change. 0 means 1234.
 	port int
@@ -101,7 +104,12 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 		f.mu.Lock()
 		body, _ := json.Marshal(panel.UserListBody{Users: f.users})
 		useEtag := f.etag
+		fail := f.userFails
 		f.mu.Unlock()
+		if fail {
+			http.Error(w, "user endpoint unavailable", http.StatusInternalServerError)
+			return
+		}
 		if useEtag {
 			tag := fmt.Sprintf(`"%x"`, sha1.Sum(body))
 			w.Header().Set("ETag", tag)
@@ -130,6 +138,7 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 		_ = json.NewDecoder(r.Body).Decode(&got)
 		f.mu.Lock()
 		f.capturedAlive = got
+		f.aliveReports++
 		f.mu.Unlock()
 		w.Write([]byte(`{"data":true}`))
 	})

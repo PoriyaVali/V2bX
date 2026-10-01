@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/format"
 	"github.com/PoriyaVali/V2bX/common/rate"
 
@@ -40,7 +41,7 @@ type HookServer struct {
 	// not a known user (uidMap lookup == 0), so per-address entries living there
 	// would be quietly erased on the first cycle and this would always read zero.
 	deviceCounter sync.Map //map[string]*counter.TrafficCounter, keyed by inbound tag; inner key: uuid|ip
-	deviceIdle    sync.Map //map[string]int, consecutive silent cycles per uuid|ip
+	deviceIdle    sync.Map //map[string]int, consecutive silent cycles per tag|uuid|ip
 }
 
 // deviceKey is the inner key of deviceCounter: one entry per (user, source
@@ -113,6 +114,7 @@ func (h *HookServer) GetDeviceTraffic(tag string, uidOf func(uuid string) int, r
 			d.Delete(k)
 			return true
 		}
+		idleKey := format.UserTag(tag, k)
 		st := value.(*counter.TrafficStorage)
 		up, down := st.UpCounter.Load(), st.DownCounter.Load()
 		if reset && up+down > 0 {
@@ -126,6 +128,7 @@ func (h *HookServer) GetDeviceTraffic(tag string, uidOf func(uuid string) int, r
 		if uid == 0 {
 			// The user is gone from this inbound; nothing will ever read this.
 			d.Delete(k)
+			h.deviceIdle.Delete(idleKey)
 			return true
 		}
 		if total > 0 {
@@ -138,19 +141,24 @@ func (h *HookServer) GetDeviceTraffic(tag string, uidOf func(uuid string) int, r
 			return true
 		}
 		if total > 0 {
-			h.deviceIdle.Delete(k)
+			h.deviceIdle.Delete(idleKey)
 			return true
 		}
 		// Silent this cycle - evict once it has been silent long enough.
 		n := 1
-		if prev, ok := h.deviceIdle.Load(k); ok {
+		if prev, ok := h.deviceIdle.Load(idleKey); ok {
 			n = prev.(int) + 1
 		}
 		if n >= deviceIdleCycles {
+			// Do not orphan a storage still owned by an idle open connection.
+			if h.hasActiveDevice(tag, uuid, ip) {
+				h.deviceIdle.Delete(idleKey)
+				return true
+			}
 			d.Delete(k)
-			h.deviceIdle.Delete(k)
+			h.deviceIdle.Delete(idleKey)
 		} else {
-			h.deviceIdle.Store(k, n)
+			h.deviceIdle.Store(idleKey, n)
 		}
 		return true
 	})
@@ -165,9 +173,10 @@ func (h *HookServer) GetDeviceTraffic(tag string, uidOf func(uuid string) int, r
 // tier that is the difference between "your credit ran out" and "your credit
 // ran out but the download you started finishes anyway".
 type userConns struct {
-	mu     sync.Mutex
-	m      map[io.Closer]struct{}
-	closed bool // set once the user is gone, so a racing registration is refused
+	mu      sync.Mutex
+	m       map[io.Closer]struct{}
+	devices map[string]int
+	closed  bool // set once the user is gone, so a racing registration is refused
 }
 
 // trackedConn removes itself from its user's set as soon as it closes, however
@@ -176,13 +185,17 @@ type userConns struct {
 type trackedConn struct {
 	net.Conn
 	release func()
+	mu      sync.Mutex
 	once    sync.Once
 }
 
 func (c *trackedConn) Close() error {
 	c.once.Do(func() {
-		if c.release != nil {
-			c.release()
+		c.mu.Lock()
+		release := c.release
+		c.mu.Unlock()
+		if release != nil {
+			release()
 		}
 	})
 	return c.Conn.Close()
@@ -233,8 +246,11 @@ type trackedPacketConn struct {
 
 func (c *trackedPacketConn) Close() error {
 	c.once.Do(func() {
-		if c.release != nil {
-			c.release()
+		c.mu.Lock()
+		release := c.release
+		c.mu.Unlock()
+		if release != nil {
+			release()
 		}
 	})
 	return c.PacketConn.Close()
@@ -263,7 +279,7 @@ const (
 // register records one of a user's connections. max caps how many the user
 // may hold at once (0 = no cap); the connection that would go over it is
 // refused, so a single runaway client cannot exhaust the node.
-func (h *HookServer) register(key string, c io.Closer, max int) (func(), registerResult) {
+func (h *HookServer) register(key string, c io.Closer, max int, deviceIP ...string) (func(), registerResult) {
 	// Load first: the set almost always exists already, and LoadOrStore alone
 	// built (and threw away) a fresh set and map on every connection.
 	v, ok := h.conns.Load(key)
@@ -281,12 +297,66 @@ func (h *HookServer) register(key string, c io.Closer, max int) (func(), registe
 		return nil, tooManyConns
 	}
 	uc.m[c] = struct{}{}
+	ip := ""
+	if len(deviceIP) > 0 {
+		ip = deviceIP[0]
+	}
+	if ip != "" {
+		if uc.devices == nil {
+			uc.devices = make(map[string]int)
+		}
+		uc.devices[ip]++
+	}
 	uc.mu.Unlock()
 	return func() {
 		uc.mu.Lock()
 		delete(uc.m, c)
+		if ip != "" {
+			if uc.devices[ip] > 1 {
+				uc.devices[ip]--
+			} else {
+				delete(uc.devices, ip)
+			}
+		}
 		uc.mu.Unlock()
 	}, registered
+}
+
+func (h *HookServer) hasActiveDevice(tag, uuid, ip string) bool {
+	v, ok := h.conns.Load(format.UserTag(tag, uuid))
+	if !ok {
+		return false
+	}
+	uc := v.(*userConns)
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	return uc.devices[ip] > 0
+}
+
+// OnlineDevices samples current connections rather than just handshakes.
+func (h *HookServer) OnlineDevices(tag string, uidOf func(string) int) []panel.OnlineUser {
+	var out []panel.OnlineUser
+	prefix := format.UserTag(tag, "")
+	h.conns.Range(func(key, value any) bool {
+		k := key.(string)
+		if !strings.HasPrefix(k, prefix) {
+			return true
+		}
+		uid := uidOf(strings.TrimPrefix(k, prefix))
+		if uid == 0 {
+			return true
+		}
+		uc := value.(*userConns)
+		uc.mu.Lock()
+		for ip, count := range uc.devices {
+			if count > 0 {
+				out = append(out, panel.OnlineUser{UID: uid, IP: ip})
+			}
+		}
+		uc.mu.Unlock()
+		return true
+	})
+	return out
 }
 
 // logGate lets one message per key through per interval. A client that keeps
@@ -327,6 +397,7 @@ func (h *HookServer) CloseUserConns(inbound string, uuids []string) int {
 			list = append(list, c)
 		}
 		uc.m = nil
+		uc.devices = nil
 		uc.mu.Unlock()
 		for _, c := range list {
 			_ = c.Close()
@@ -347,7 +418,7 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 		return conn
 	}
 	taguuid := format.UserTag(m.Inbound, m.User)
-	ip := m.Source.Addr.String()
+	ip := strings.TrimPrefix(m.Source.Addr.String(), "::ffff:")
 	// A source that is one of this node's own addresses is not a user device,
 	// so it must not be registered as an online IP nor checked against the
 	// device limit — speed limits and access rules below still apply.
@@ -355,15 +426,14 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	if !countDevice {
 		warnNodeOwnedSource(m.Inbound, ip)
 	}
-	if b, r := l.CheckLimit(taguuid, ip, true, countDevice); r {
+	if _, r := l.CheckLimit(taguuid, ip, true, countDevice); r {
 		conn.Close()
 		if logEvery("dev|"+taguuid, time.Minute) {
 			log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
 		}
 		return conn
-	} else if b != nil {
-		conn = rate.NewConnRateLimiter(conn, b)
 	}
+	conn = rate.NewConnRateLimiter(conn, l.RateLimiter(taguuid))
 	if l != nil {
 		protocol := m.Protocol
 		if reject, kind := checkDestination(l, m); reject {
@@ -390,14 +460,21 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	// node's own addresses, which are not devices and must not be counted as one.
 	conn = counter.NewConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	tc := &trackedConn{Conn: conn}
-	release, res := h.register(taguuid, tc, l.MaxConns)
+	deviceIP := ""
+	if countDevice {
+		deviceIP = ip
+	}
+	tc.mu.Lock()
+	release, res := h.register(taguuid, tc, l.MaxConns, deviceIP)
 	if res != registered {
+		tc.mu.Unlock()
 		// the user was removed while this was being set up, or holds too many
 		conn.Close()
 		h.logRefused(m.Inbound, m.User, taguuid, res, l.MaxConns)
 		return conn
 	}
 	tc.release = release
+	tc.mu.Unlock()
 	return tc
 }
 
@@ -407,23 +484,20 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 		log.Warn("get limiter for ", m.Inbound, " error: ", err)
 		return conn
 	}
-	ip := m.Source.Addr.String()
+	ip := strings.TrimPrefix(m.Source.Addr.String(), "::ffff:")
 	taguuid := format.UserTag(m.Inbound, m.User)
-	// A packet connection never REGISTERS an online device - CheckLimit is called
-	// with the device flag off below, as it always has been - but its bytes still
-	// belong to whichever device did register over TCP. Counting them keeps a
-	// UDP-heavy device (a video call) from looking idle and being dropped from
-	// the online report. The node's own addresses are excluded, same as for TCP.
+	// Packet connections retain the existing UDP admission policy and report
+	// their active source address and bytes directly. Node-owned addresses are
+	// excluded, as for TCP.
 	countDevice := !isNodeOwnedIP(m.Source.Addr)
-	if b, r := l.CheckLimit(taguuid, ip, false, false); r {
+	if _, r := l.CheckLimit(taguuid, ip, false, false); r {
 		conn.Close()
 		if logEvery("dev|"+taguuid, time.Minute) {
 			log.Error("[", m.Inbound, "] ", "Limited ", m.User, " by ip or conn")
 		}
 		return conn
-	} else if b != nil {
-		conn = rate.NewPacketConnRateLimiter(conn, b)
 	}
+	conn = rate.NewPacketConnRateLimiter(conn, l.RateLimiter(taguuid))
 	if l != nil {
 		if reject, kind := checkDestination(l, m); reject {
 			log.Error(fmt.Sprintf(
@@ -459,13 +533,20 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 	// traffic of the connections holding it went unbilled.
 	conn = counter.NewPacketConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	pc := &trackedPacketConn{PacketConn: conn}
-	release, res := h.register(taguuid, pc, l.MaxConns)
+	deviceIP := ""
+	if countDevice {
+		deviceIP = ip
+	}
+	pc.mu.Lock()
+	release, res := h.register(taguuid, pc, l.MaxConns, deviceIP)
 	if res != registered {
+		pc.mu.Unlock()
 		conn.Close()
 		h.logRefused(m.Inbound, m.User, taguuid, res, l.MaxConns)
 		return conn
 	}
 	pc.release = release
+	pc.mu.Unlock()
 	return pc
 }
 

@@ -1,7 +1,6 @@
 package rate
 
 import (
-	"github.com/juju/ratelimit"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -22,10 +21,10 @@ import (
 // sized for it and nothing is copied to make room.
 type PacketConn struct {
 	N.PacketConn
-	limiter *ratelimit.Bucket
+	limiter Waiter
 }
 
-func NewPacketConnRateLimiter(c N.PacketConn, l *ratelimit.Bucket) N.PacketConn {
+func NewPacketConnRateLimiter(c N.PacketConn, l Waiter) N.PacketConn {
 	return &PacketConn{PacketConn: c, limiter: l}
 }
 
