@@ -249,59 +249,252 @@ install_trusttunnel_bins() {
 # ================================================================
 # Install V2bX | نصب V2bX
 # ================================================================
-install_V2bX() {
+# Stage an endpoint refresh without touching the running installation. An
+# unavailable version API may keep a complete existing pair; a failed download
+# or invalid new pair must abort the update before its stop boundary.
+stage_trusttunnel_bins() {
+    local tt_stage="$1" tt_repo="PoriyaVali/TrustTunnel" tt_version tt_binary
+    tt_version=$(curl -fsSL --max-time 15 "https://api.github.com/repos/${tt_repo}/releases/latest" \
+        | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || true)
+    if [[ -z "${tt_version}" ]]; then
+        echo -e "${yellow}TrustTunnel release lookup failed; keeping the installed endpoint.${plain}" >&2
+        [[ -x /usr/local/V2bX/trusttunnel_endpoint && -x /usr/local/V2bX/setup_wizard ]]
+        return $?
+    fi
+    if [[ -x /usr/local/V2bX/trusttunnel_endpoint && -x /usr/local/V2bX/setup_wizard &&
+          -f /usr/local/V2bX/.trusttunnel_version &&
+          "$(cat /usr/local/V2bX/.trusttunnel_version)" == "${tt_version}" ]]; then
+        return 0
+    fi
+    mkdir -p "${tt_stage}" || return 1
+    wget -nv --show-progress -O "${tt_stage}/TrustTunnel.zip" \
+        "https://github.com/${tt_repo}/releases/download/${tt_version}/TrustTunnel-${arch}.zip" || return 1
+    unzip -tq "${tt_stage}/TrustTunnel.zip" &&
+        unzip -q "${tt_stage}/TrustTunnel.zip" -d "${tt_stage}/unpacked" || return 1
+    for tt_binary in trusttunnel_endpoint setup_wizard; do
+        [[ -f "${tt_stage}/unpacked/${tt_binary}" && -s "${tt_stage}/unpacked/${tt_binary}" &&
+           ! -L "${tt_stage}/unpacked/${tt_binary}" ]] &&
+            chmod 0755 "${tt_stage}/unpacked/${tt_binary}" || return 1
+    done
+    "${tt_stage}/unpacked/trusttunnel_endpoint" --version >/dev/null || return 1
+    printf '%s\n' "${tt_version}" > "${tt_stage}/unpacked/.trusttunnel_version" || return 1
+}
+
+v2bx_service() {
+    if [[ x"${release}" == x"alpine" ]]; then
+        rc-service V2bX "$1"
+    else
+        systemctl "$1" V2bX
+    fi
+}
+
+v2bx_service_pid() {
+    local service_pid
+    if [[ x"${release}" == x"alpine" ]]; then
+        rc-service V2bX status >/dev/null 2>&1 || return 1
+        [[ -r /run/V2bX.pid ]] || return 1
+        read -r service_pid < /run/V2bX.pid
+    else
+        systemctl is-active --quiet V2bX || return 1
+        # Avoid --value: the installer also supports older systemd versions.
+        service_pid=$(systemctl show -p MainPID V2bX) || return 1
+        [[ "${service_pid}" == MainPID=* ]] || return 1
+        service_pid="${service_pid#MainPID=}"
+    fi
+    [[ "${service_pid}" =~ ^[1-9][0-9]*$ ]] && kill -0 "${service_pid}" 2>/dev/null || return 1
+    printf '%s\n' "${service_pid}"
+}
+
+# A successful Type=simple start command can precede an exec/config failure.
+# Observe one live PID for five seconds, allowing at most twenty seconds for
+# startup. Restarting/flapping or immediately dying processes cannot commit.
+# This proves local process stability, not remote panel/node reachability.
+v2bx_wait_healthy() {
+    local health_pid="" health_previous="" health_stable=0 health_attempt
+    for ((health_attempt = 0; health_attempt <= 20; health_attempt++)); do
+        health_pid=$(v2bx_service_pid) || health_pid=""
+        if [[ -n "${health_pid}" && "${health_pid}" == "${health_previous}" ]]; then
+            ((health_stable += 1))
+        else
+            health_stable=0
+        fi
+        [[ "${health_stable}" -lt 5 ]] || return 0
+        health_previous="${health_pid}"
+        [[ "${health_attempt}" == 20 ]] || sleep 1
+    done
+    echo -e "${red}V2bX did not remain healthy after startup | سرویس پس از راه‌اندازی پایدار نماند${plain}" >&2
+    return 1
+}
+
+install_V2bX() (
     echo -e "${green}Installing V2bX | در حال نصب V2bX...${plain}"
 
-    # Stop existing service | توقف سرویس موجود
-    if systemctl is-active --quiet V2bX 2>/dev/null; then
-        systemctl stop V2bX
+    local install_stage install_tmp="" install_backup=""
+    local install_stopped=false install_committed=false install_success=false
+    local install_start_attempted=false install_recovery_failed=false install_unit=""
+    local install_refresh_endpoint="${1:-false}"
+    local -a install_targets=() install_present=() install_sources=()
+    install_stage=$(mktemp -d /tmp/v2bx-install.XXXXXX) || return 1
+
+    # Snapshot every changed file, including endpoint binaries and service unit.
+    # The backup lives on disk until BOTH start and stability checks succeed.
+    install_snapshot() {
+        local target="$1" index="${#install_targets[@]}"
+        [[ ! -d "${target}" ]] || return 1
+        install_targets+=("${target}")
+        if [[ -e "${target}" || -L "${target}" ]]; then
+            install_present+=(true)
+            cp -a -- "${target}" "${install_backup}/${index}" || return 1
+        else
+            install_present+=(false)
+        fi
+        printf '%s\n' "${target}" >> "${install_backup}/paths" || return 1
+    }
+    install_replace() {
+        local source="$1" target="$2"
+        install_tmp=$(mktemp /usr/local/V2bX/.V2bX.new.XXXXXX) || return 1
+        cp -p -- "${source}" "${install_tmp}" && mv -f -- "${install_tmp}" "${target}" || return 1
+        install_tmp=""
+    }
+    install_restore() {
+        local index target restore_tmp
+        for ((index = ${#install_targets[@]} - 1; index >= 0; index--)); do
+            target="${install_targets[index]}"
+            if [[ "${install_present[index]}" == true ]]; then
+                restore_tmp=$(mktemp "${target}.restore.XXXXXX") || return 1
+                # BusyBox cp (Alpine) does not require GNU long options.
+                if ! rm -f -- "${restore_tmp}" ||
+                   ! cp -a -- "${install_backup}/${index}" "${restore_tmp}" ||
+                   ! mv -f -- "${restore_tmp}" "${target}"; then
+                    rm -f -- "${restore_tmp}"
+                    return 1
+                fi
+            else
+                rm -f -- "${target}" || return 1
+            fi
+        done
+        if [[ x"${release}" != x"alpine" ]]; then
+            systemctl daemon-reload || return 1
+        fi
+    }
+    trap '
+        install_status=$?
+        if [[ "${install_success}" != true ]]; then
+            if [[ "${install_committed}" == true ]]; then
+                if [[ "${install_start_attempted}" == true ]]; then
+                    v2bx_service stop || install_recovery_failed=true
+                fi
+                if [[ "${install_recovery_failed}" != true ]]; then
+                    install_restore || install_recovery_failed=true
+                fi
+            fi
+            if [[ "${install_stopped}" == true && "${install_recovery_failed}" != true ]]; then
+                v2bx_service start && v2bx_wait_healthy || install_recovery_failed=true
+            fi
+        fi
+        [[ -z "${install_tmp}" ]] || rm -f -- "${install_tmp}"
+        if [[ "${install_recovery_failed}" == true ]]; then
+            echo -e "${red}Recovery failed; backups retained at ${install_backup}${plain}" >&2
+            install_status=1
+        elif [[ -n "${install_backup}" ]]; then
+            rm -rf -- "${install_backup}"
+        fi
+        rm -rf -- "${install_stage}"
+        exit "${install_status}"
+    ' EXIT
+
+    local install_url="https://github.com/${GITHUB_REPO}/releases/download/${last_version}/V2bX-${arch}.zip"
+    echo -e "Downloading | دانلود: ${install_url}"
+    if ! wget -nv --show-progress -O "${install_stage}/V2bX.zip" "${install_url}"; then
+        echo -e "${red}Download failed | دانلود ناموفق بود${plain}" >&2
+        return 1
+    fi
+    if ! unzip -tq "${install_stage}/V2bX.zip" ||
+       ! unzip -q "${install_stage}/V2bX.zip" -d "${install_stage}/unpacked"; then
+        echo -e "${red}Invalid release archive | فایل انتشار نامعتبر است${plain}" >&2
+        return 1
+    fi
+    if [[ ! -f "${install_stage}/unpacked/V2bX" ]] ||
+       ! chmod 0755 "${install_stage}/unpacked/V2bX" ||
+       ! "${install_stage}/unpacked/V2bX" version >/dev/null; then
+        echo -e "${red}Release binary validation failed | بررسی فایل اجرایی ناموفق بود${plain}" >&2
+        return 1
     fi
 
-    # Create directories | ایجاد پوشه‌ها
-    mkdir -p /etc/V2bX
-    mkdir -p /usr/local/V2bX
-
-    # Download | دانلود
-    DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${last_version}/V2bX-${arch}.zip"
-    echo -e "Downloading | دانلود: ${DOWNLOAD_URL}"
-
-    wget -nv --show-progress -O /tmp/V2bX.zip "${DOWNLOAD_URL}"
-    if [[ $? -ne 0 ]]; then
-        echo -e "${red}Download failed | دانلود ناموفق بود${plain}"
-        echo -e "Try downloading manually from | به صورت دستی دانلود کنید: https://github.com/${GITHUB_REPO}/releases"
-        exit 1
+    if [[ "${install_refresh_endpoint}" == true && -x /usr/local/V2bX/trusttunnel_endpoint ]]; then
+        stage_trusttunnel_bins "${install_stage}/endpoint" || return 1
     fi
 
-    # Extract | استخراج
-    unzip -o /tmp/V2bX.zip -d /usr/local/V2bX
-    rm -f /tmp/V2bX.zip
-    chmod +x /usr/local/V2bX/V2bX
-
-    # Symlink | لینک سمبلیک
-    ln -sf /usr/local/V2bX/V2bX /usr/bin/V2bX
-    ln -sf /usr/local/V2bX/V2bX /usr/bin/v2bx
-
-    # Copy config templates if not exist | کپی فایل‌های نمونه اگر وجود ندارند
-    for f in config.json dns.json route.json; do
-        if [[ ! -f /etc/V2bX/${f} && -f /usr/local/V2bX/${f} ]]; then
-            cp /usr/local/V2bX/${f} /etc/V2bX/${f}
-            echo -e "Created config | فایل تنظیمات ایجاد شد: /etc/V2bX/${f}"
+    mkdir -p /etc/V2bX /usr/local/V2bX || return 1
+    install_backup=$(mktemp -d /usr/local/V2bX/.V2bX.rollback.XXXXXX) || return 1
+    local install_file
+    for install_file in "${install_stage}/unpacked/"*; do
+        [[ -e "${install_file}" ]] || continue
+        [[ -f "${install_file}" && ! -L "${install_file}" ]] || return 1
+        install_sources+=("${install_file}")
+        install_snapshot "/usr/local/V2bX/${install_file##*/}" || return 1
+    done
+    if [[ -f "${install_stage}/endpoint/unpacked/.trusttunnel_version" ]]; then
+        for install_file in trusttunnel_endpoint setup_wizard .trusttunnel_version; do
+            install_sources+=("${install_stage}/endpoint/unpacked/${install_file}")
+            install_snapshot "/usr/local/V2bX/${install_file}" || return 1
+        done
+    fi
+    for install_file in config.json dns.json route.json; do
+        if [[ ! -f /etc/V2bX/${install_file} && -f "${install_stage}/unpacked/${install_file}" ]]; then
+            install_snapshot "/etc/V2bX/${install_file}" || return 1
         fi
     done
-
-    # Setup systemd service | راه‌اندازی سرویس systemd
+    install_snapshot /usr/bin/V2bX && install_snapshot /usr/bin/v2bx || return 1
     if [[ x"${release}" == x"alpine" ]]; then
-        setup_openrc
+        install_unit=/etc/init.d/V2bX
     else
-        setup_systemd
+        install_unit=/etc/systemd/system/V2bX.service
+    fi
+    install_snapshot "${install_unit}" || return 1
+
+    # Download, archive checks and executable checks have all succeeded.
+    if [[ x"${release}" == x"alpine" ]]; then
+        if rc-service V2bX status >/dev/null 2>&1; then
+            install_stopped=true
+            v2bx_service stop || return 1
+        fi
+    elif systemctl is-active --quiet V2bX 2>/dev/null; then
+        install_stopped=true
+        v2bx_service stop || return 1
     fi
 
+    # Same-filesystem renames avoid truncated executable and data replacements.
+    install_committed=true
+    for install_file in "${install_sources[@]}"; do
+        install_replace "${install_file}" "/usr/local/V2bX/${install_file##*/}" || return 1
+    done
+    ln -sf /usr/local/V2bX/V2bX /usr/bin/V2bX || return 1
+    ln -sf /usr/local/V2bX/V2bX /usr/bin/v2bx || return 1
+
+    for install_file in config.json dns.json route.json; do
+        if [[ ! -f /etc/V2bX/${install_file} && -f /usr/local/V2bX/${install_file} ]]; then
+            cp /usr/local/V2bX/${install_file} /etc/V2bX/${install_file} || return 1
+            echo -e "Created config | فایل تنظیمات ایجاد شد: /etc/V2bX/${install_file}"
+        fi
+    done
+    if [[ x"${release}" == x"alpine" ]]; then
+        setup_openrc || return 1
+    else
+        setup_systemd || return 1
+    fi
+
+    if [[ "${install_stopped}" == true ]]; then
+        install_start_attempted=true
+        v2bx_service start && v2bx_wait_healthy || return 1
+    fi
+    install_success=true
     echo -e "${green}V2bX ${last_version} installed successfully! | V2bX ${last_version} با موفقیت نصب شد!${plain}"
     echo -e ""
     echo -e "Edit config | ویرایش تنظیمات: ${yellow}nano /etc/V2bX/config.json${plain}"
     echo -e "Start service | راه‌اندازی: ${yellow}V2bX start${plain}"
     echo -e "View logs | مشاهده لاگ: ${yellow}V2bX log${plain}"
-}
+)
 
 setup_systemd() {
     cat > /etc/systemd/system/V2bX.service << EOF
@@ -322,8 +515,9 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload
-    systemctl enable V2bX
+    [[ $? -eq 0 ]] || return 1
+    systemctl daemon-reload || return 1
+    systemctl enable V2bX || return 1
     echo -e "${green}Systemd service configured | سرویس systemd پیکربندی شد${plain}"
 }
 
@@ -337,8 +531,9 @@ command_args="server -c /etc/V2bX/config.json"
 command_background=true
 pidfile="/run/V2bX.pid"
 EOF
-    chmod +x /etc/init.d/V2bX
-    rc-update add V2bX default
+    [[ $? -eq 0 ]] || return 1
+    chmod +x /etc/init.d/V2bX || return 1
+    rc-update add V2bX default || return 1
     echo -e "${green}OpenRC service configured | سرویس OpenRC پیکربندی شد${plain}"
 }
 
@@ -347,18 +542,10 @@ EOF
 # ================================================================
 update_V2bX() {
     echo -e "${green}Updating V2bX | در حال به‌روزرسانی V2bX...${plain}"
-    get_version "$1"
-    install_V2bX
-
-    # Refresh the endpoint too, but only for a node that actually uses it.
-    # Updating V2bX while leaving an old endpoint in place is how a fixed
-    # bug survives an update.
-    if [[ -x /usr/local/V2bX/trusttunnel_endpoint ]]; then
-        install_trusttunnel_bins || true
-    fi
-    if [[ x"${release}" != x"alpine" ]]; then
-        systemctl restart V2bX
-    fi
+    get_version "$1" || return 1
+    # Include an endpoint refresh in the SAME rollback/start boundary.
+    # Preserve an inactive service rather than unconditionally starting it.
+    install_V2bX true || return 1
     show_status
 }
 

@@ -234,7 +234,7 @@ func (d *DefaultDispatcher) getLink(ctx context.Context, network net.Network) (*
 		}
 		d.tuneSocket(sessionInbound)
 		// Speed Limit and Device Limit
-		w, reject := limit.CheckLimit(user.Email,
+		_, reject := limit.CheckLimit(user.Email,
 			sessionInbound.Source.Address.IP().String(),
 			network == net.Network_TCP,
 			sessionInbound.Source.Network == net.Network_TCP && !localip.IsNodeOwned(sessionInbound.Source.Address.IP().String()))
@@ -260,11 +260,12 @@ func (d *DefaultDispatcher) getLink(ctx context.Context, network net.Network) (*
 			return nil, nil, nil, errors.New("Refused ", user.Email, ": ", err)
 		}
 		inboundLink.Writer = managedWriter
-		if w != nil {
-			sessionInbound.CanSpliceCopy = 3
-			inboundLink.Writer = rate.NewRateLimitWriter(inboundLink.Writer, w)
-			outboundLink.Writer = rate.NewRateLimitWriter(outboundLink.Writer, w)
-		}
+		// Keep the live wrapper even while unlimited, so a later plan edit or
+		// dynamic throttle reaches this established connection.
+		live := limit.RateLimiter(user.Email)
+		sessionInbound.CanSpliceCopy = 3
+		inboundLink.Writer = rate.NewRateLimitWriter(inboundLink.Writer, live)
+		outboundLink.Writer = rate.NewRateLimitWriter(outboundLink.Writer, live)
 		ts := d.trafficCounter(sessionInbound.Tag).GetCounter(user.Email)
 		upcounter := &counter.XrayTrafficCounter{V: &ts.UpCounter}
 		downcounter := &counter.XrayTrafficCounter{V: &ts.DownCounter}
@@ -428,7 +429,7 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 		}
 		d.tuneSocket(sessionInbound)
 		// Speed Limit and Device Limit
-		w, reject := limit.CheckLimit(user.Email,
+		_, reject := limit.CheckLimit(user.Email,
 			sessionInbound.Source.Address.IP().String(),
 			destination.Network == net.Network_TCP,
 			sessionInbound.Source.Network == net.Network_TCP && !localip.IsNodeOwned(sessionInbound.Source.Address.IP().String()))
@@ -444,10 +445,8 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 			manager: lm,
 		}
 		outbound.Writer = managedWriter
-		if w != nil {
-			sessionInbound.CanSpliceCopy = 3
-			outbound.Writer = rate.NewRateLimitWriter(outbound.Writer, w)
-		}
+		sessionInbound.CanSpliceCopy = 3
+		outbound.Writer = rate.NewRateLimitWriter(outbound.Writer, limit.RateLimiter(user.Email))
 		ts := d.trafficCounter(sessionInbound.Tag).GetCounter(user.Email)
 		downcounter := &counter.XrayTrafficCounter{V: &ts.DownCounter}
 		outbound.Reader = &CounterReader{

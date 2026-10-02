@@ -91,6 +91,8 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			"tag": c.tag,
 			"err": err,
 		}).Error("Get user list failed")
+		// GetNodeInfo already cached its reply, but this poll never applied it.
+		c.apiClient.ResetNodeCache()
 		return nil
 	}
 	// get user alive
@@ -147,6 +149,11 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				"tag": c.tag,
 				"err": err,
 			}).Error("Delete users failed")
+			// A core can fail after applying only part of a batch. Rebuild from
+			// the full panel list on the next poll rather than retrying duplicates.
+			c.needsReload = true
+			c.apiClient.ResetNodeCache()
+			c.apiClient.ResetUserCache()
 			return nil
 		}
 	}
@@ -162,6 +169,11 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 				"tag": c.tag,
 				"err": err,
 			}).Error("Add users failed")
+			// A core can fail after applying only part of a batch. Rebuild from
+			// the full panel list on the next poll rather than retrying duplicates.
+			c.needsReload = true
+			c.apiClient.ResetNodeCache()
+			c.apiClient.ResetUserCache()
 			return nil
 		}
 	}
@@ -297,18 +309,15 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 	log.WithField("tag", tag).Infof("Added %d new users", len(c.userList))
 }
 
-// applyIntervals restarts the poll and report tasks on the panel's intervals
-// when they changed.
+// applyIntervals wakes the existing loops when their intervals change. Starting
+// replacement report loops could overlap an in-flight HTTP request and race on
+// the traffic queue.
 func (c *Controller) applyIntervals(newN *panel.NodeInfo) {
 	if t := c.nodeInfoMonitorPeriodic; t != nil && newN.PullInterval != 0 && t.Interval != newN.PullInterval {
 		t.SetInterval(newN.PullInterval)
-		t.Close()
-		_ = t.Start(false)
 	}
 	if t := c.userReportPeriodic; t != nil && newN.PushInterval != 0 && t.Interval != newN.PushInterval {
 		t.SetInterval(newN.PushInterval)
-		t.Close()
-		_ = t.Start(false)
 	}
 }
 

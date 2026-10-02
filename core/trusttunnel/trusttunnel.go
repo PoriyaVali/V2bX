@@ -29,10 +29,10 @@ var _ vCore.Core = (*TrustTunnel)(nil)
 type TrustTunnel struct {
 	mu    sync.RWMutex
 	nodes map[string]*node
-	// uuid -> panel UID. Traffic comes back from the endpoint keyed by the
+	// node tag -> uuid -> panel UID. Traffic comes back from the endpoint keyed by the
 	// username we gave it, which is the subscriber's uuid, and the panel wants
 	// the numeric id.
-	usersMap map[string]int
+	usersMap map[string]map[string]int
 	// Where per-node working directories are created. Each holds the generated
 	// vpn.toml, hosts.toml, credentials.toml and certs.
 	workDir string
@@ -55,7 +55,7 @@ func New(_ *conf.CoreConfig) (vCore.Core, error) {
 	bin := envOr("V2BX_TRUSTTUNNEL_BIN", "/usr/local/V2bX")
 	return &TrustTunnel{
 		nodes:    make(map[string]*node),
-		usersMap: make(map[string]int),
+		usersMap: make(map[string]map[string]int),
 		workDir:  work,
 		binDir:   bin,
 	}, nil
@@ -90,7 +90,7 @@ func (t *TrustTunnel) Close() error {
 	t.mu.Lock()
 	nodes := t.nodes
 	t.nodes = make(map[string]*node)
-	t.usersMap = make(map[string]int)
+	t.usersMap = make(map[string]map[string]int)
 	t.mu.Unlock()
 
 	for _, n := range nodes {

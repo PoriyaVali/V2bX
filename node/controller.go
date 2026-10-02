@@ -212,8 +212,8 @@ func (c *Controller) Start() (err error) {
 func (c *Controller) Close() error {
 	// First wait out a reload that is already running and make sure no later
 	// one starts: the node must not come back into the core after this. It has
-	// to come before the tasks are stopped, because a reload that changes the
-	// poll interval restarts its own task.
+	// to come before the tasks are stopped, so a late poll cannot mutate state
+	// during teardown.
 	c.opMu.Lock()
 	c.closed = true
 	up := c.nodeUp
@@ -235,12 +235,20 @@ func (c *Controller) Close() error {
 			t.Close()
 		}
 	}
-	// Close only signals a task because interval changes restart a task from
-	// inside its own Execute. During controller shutdown we can and must join
-	// every in-flight Execute before deleting the node/core state it uses.
+	// Join every in-flight Execute before deleting the node/core state it uses.
 	for _, t := range tasks {
 		if t != nil {
 			t.Wait()
+		}
+	}
+	// The report task has stopped; this flush has sole ownership of its
+	// queue and accumulator. Include sub-threshold bytes before teardown.
+	if c.apiClient != nil {
+		if len(c.reportAccum) > 0 {
+			c.queueTrafficReport(c.applyReportMinTraffic(nil, 0))
+		}
+		if len(c.pendingReports) > 0 {
+			c.flushTrafficReports()
 		}
 	}
 	tag, _, _ := c.state()
