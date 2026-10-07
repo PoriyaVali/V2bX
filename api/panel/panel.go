@@ -14,6 +14,22 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
+// userAgent names this build on every request to the panel.
+//
+// It used to be resty's default, "go-resty/2.16.5 (...)", identical on every
+// node and every release, so the panel - and whoever reads its access log -
+// had no way to tell which nodes still ran an old build after an update was
+// rolled out. Set once at startup by SetVersion, before any client exists.
+var userAgent = "V2bX"
+
+// SetVersion makes every panel client created afterwards identify itself as
+// "V2bX/<version>". Call it before New; clients already built keep their header.
+func SetVersion(version string) {
+	if version = strings.TrimSpace(version); version != "" {
+		userAgent = "V2bX/" + version
+	}
+}
+
 // Panel is the interface for different panel's api.
 
 type Client struct {
@@ -36,9 +52,10 @@ func New(c *conf.ApiConfig) (*Client, error) {
 		client = resty.NewWithLocalAddr(&net.TCPAddr{
 			IP: net.ParseIP(c.APISendIP),
 		})
-	} else {	
+	} else {
 		client = resty.New()
 	}
+	client.SetHeader("User-Agent", userAgent)
 	client.SetRetryCount(3)
 	if c.Timeout > 0 {
 		client.SetTimeout(time.Duration(c.Timeout) * time.Second)

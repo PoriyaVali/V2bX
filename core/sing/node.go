@@ -139,7 +139,10 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 	case panel.Reality:
 		tls.Enabled = true
 		tls.ServerName = tlsSettings.ServerName
-		port, _ := strconv.Atoi(tlsSettings.ServerPort)
+		port, err := configPort(tlsSettings.ServerPort)
+		if err != nil {
+			return option.Inbound{}, fmt.Errorf("reality server_port: %w", err)
+		}
 		var dest string
 		if tlsSettings.Dest != "" {
 			dest = tlsSettings.Dest
@@ -156,7 +159,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 			Handshake: option.InboundRealityHandshakeOptions{
 				ServerOptions: option.ServerOptions{
 					Server:     dest,
-					ServerPort: uint16(port),
+					ServerPort: port,
 				},
 			},
 			MaxTimeDifference: badoption.Duration(mtd),
@@ -205,7 +208,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		case "ws":
 			var (
 				path    string
-				ed      int
+				ed      uint32
 				headers map[string]badoption.Listable[string]
 			)
 			if len(n.NetworkSettings) != 0 {
@@ -220,7 +223,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 					return option.Inbound{}, fmt.Errorf("parse path error: %s", err)
 				}
 				path = u.Path
-				ed, _ = strconv.Atoi(u.Query().Get("ed"))
+				ed = earlyDataSize(u.Query().Get("ed"))
 				headers = make(map[string]badoption.Listable[string], len(network.Headers))
 				for k, v := range network.Headers {
 					headers[k] = badoption.Listable[string]{
@@ -231,7 +234,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 			t.WebsocketOptions = option.V2RayWebsocketOptions{
 				Path:                path,
 				EarlyDataHeaderName: "Sec-WebSocket-Protocol",
-				MaxEarlyData:        uint32(ed),
+				MaxEarlyData:        ed,
 				Headers:             headers,
 			}
 		case "grpc":
@@ -318,7 +321,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		case "ws":
 			var (
 				path    string
-				ed      int
+				ed      uint32
 				headers map[string]badoption.Listable[string]
 			)
 			if len(n.NetworkSettings) != 0 {
@@ -333,7 +336,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 					return option.Inbound{}, fmt.Errorf("parse path error: %s", err)
 				}
 				path = u.Path
-				ed, _ = strconv.Atoi(u.Query().Get("ed"))
+				ed = earlyDataSize(u.Query().Get("ed"))
 				headers = make(map[string]badoption.Listable[string], len(network.Headers))
 				for k, v := range network.Headers {
 					headers[k] = badoption.Listable[string]{
@@ -344,7 +347,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 			t.WebsocketOptions = option.V2RayWebsocketOptions{
 				Path:                path,
 				EarlyDataHeaderName: "Sec-WebSocket-Protocol",
-				MaxEarlyData:        uint32(ed),
+				MaxEarlyData:        ed,
 				Headers:             headers,
 			}
 		case "grpc":
@@ -373,7 +376,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		if c.SingOptions.FallBackConfigs != nil {
 			// fallback handling
 			fallback := c.SingOptions.FallBackConfigs.FallBack
-			fallbackPort, err := strconv.Atoi(fallback.ServerPort)
+			fallbackPort, err := strconv.ParseUint(fallback.ServerPort, 10, 16)
 			if err == nil {
 				trojanoption.Fallback = &option.ServerOptions{
 					Server:     fallback.Server,
