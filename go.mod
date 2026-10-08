@@ -401,4 +401,4 @@ replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v
 
 replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v1.260909.0
 
-replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260929100612-dc4a5d93133d
+replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261008165903-6be6cf2eeaa4
