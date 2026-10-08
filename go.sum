@@ -700,6 +700,8 @@ github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132906-525b9c4caf42 h1:T9GPPiM
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260928132906-525b9c4caf42/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260929100612-dc4a5d93133d h1:S7J9ZI1tvJn6SZ8CszS4kSodP9lwpzHLFjkYdAPAvxg=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20260929100612-dc4a5d93133d/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261008165903-6be6cf2eeaa4 h1:TV9vvx1+ABnx28GRethg2iWK76VD7+kgalZTB+BW+mw=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261008165903-6be6cf2eeaa4/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v0.0.0-20260929195729-984a784a2e8d h1:5NaaUmYcNCj0lyuYTeDL2vAQv/pciOmCbx+MtIBUdzI=
 github.com/PoriyaVali/Xray-core v0.0.0-20260929195729-984a784a2e8d/go.mod h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=
 github.com/PoriyaVali/Xray-core v1.251202.1 h1:JIgTTWHOHT9vP9w/mC8FslQomUu1jXo+CstDvzDXovA=
