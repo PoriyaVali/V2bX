@@ -8,6 +8,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/memguard"
 	"github.com/PoriyaVali/V2bX/common/metrics"
 	"github.com/PoriyaVali/V2bX/conf"
@@ -46,6 +47,8 @@ func init() {
 
 func serverHandle(_ *cobra.Command, _ []string) error {
 	showVersion()
+	// Before any node builds its panel client, so every request carries it.
+	panel.SetVersion(version)
 	c := conf.New()
 	if err := c.LoadFromPath(config); err != nil {
 		return fmt.Errorf("load config file: %w", err)
