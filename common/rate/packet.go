@@ -16,9 +16,8 @@ import (
 // held to it over TCP only - QUIC (YouTube, Instagram, Google) and voice/video
 // calls ran at full speed.
 //
-// It deliberately does NOT declare Upstream or the unwrap interfaces. Those
-// would let sing's copy loop reach past this wrapper to the raw connection,
-// which is exactly how a limiter ends up in the chain and never consulted.
+// Control interfaces remain discoverable through Upstream, but the reader and
+// writer are not replaceable: sing's copy loop must consult this limiter.
 // The headroom the inner connection needs is still reported, so buffers are
 // sized for it and nothing is copied to make room.
 type PacketConn struct {
@@ -27,6 +26,12 @@ type PacketConn struct {
 	cacheMu sync.Mutex
 	cached  []*N.PacketBuffer
 }
+
+func (c *PacketConn) Upstream() any { return c.PacketConn }
+
+func (c *PacketConn) ReaderReplaceable() bool { return false }
+
+func (c *PacketConn) WriterReplaceable() bool { return false }
 
 func NewPacketConnRateLimiter(c N.PacketConn, l Waiter) N.PacketConn {
 	conn := &PacketConn{PacketConn: c, limiter: l}
