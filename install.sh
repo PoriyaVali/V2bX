@@ -99,22 +99,63 @@ install_base() {
 # ================================================================
 GITHUB_REPO="PoriyaVali/V2bX"
 
+github_release_tag() {
+    local response body
+    release_tag_http_status="000"
+    release_tag_name=""
+    # Keep HTTP status separate: only a missing tag permits the v/no-v retry.
+    # Network failures, rate limits and malformed responses must not select a
+    # different release or stop the currently running service.
+    response=$(curl -sSL --connect-timeout 10 --max-time 30 \
+        -H 'Accept: application/vnd.github+json' -w $'\n%{http_code}' \
+        "https://api.github.com/repos/${GITHUB_REPO}/releases/$1") || return 1
+    release_tag_http_status="${response##*$'\n'}"
+    [[ "$release_tag_http_status" == 200 ]] || return 1
+    body="${response%$'\n'*}"
+    release_tag_name=$(printf '%s' "$body" \
+        | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' \
+        | head -n 1 | sed -E 's/.*:[[:space:]]*"([^"]+)"/\1/')
+    [[ "$release_tag_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._+-]*$ ]]
+}
+
 get_version() {
-    if [[ -n "$1" ]]; then
-        last_version="$1"
-        echo -e "Using version | استفاده از نسخه: ${green}${last_version}${plain}"
+    local requested="${1:-}" candidate
+    local candidates=()
+    last_version=""
+    if [[ -n "$requested" ]]; then
+        if ! [[ "$requested" =~ ^[a-zA-Z0-9][a-zA-Z0-9._+-]*$ ]]; then
+            echo -e "${red}Invalid version | شماره نسخه نامعتبر است: ${requested}${plain}" >&2
+            return 1
+        fi
+        # Honor an exact published tag first, including older unprefixed tags.
+        candidates+=("$requested")
+        if [[ "$requested" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-+][a-zA-Z0-9._+-]+)?$ ]]; then
+            if [[ "$requested" == v* ]]; then
+                candidates+=("${requested#v}")
+            else
+                candidates+=("v${requested}")
+            fi
+        fi
+        for candidate in "${candidates[@]}"; do
+            if github_release_tag "tags/${candidate}"; then
+                [[ "$release_tag_name" == "$candidate" ]] || break
+                last_version="$release_tag_name"
+                echo -e "Using version | استفاده از نسخه: ${green}${last_version}${plain}"
+                return 0
+            fi
+            [[ "$release_tag_http_status" == 404 ]] || break
+        done
     else
         echo -e "Checking latest version | بررسی آخرین نسخه..."
-        last_version=$(curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
-            | grep '"tag_name":' \
-            | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ -z "${last_version}" ]]; then
-            echo -e "${red}Failed to get version from GitHub | دریافت نسخه از GitHub ناموفق بود${plain}"
-            echo -e "Please check: | بررسی کنید: https://github.com/${GITHUB_REPO}/releases"
-            exit 1
+        if github_release_tag latest; then
+            last_version="$release_tag_name"
+            echo -e "Latest version | آخرین نسخه: ${green}${last_version}${plain}"
+            return 0
         fi
-        echo -e "Latest version | آخرین نسخه: ${green}${last_version}${plain}"
     fi
+    echo -e "${red}Failed to resolve release | دریافت نسخه از GitHub ناموفق بود: ${requested:-latest} (HTTP ${release_tag_http_status})${plain}" >&2
+    echo -e "Please check: | بررسی کنید: https://github.com/${GITHUB_REPO}/releases" >&2
+    return 1
 }
 
 # ================================================================
@@ -1254,7 +1295,7 @@ show_menu() {
         0) exit 0 ;;
         1)
             install_base
-            get_version "$1"
+            get_version "$1" || return 1
             install_V2bX
             ;;
         2) update_V2bX "$1" ;;
@@ -1297,7 +1338,7 @@ smart_setup() {
     else
         echo -e "${green}V2bX is not installed, installing... | V2bX نصب نیست، در حال نصب...${plain}"
         install_base
-        get_version "$1"
+        get_version "$1" || return 1
         install_V2bX
         if [[ x"${release}" != x"alpine" ]]; then
             systemctl enable V2bX >/dev/null 2>&1
@@ -1317,7 +1358,7 @@ if [[ $# -ge 1 ]]; then
     case "$1" in
         install)
             install_base
-            get_version "$2"
+            get_version "${2:-}" || exit 1
             install_V2bX
             ;;
         update)

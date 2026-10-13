@@ -41,7 +41,7 @@ run_case() (
     printf 'old openrc unit\n' > "$case_dir/etc/init.d/V2bX"
     printf 'active\n' > "$case_dir/service-state"
     if [[ "$scenario" == update_inactive* ]]; then printf 'inactive\n' > "$case_dir/service-state"; fi
-    if [[ "$scenario" == update_existing_config ]]; then
+    if [[ "$scenario" == update_existing_config || "$scenario" == version_* ]]; then
         printf 'operator configuration\n' > "$case_dir/etc/V2bX/config.json"
     fi
     if [[ "$scenario" == endpoint_* ]]; then
@@ -96,6 +96,9 @@ run_case() (
     }
     setup_openrc() { printf 'new openrc unit\n' > "$case_dir/etc/init.d/V2bX"; }
     get_version() { return 0; }
+    if [[ "$scenario" == version_* ]]; then
+        source <(sed -n '/^github_release_tag() {/,/^# Install TrustTunnel endpoint/p' "$repo_root/install.sh" | sed '$d')
+    fi
     show_status() { return 0; }
     sleep() { return 0; }
 
@@ -119,11 +122,22 @@ run_case() (
         printf '4242\n'
     }
     curl() {
+        if [[ "$scenario" == version_* ]]; then
+            case "${!#}" in
+                */releases/tags/1.7.2) printf '{"message":"Not Found"}\n404' ;;
+                */releases/tags/v1.7.2) printf '{"tag_name":"v1.7.2"}\n200' ;;
+                *) return 99 ;;
+            esac
+            return 0
+        fi
         [[ "$scenario" != endpoint_lookup_fail && "$scenario" != endpoint_incomplete_lookup ]] || return 1
         printf '{"tag_name":"tt-v2"}\n'
     }
     wget() {
         local output="" url="${!#}"
+        if [[ "$scenario" == version_* ]]; then
+            [[ "$url" == 'https://github.com/example/repo/releases/download/v1.7.2/V2bX-64.zip' ]] || return 99
+        fi
         printf 'download\n' >> "$INSTALL_UPDATE_TRACE"
         [[ "$scenario" != download_fail && "$scenario" != update_fail ]] || return 1
         while (( $# > 0 )); do
@@ -157,7 +171,11 @@ run_case() (
     if [[ "$scenario" == openrc* ]]; then release=alpine; fi
 
     local result=0
-    if [[ "$scenario" == update_* || "$scenario" == endpoint_* || "$scenario" == openrc_update ]]; then
+    if [[ "$scenario" == version_* ]]; then
+        local requested=1.7.2
+        [[ "$scenario" != version_prefixed_downgrade ]] || requested=v1.7.2
+        update_V2bX "$requested" > "$case_dir/output" 2>&1 || result=$?
+    elif [[ "$scenario" == update_* || "$scenario" == endpoint_* || "$scenario" == openrc_update ]]; then
         update_V2bX v1 > "$case_dir/output" 2>&1 || result=$?
     else
         install_V2bX > "$case_dir/output" 2>&1 || result=$?
@@ -165,14 +183,14 @@ run_case() (
     local operations
     operations=$(grep -E '^(stop|start|restart)$' "$INSTALL_UPDATE_TRACE" || true)
     case "$scenario" in
-        success|openrc|update_success|openrc_update|update_existing_config|endpoint_changed|endpoint_unchanged|endpoint_lookup_fail)
+        success|openrc|update_success|openrc_update|update_existing_config|endpoint_changed|endpoint_unchanged|endpoint_lookup_fail|version_bare_downgrade|version_prefixed_downgrade)
             [[ "$result" == 0 ]] || { cat "$case_dir/output"; return 1; }
             [[ "$operations" == $'stop\nstart' ]]
             cmp "$test_root/fixture/V2bX" "$case_dir/usr/local/V2bX/V2bX"
             cmp "$test_root/fixture/geoip.dat" "$case_dir/usr/local/V2bX/geoip.dat"
             [[ -f "$case_dir/etc/V2bX/config.json" ]]
             [[ -x "$case_dir/usr/local/V2bX/V2bX" ]]
-            if [[ "$scenario" == update_existing_config ]]; then
+            if [[ "$scenario" == update_existing_config || "$scenario" == version_* ]]; then
                 [[ "$(cat "$case_dir/etc/V2bX/config.json")" == 'operator configuration' ]]
             fi
             ;;
@@ -231,7 +249,8 @@ for scenario in download_fail archive_fail binary_fail update_fail replace_fail 
     endpoint_changed endpoint_unchanged endpoint_lookup_fail endpoint_incomplete_lookup endpoint_download_fail \
     endpoint_archive_fail endpoint_binary_fail endpoint_missing_wizard endpoint_health_fail \
     endpoint_replace_fail endpoint_setup_fail openrc_health_fail update_inactive_fail \
-    recovery_restore_fail recovery_start_fail recovery_health_fail recovery_stop_fail; do
+    recovery_restore_fail recovery_start_fail recovery_health_fail recovery_stop_fail \
+    version_bare_downgrade version_prefixed_downgrade; do
     run_case "$scenario"
 done
 

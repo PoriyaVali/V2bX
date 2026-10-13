@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"strings"
 
 	"github.com/PoriyaVali/V2bX/common/exec"
@@ -14,23 +15,22 @@ var targetVersion string
 var (
 	updateCommand = cobra.Command{
 		Use:   "update [version]",
-		Short: "Update V2bX to latest (or specified) version",
-		Run: func(_ *cobra.Command, args []string) {
+		Short: "Update or downgrade V2bX to latest (or specified) version",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
 			fmt.Printf("Current version | نسخه فعلی: %s%s%s\n", yellow, version, plain)
 			target := targetVersion
 			if len(args) > 0 {
 				target = args[0]
 			}
-			script := "bash <(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh) update"
 			if target != "" {
-				script += " " + target
 				fmt.Printf("Target version  | نسخه هدف: %s%s%s\n", yellow, target, plain)
 			} else {
 				fmt.Println(Warn("Fetching latest version | دریافت آخرین نسخه..."))
 			}
 			// Stream the installer output live to the terminal so the user
 			// can see download/build progress instead of a silent update.
-			exec.RunCommandStd("bash", "-c", script)
+			return updateInstallerCommand(target).Run()
 		},
 	}
 	uninstallCommand = cobra.Command{
@@ -47,6 +47,20 @@ var (
 		},
 	}
 )
+
+func updateInstallerCommand(target string) *osexec.Cmd {
+	// Fetch successfully before running Bash. Process substitution can turn a
+	// failed curl into an empty script that exits zero. Pass the requested tag
+	// as a positional argument, so shell metacharacters cannot become commands.
+	const script = `installer=$(curl -fLsS --connect-timeout 10 --max-time 60 https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh) || exit "$?"
+[[ -n "$installer" ]] || { echo "Empty installer | اسکریپت نصب خالی است" >&2; exit 1; }
+bash -s -- update "$1" <<< "$installer"`
+	process := osexec.Command("bash", "-c", script, "v2bx-update", target)
+	process.Stdin = os.Stdin
+	process.Stdout = os.Stdout
+	process.Stderr = os.Stderr
+	return process
+}
 
 func init() {
 	updateCommand.PersistentFlags().StringVar(&targetVersion, "version", "", "update target version")
