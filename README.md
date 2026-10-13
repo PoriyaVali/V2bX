@@ -59,9 +59,18 @@ v2bx stop       # Stop service    | توقف سرویس
 v2bx restart    # Restart service | راه‌اندازی مجدد
 v2bx log        # View logs       | مشاهده لاگ
 v2bx update     # Update version  | به‌روزرسانی
+v2bx update 1.7.2   # Select a version (also accepts v1.7.2) | انتخاب نسخه با یا بدون v
 v2bx uninstall  # Uninstall       | حذف
 v2bx synctime   # Sync system time| همگام‌سازی زمان
 ```
+
+`v2bx update 1.7.2` and `v2bx update v1.7.2` can both downgrade to the published
+1.7.2 release. An exact tag is preferred; the alternate `v` spelling is tried
+only when that tag is missing. A missing release or a network error leaves the
+installed service unchanged instead of switching to the latest version.
+
+هر دو دستور بالا برای دانگرید قابل استفاده‌اند. اگر نسخه پیدا نشود یا ارتباط با
+گیت‌هاب خطا داشته باشد، نسخهٔ نصب‌شده و سرویس فعلی تغییری نمی‌کنند.
 
 ## 🔧 Build from Source | ساخت از سورس
 

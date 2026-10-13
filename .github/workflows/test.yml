@@ -36,7 +36,8 @@ jobs:
 
       - name: Installer regression tests
         run: |
-          bash -n install.sh scripts/test-install-update.sh
+          bash -n install.sh scripts/test-install-update.sh scripts/test-release-version.sh
+          bash scripts/test-release-version.sh
           bash scripts/test-install-update.sh
 
       - name: Set up Go
@@ -83,6 +84,11 @@ jobs:
         env:
           GOEXPERIMENT: jsonv2
         run: go vet ./limiter/... ./node/... ./conf/... ./api/... ./common/... ./core/...
+
+      - name: Update CLI regression tests
+        env:
+          GOEXPERIMENT: jsonv2
+        run: go test -race -count=1 -timeout 1m ./cmd/... -run '^TestUpdate'
 
       # api/ and core/ are included for their regression tests: the cores run
       # for real there (a sing-box and an xray instance with live connections,
