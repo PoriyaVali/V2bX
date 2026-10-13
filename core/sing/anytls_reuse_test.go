@@ -25,8 +25,15 @@ func TestAnytlsReusedSessionAcknowledgesSilentDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = first.Close()
-	// Allow the client's close hook to return this session to its reuse pool.
-	time.Sleep(100 * time.Millisecond)
+	// Once the server processes FIN, the client's close hook has already
+	// returned its session to the pool. Wait for that event rather than a sleep.
+	deadline := time.Now().Add(2 * time.Second)
+	for r.trackedOpen() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("first AnyTLS stream did not close")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	quiet := listen(t, func(c net.Conn) {
 		defer c.Close()
 		time.Sleep(4200 * time.Millisecond)
@@ -37,6 +44,9 @@ func TestAnytlsReusedSessionAcknowledgesSilentDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
+	if sessions := anytlsSessionsHeld(t, r); sessions != 1 {
+		t.Fatalf("expected the pooled session to be reused, got %d sessions", sessions)
+	}
 	start := time.Now()
 	payload := make([]byte, len("still-connected"))
 	if _, err = io.ReadFull(second, payload); err != nil {
