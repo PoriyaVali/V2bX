@@ -95,10 +95,6 @@ func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) er
 	return c.PacketConn.WritePacket(buffer, destination)
 }
 
-func (c *PacketConn) FrontHeadroom() int { return N.CalculateFrontHeadroom(c.PacketConn) }
-
-func (c *PacketConn) RearHeadroom() int { return N.CalculateRearHeadroom(c.PacketConn) }
-
 func (c *PacketConn) Close() error {
 	c.cacheMu.Lock()
 	N.ReleaseMultiPacketBuffer(c.cached)
