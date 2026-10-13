@@ -39,6 +39,15 @@ type Conn struct {
 	cached  []*buf.Buffer
 }
 
+// Control interfaces (such as AnyTLS handshake acknowledgements) must remain
+// discoverable through common.Cast. Reads and writes must still pass through
+// this wrapper, including when the current live limit is unlimited.
+func (c *Conn) Upstream() any { return c.Conn }
+
+func (c *Conn) ReaderReplaceable() bool { return false }
+
+func (c *Conn) WriterReplaceable() bool { return false }
+
 func (c *Conn) ReadCached() *buf.Buffer {
 	c.cacheMu.Lock()
 	if len(c.cached) == 0 {
