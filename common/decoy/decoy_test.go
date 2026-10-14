@@ -1,8 +1,9 @@
-package sing
+package decoy
 
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -10,12 +11,12 @@ import (
 
 func decoyGet(t *testing.T, seed, path string) *http.Response {
 	t.Helper()
-	d, err := startDecoy(seed)
+	d, err := Start(seed)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
-	resp, err := http.Get("http://" + d.addr + path)
+	resp, err := http.Get(d.URL() + path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,5 +62,45 @@ func TestDecoy_404IsNginxs(t *testing.T) {
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "text/html" {
 		t.Fatalf("404 Content-Type %q, nginx sends text/html", ct)
+	}
+}
+
+// A fallback hands the decoy the stream the prober's TLS negotiated. When the
+// node offers ALPN h2 - xray's TLS does by default - a browser-like prober
+// arrives speaking HTTP/2, and an HTTP/1-only decoy answered it with a 400 no
+// web server would send.
+func TestDecoy_ServesPriorKnowledgeHTTP2(t *testing.T) {
+	d, err := Start("node-h2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	var p http.Protocols
+	p.SetUnencryptedHTTP2(true)
+	client := &http.Client{Transport: &http.Transport{Protocols: &p}}
+	resp, err := client.Get(d.URL() + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.ProtoMajor != 2 || resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "<title>") {
+		t.Fatalf("h2c GET: %s %d, %d bytes", resp.Proto, resp.StatusCode, len(body))
+	}
+}
+
+// Hysteria2's masquerade serves the site in-process; it must be the same site
+// the node's listener serves, or one host would show two faces.
+func TestDecoy_HandlerIsTheSameSite(t *testing.T) {
+	title := regexp.MustCompile(`<title>[^<]*</title>`)
+	resp := decoyGet(t, "node-a", "/")
+	body, _ := io.ReadAll(resp.Body)
+	rec := httptest.NewRecorder()
+	Handler("node-a").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	// The page's "last updated" moves with the clock, so compare the site
+	// itself rather than bytes that two builds a moment apart may not share.
+	got, want := title.FindString(rec.Body.String()), title.FindString(string(body))
+	if rec.Code != http.StatusOK || want == "" || got != want {
+		t.Fatalf("in-process site %q (status %d) differs from the listener's %q", got, rec.Code, want)
 	}
 }

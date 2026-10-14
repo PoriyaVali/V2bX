@@ -19,17 +19,52 @@ import (
 	coreConf "github.com/xtls/xray-core/infra/conf"
 )
 
+// wantsDecoy reports whether a node should send unauthenticated connections to
+// its decoy site: VLESS or Trojan over TCP with this node's own TLS, when the
+// operator configured no fallbacks of their own. xray supports fallbacks only
+// there - not for vmess or shadowsocks, not for VLESS with decryption, and
+// REALITY relays strangers to the borrowed site already.
+func wantsDecoy(option *conf.Options, nodeInfo *panel.NodeInfo) bool {
+	if !option.XrayOptions.DecoyEnabled() || option.XrayOptions.EnableFallback ||
+		nodeInfo.Security != panel.Tls || option.CertConfig == nil {
+		return false
+	}
+	switch option.CertConfig.CertMode {
+	case "none", "":
+		return false
+	}
+	switch nodeInfo.Type {
+	case "vless":
+		return nodeInfo.VAllss.Network == "tcp" && nodeInfo.VAllss.Encryption == ""
+	case "trojan":
+		return nodeInfo.Trojan.Network == "" || nodeInfo.Trojan.Network == "tcp"
+	}
+	return false
+}
+
+// decoyFallbacks sends every unauthenticated connection to the decoy site at
+// addr, whatever its ALPN: the site speaks HTTP/1.1 and h2c alike.
+func decoyFallbacks(addr string) (json.RawMessage, error) {
+	return json.Marshal(addr)
+}
+
 // BuildInbound build Inbound config for different protocol
 func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*core.InboundHandlerConfig, error) {
+	return buildInboundWithDecoy(option, nodeInfo, tag, "")
+}
+
+// buildInboundWithDecoy is buildInbound with unauthenticated connections sent
+// to the decoy site listening at decoyAddr, when it is not empty.
+func buildInboundWithDecoy(option *conf.Options, nodeInfo *panel.NodeInfo, tag, decoyAddr string) (*core.InboundHandlerConfig, error) {
 	in := &coreConf.InboundDetourConfig{}
 	var err error
 	var network string
 	switch nodeInfo.Type {
 	case "vmess", "vless":
-		err = buildV2ray(option, nodeInfo, in)
+		err = buildV2ray(option, nodeInfo, in, decoyAddr)
 		network = nodeInfo.VAllss.Network
 	case "trojan":
-		err = buildTrojan(option, nodeInfo, in)
+		err = buildTrojan(option, nodeInfo, in, decoyAddr)
 		if nodeInfo.Trojan.Network != "" {
 			network = nodeInfo.Trojan.Network
 		} else {
@@ -86,19 +121,25 @@ func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*
 	default:
 		socketConfig := &coreConf.SocketConfig{
 			AcceptProxyProtocol: option.XrayOptions.EnableProxyProtocol,
-			TFO:                 option.XrayOptions.EnableTFO,
 		} //Enable proxy protocol
 		in.StreamSetting.SocketSettings = socketConfig
 	}
+	if in.StreamSetting.SocketSettings == nil {
+		in.StreamSetting.SocketSettings = &coreConf.SocketConfig{}
+	}
+	// TCP Fast Open used to be set only in the branch above, so a tcp or ws
+	// node - most of them - ignored EnableTFO entirely.
+	if option.XrayOptions.EnableTFO {
+		in.StreamSetting.SocketSettings.TFO = true
+	}
+	in.StreamSetting.SocketSettings.TCPKeepAliveIdle, in.StreamSetting.SocketSettings.TCPKeepAliveInterval =
+		option.XrayOptions.KeepAlive()
 	// Congestion control for the node's connections, set on the listener
 	// (accepted connections inherit it) - bbr by default, as sing nodes do.
 	// Only when this kernel accepts it: xray fails the whole listen on a
 	// refused socket option, which would take the node down over a tuning.
 	if cc := option.XrayOptions.TCPCongestionName(); cc != "" {
 		if sockopt.Congestion(cc) {
-			if in.StreamSetting.SocketSettings == nil {
-				in.StreamSetting.SocketSettings = &coreConf.SocketConfig{}
-			}
 			in.StreamSetting.SocketSettings.TCPCongestion = cc
 		} else {
 			log.WithFields(log.Fields{"tag": tag, "congestion": cc}).
@@ -147,6 +188,9 @@ func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*
 		if err != nil {
 			return nil, fmt.Errorf("marshal reality dest error: %s", err)
 		}
+		// xray reads maxTimeDiff as milliseconds. It was given microseconds,
+		// which widened the operator's window a thousandfold: "90s" accepted a
+		// client clock - or a replayed ClientHello - 25 hours off.
 		mtd, _ := time.ParseDuration(v.RealityConfig.MaxTimeDiff)
 
 		// 🔴 An empty minClientVer no longer means "no minimum".
@@ -186,9 +230,14 @@ func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*
 			PrivateKey:   v.TlsSettings.PrivateKey,
 			MinClientVer: minClientVer,
 			MaxClientVer: v.RealityConfig.MaxClientVer,
-			MaxTimeDiff:  uint64(mtd.Microseconds()),
+			MaxTimeDiff:  uint64(mtd.Milliseconds()),
 			ShortIds:     []string{v.TlsSettings.ShortId},
 			Mldsa65Seed:  v.TlsSettings.Mldsa65Seed,
+		}
+		if after, rate := option.XrayOptions.RealityFallbackLimit(); rate > 0 {
+			limit := coreConf.LimitFallback{AfterBytes: after, BytesPerSec: rate, BurstBytesPerSec: 2 * rate}
+			in.StreamSetting.REALITYSettings.LimitFallbackUpload = limit
+			in.StreamSetting.REALITYSettings.LimitFallbackDownload = limit
 		}
 	default:
 		break
@@ -197,7 +246,7 @@ func buildInbound(option *conf.Options, nodeInfo *panel.NodeInfo, tag string) (*
 	return in.Build()
 }
 
-func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreConf.InboundDetourConfig) error {
+func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreConf.InboundDetourConfig, decoyAddr string) error {
 	v := nodeInfo.VAllss
 	if nodeInfo.Type == "vless" {
 		//Set vless
@@ -227,9 +276,18 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 					return fmt.Errorf("vless decryption method %s is not support", nodeInfo.VAllss.Encryption)
 				}
 			}
-			s, err := json.Marshal(&coreConf.VLessInboundConfig{
+			settings := &coreConf.VLessInboundConfig{
 				Decryption: decryption,
-			})
+			}
+			// xray refuses fallbacks together with decryption.
+			if decoyAddr != "" && decryption == "none" {
+				dest, err := decoyFallbacks(decoyAddr)
+				if err != nil {
+					return fmt.Errorf("marshal decoy fallback error: %s", err)
+				}
+				settings.Fallbacks = []*coreConf.VLessInboundFallback{{Dest: dest}}
+			}
+			s, err := json.Marshal(settings)
 			if err != nil {
 				return fmt.Errorf("marshal vless config error: %s", err)
 			}
@@ -285,7 +343,7 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 	return nil
 }
 
-func buildTrojan(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreConf.InboundDetourConfig) error {
+func buildTrojan(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreConf.InboundDetourConfig, decoyAddr string) error {
 	inbound.Protocol = "trojan"
 	v := nodeInfo.Trojan
 	if config.XrayOptions.EnableFallback {
@@ -301,6 +359,18 @@ func buildTrojan(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCo
 		if err != nil {
 			return fmt.Errorf("marshal trojan fallback config error: %s", err)
 		}
+	} else if decoyAddr != "" {
+		dest, err := decoyFallbacks(decoyAddr)
+		if err != nil {
+			return fmt.Errorf("marshal decoy fallback error: %s", err)
+		}
+		s, err := json.Marshal(&coreConf.TrojanServerConfig{
+			Fallbacks: []*coreConf.TrojanInboundFallback{{Dest: dest}},
+		})
+		if err != nil {
+			return fmt.Errorf("marshal trojan decoy config error: %s", err)
+		}
+		inbound.Settings = (*json.RawMessage)(&s)
 	} else {
 		s := []byte("{}")
 		inbound.Settings = (*json.RawMessage)(&s)
@@ -311,6 +381,15 @@ func buildTrojan(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCo
 	}
 	t := coreConf.TransportProtocol(network)
 	inbound.StreamSetting = &coreConf.StreamConfig{Network: &t}
+	// A reply without networkSettings is a plain transport, as buildV2ray
+	// treats it; unmarshalling nothing failed the whole node.
+	if len(v.NetworkSettings) == 0 {
+		switch network {
+		case "tcp", "ws", "grpc":
+			return nil
+		}
+		return errors.New("the network type is not vail")
+	}
 	switch network {
 	case "tcp":
 		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.TCPSettings)

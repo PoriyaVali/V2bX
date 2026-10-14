@@ -186,6 +186,7 @@ func (c *Controller) Start() (err error) {
 			return fmt.Errorf("request cert error: %s", err)
 		}
 	}
+	logFilteringAdvice(tag, node, c.Options)
 	// Add new tag
 	err = c.server.AddNode(tag, node, c.Options)
 	if err != nil {

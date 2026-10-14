@@ -401,6 +401,14 @@ replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v
 
 replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v1.260909.1
 
+// REALITY one commit before 8cdf7bf9c7f0, whose only change is that from it on
+// a ClientHello without an X25519MLKEM768 key share is relayed to the borrowed
+// site instead of authenticated. mihomo sends that share only when a profile
+// opts in and sing-box clients never do, so all of those users failed with
+// "reality verification failed" on xray REALITY nodes. Drop this once the
+// clients send the share by default. Guarded by core/xray/reality_compat_test.go.
+replace github.com/xtls/reality => github.com/xtls/reality v0.0.0-20260908045812-e1986a4d31ca
+
 replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261008165903-6be6cf2eeaa4
 
 // Keep the pinned protocol versions with atomic user-table publication fixes.

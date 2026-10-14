@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/common/sockopt"
 	"github.com/PoriyaVali/V2bX/conf"
+	log "github.com/sirupsen/logrus"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/inbound"
 	"github.com/xtls/xray-core/features/outbound"
@@ -33,12 +35,27 @@ func (c *Xray) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	if err != nil {
 		return fmt.Errorf("build dns error: %s", err)
 	}
-	inboundConfig, err := buildInbound(config, info, tag)
+	// A stranger who completes this node's TLS handshake and is not a user -
+	// an active prober - is answered by the node's decoy site rather than a
+	// closed socket. Losing the disguise must not cost every user the node, so
+	// a site that cannot start is logged and the node comes up without it.
+	var decoyAddr string
+	if wantsDecoy(config, info) {
+		if d, derr := decoy.Start(decoy.Seed(tag)); derr != nil {
+			log.WithField("err", derr).Warn("decoy site unavailable; unauthenticated connections will be closed")
+		} else {
+			decoyAddr = d.Addr()
+			c.setDecoy(tag, d)
+		}
+	}
+	inboundConfig, err := buildInboundWithDecoy(config, info, tag, decoyAddr)
 	if err != nil {
+		c.setDecoy(tag, nil)
 		return fmt.Errorf("build inbound error: %s", err)
 	}
 	err = c.addInbound(inboundConfig)
 	if err != nil {
+		c.setDecoy(tag, nil)
 		return fmt.Errorf("add inbound error: %s", err)
 	}
 	outBoundConfig, err := buildOutbound(config, tag)
@@ -83,10 +100,29 @@ func (c *Xray) addOutbound(config *core.OutboundHandlerConfig) error {
 	return nil
 }
 
+// setDecoy records d as tag's decoy site, closing the one it replaces; nil
+// just closes it.
+func (c *Xray) setDecoy(tag string, d *decoy.Site) {
+	c.decoysMu.Lock()
+	defer c.decoysMu.Unlock()
+	if old := c.decoys[tag]; old != nil && old != d {
+		_ = old.Close()
+	}
+	if d == nil {
+		delete(c.decoys, tag)
+		return
+	}
+	c.decoys[tag] = d
+}
+
 func (c *Xray) DelNode(tag string) error {
 	c.dispatcher.NotSentLowat.Delete(tag)
 	c.removeRouteRules(tag)
 	err := c.removeInbound(tag)
+	// Closed even when the removal failed: at worst a stranger then meets a
+	// closed socket, as before the site existed, and adding the node again
+	// starts a new one.
+	c.setDecoy(tag, nil)
 	if err != nil {
 		return fmt.Errorf("remove in error: %s", err)
 	}

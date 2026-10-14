@@ -41,6 +41,7 @@ The menu covers install, update, uninstall, start/stop/restart, logs, config wiz
 - Node- and user-level speed limit | محدودیت سرعت در سطح نود و کاربر
 - Auto TLS certificate + renewal | صدور و تمدید خودکار گواهی TLS
 - Auto-restart on config change | راه‌اندازی مجدد خودکار پس از تغییر تنظیمات
+- Answers active probes with a decoy site, tuned for lossy and filtered networks — see [docs/censorship-countermeasures.md](docs/censorship-countermeasures.md) | پاسخ به پروب فعال با سایت پوششی و تنظیم برای شبکه‌های ضعیف و فیلترشده — [توضیحات](docs/censorship-countermeasures.md)
 
 ## 🧩 Core Versions | نسخه هسته‌ها
 

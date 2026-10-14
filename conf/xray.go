@@ -39,7 +39,16 @@ func NewXrayConfig() *XrayConfig {
 		OutboundConfigPath: "",
 		RouteConfigPath:    "",
 		ConnectionConfig: &XrayConnectionConfig{
-			Handshake: 4,
+			// Seconds a new connection has to finish its handshake: on a plain
+			// TLS node the whole TLS handshake plus the first request. xray's own
+			// 4 assumes a clean path. On a lossy mobile path with a one-second
+			// round trip, that is 1.5 round trips plus two retransmission
+			// timeouts (1 s, then 2 s), and those connections were killed
+			// moments before they would have succeeded - the user sees "timeout"
+			// and retries into the same conditions. sing nodes allow TLS
+			// handshakes 60 s. A probe that never completes is still let go
+			// after a few seconds, which costs one idle socket.
+			Handshake: 10,
 			// Seconds a connection may carry nothing before xray closes it.
 			// 300 is xray's own default. It was 30, which closed a browser's
 			// keep-alive connections, and apps' idle push connections, while
@@ -73,6 +82,73 @@ type XrayOptions struct {
 	// TCPNotSentLowat caps the bytes queued unsent on a subscriber's
 	// connection: 0 = DefaultTCPNotSentLowat, negative = the system default.
 	TCPNotSentLowat int `json:"TCPNotSentLowat"`
+	// TCP keepalive on subscribers' connections, in seconds: 0 = the defaults
+	// sing nodes use (DefaultTCPKeepAliveIdle / DefaultTCPKeepAliveInterval),
+	// negative = no keepalive.
+	TCPKeepAliveIdle     int `json:"TCPKeepAliveIdle"`
+	TCPKeepAliveInterval int `json:"TCPKeepAliveInterval"`
+	// DecoySite answers a stranger who completes the TLS handshake of a VLESS
+	// or Trojan node over TCP with an ordinary web page (common/decoy) instead
+	// of a closed socket, when EnableFallback is off. Defaults ON, as on sing
+	// nodes; set false to opt out.
+	DecoySite *bool `json:"DecoySite"`
+	// REALITY relays every connection it cannot authenticate to the borrowed
+	// site. Past RealityFallbackAfterKB kilobytes in either direction, such a
+	// connection is held to RealityFallbackKBps. 0 = the defaults below,
+	// negative = no limit.
+	RealityFallbackAfterKB int `json:"RealityFallbackAfterKB"`
+	RealityFallbackKBps    int `json:"RealityFallbackKBps"`
+}
+
+// REALITY fallback limits: a prober or crawler loading the borrowed site's
+// pages is well inside 4 MiB per connection and never notices; someone
+// running bulk traffic through the node's address - REALITY nodes in Iran are
+// found and used as free relays to Cloudflare-fronted tunnels
+// (net4people/bbs#359) - is held to 64 KiB/s. Iranian operators block an
+// address in proportion to the traffic they see on it, so a stranger's volume
+// costs every user of the node.
+const (
+	DefaultRealityFallbackAfterKB = 4096
+	DefaultRealityFallbackKBps    = 64
+)
+
+// RealityFallbackLimit resolves the REALITY fallback limits in bytes: the
+// allowance before limiting starts and the rate after it. A zero rate means
+// no limit.
+func (o *XrayOptions) RealityFallbackLimit() (afterBytes, bytesPerSec uint64) {
+	if o.RealityFallbackAfterKB < 0 || o.RealityFallbackKBps < 0 {
+		return 0, 0
+	}
+	after, rate := o.RealityFallbackAfterKB, o.RealityFallbackKBps
+	if after == 0 {
+		after = DefaultRealityFallbackAfterKB
+	}
+	if rate == 0 {
+		rate = DefaultRealityFallbackKBps
+	}
+	return uint64(after) * 1024, uint64(rate) * 1024
+}
+
+// DecoyEnabled reports whether the decoy should run: unless set to false.
+func (o *XrayOptions) DecoyEnabled() bool {
+	return o == nil || o.DecoySite == nil || *o.DecoySite
+}
+
+// KeepAlive resolves TCPKeepAliveIdle and TCPKeepAliveInterval for xray's
+// socket options, in seconds.
+//
+// xray listens with keepalive OFF unless told otherwise, so a phone that lost
+// signal or changed network kept its connection on an xray node until the
+// five-minute idle policy noticed, and a connection that was merely quiet got
+// nothing that refreshed the mobile carrier's NAT entry for it. These are the
+// sing nodes' values. -1 is xray's "off"; it must be set on both, because xray
+// refuses to listen when only one of the two is negative.
+func (o *XrayOptions) KeepAlive() (idle, interval int32) {
+	if o.TCPKeepAliveIdle < 0 || o.TCPKeepAliveInterval < 0 {
+		return -1, -1
+	}
+	return int32(secondsOr(o.TCPKeepAliveIdle, DefaultTCPKeepAliveIdle).Seconds()),
+		int32(secondsOr(o.TCPKeepAliveInterval, DefaultTCPKeepAliveInterval).Seconds())
 }
 
 // DefaultTCPNotSentLowat keeps at most 16 KiB queued unsent per subscriber
