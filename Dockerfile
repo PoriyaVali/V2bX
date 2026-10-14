@@ -5,8 +5,11 @@ FROM golang:1.27.1-alpine AS builder
 WORKDIR /app
 ENV CGO_ENABLED=0
 # Download, not tidy: tidy rewrites go.mod inside the image, so the image was
-# not built from the dependency set the release was.
+# not built from the dependency set the release was. The local modules go.mod
+# replaces (third_party/) belong to that set; without them, download stopped
+# at the first replacement, and no image could be built from v1.7.5 on.
 COPY go.mod go.sum ./
+COPY third_party ./third_party
 RUN go mod download
 COPY . .
 RUN GOEXPERIMENT=jsonv2 go build -v -o V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel" -trimpath -ldflags "-s -w -buildid="
