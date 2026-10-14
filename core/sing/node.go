@@ -485,12 +485,14 @@ func echKeyToPEM(key string) (string, error) {
 }
 
 func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) error {
-	// Under the users lock, which GetUserTrafficSlice holds while it reads this
-	// map: one node's reload writing it while another node's report read it
-	// could end the process with "concurrent map read and map write".
-	b.users.mapLock.Lock()
-	b.nodeReportMinTrafficBytes[tag] = config.ReportMinTraffic * 1024
-	b.users.mapLock.Unlock()
+	b.users.updateLock.Lock()
+	defer b.users.updateLock.Unlock()
+	b.users.mapLock.RLock()
+	active := b.users.nodes[tag] != nil
+	b.users.mapLock.RUnlock()
+	if active {
+		return fmt.Errorf("inbound %s already exists; retire it before replacement", tag)
+	}
 	warnPanelRoutesUnsupported(tag, info)
 	c, err := getInboundOptions(tag, info, config)
 	if err != nil {
@@ -522,8 +524,9 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 		}
 	}
 	in := b.box.Inbound()
+	generation := &nodeGeneration{tag: tag}
 	err = in.Create(
-		b.ctx,
+		generationContext(b.ctx, generation),
 		b.box.Router(),
 		b.logFactory.NewLogger(F.ToString("inbound/", c.Type, "[", tag, "]")),
 		tag,
@@ -532,12 +535,32 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	)
 
 	if err != nil {
+		b.decoysMu.Lock()
+		if d := b.decoys[tag]; d != nil {
+			_ = d.Close()
+			delete(b.decoys, tag)
+		}
+		b.decoysMu.Unlock()
 		return fmt.Errorf("add inbound error: %s", err)
 	}
+	b.users.mapLock.Lock()
+	if b.users.nodes == nil {
+		b.users.nodes = make(map[string]*nodeGeneration)
+	}
+	b.users.nodes[tag] = generation
+	b.nodeReportMinTrafficBytes[tag] = config.ReportMinTraffic * 1024
+	b.users.mapLock.Unlock()
 	return nil
 }
 
 func (b *Sing) DelNode(tag string) error {
+	b.users.updateLock.Lock()
+	// The node is revoked before touching the physical inbound. Its listener
+	// may still dispatch callbacks during Close; no late callback can join a
+	// same-tag replacement or allocate counters into its fresh generation.
+	b.users.mapLock.Lock()
+	retired := b.retireNodeLocked(tag)
+	b.users.mapLock.Unlock()
 	b.decoysMu.Lock()
 	if d := b.decoys[tag]; d != nil {
 		_ = d.Close()
@@ -545,7 +568,18 @@ func (b *Sing) DelNode(tag string) error {
 	}
 	b.decoysMu.Unlock()
 	in := b.box.Inbound()
-	err := in.Remove(tag)
+	var err error
+	// Manager.Remove drops its lookup before calling inbound.Close. Preserve
+	// the first real close error, but a retry of that already-retired inbound
+	// must succeed so Controller can rebuild instead of retrying forever.
+	if _, found := in.Get(tag); found {
+		err = in.Remove(tag)
+	}
+	b.users.updateLock.Unlock()
+	// Underlying inbound removal closes physical sessions before a tracked
+	// stream's FIN path is joined. No membership or mutation lock spans these
+	// per-stream closes, so other nodes and a fresh generation keep working.
+	b.closeRetired(tag, retired)
 	if err != nil {
 		return fmt.Errorf("delete inbound error: %s", err)
 	}

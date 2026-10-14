@@ -13,6 +13,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	// One consistent view of the node: the node-info goroutine may be replacing
 	// these while this runs.
 	tag, info, lim := c.state()
+	c.queueRetiredTraffic()
 	userTraffic, trafficErr := c.server.GetUserTrafficSlice(tag, true)
 	if trafficErr != nil {
 		log.WithFields(log.Fields{"tag": tag, "err": trafficErr}).Warn("Read user traffic failed")
@@ -169,6 +170,25 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 
 	userTraffic = nil
 	return nil
+}
+
+// Only the report task (or joined shutdown) owns reportAccum/pendingReports.
+// Reload hands its final samples through a separate accumulator instead of
+// racing that queue, including when the replacement node cannot start.
+func (c *Controller) queueRetiredTraffic() {
+	c.retiredTrafficMu.Lock()
+	retired := c.retiredTraffic
+	c.retiredTraffic = nil
+	c.retiredTrafficMu.Unlock()
+	if len(retired) == 0 {
+		return
+	}
+	traffic := make([]panel.UserTraffic, 0, len(retired))
+	for uid, value := range retired {
+		traffic = append(traffic, panel.UserTraffic{UID: uid, Upload: value[0], Download: value[1]})
+	}
+	// A removed UID may never send another byte; flush its saved threshold too.
+	c.queueTrafficReport(c.applyReportMinTraffic(traffic, 0))
 }
 
 // compareUserList reports pure *membership* changes: who joined this node's

@@ -1,12 +1,10 @@
 # Protocol audit — 14 October 2026
 
 Base: V2bX v1.7.4, commit `a9d3d2b4bdc011b30737367cbbad4bb526d65644`.
-Codex and three scoped audit agents reproduced the defects below and prepared
-local repairs. These changes have not been released or installed on production.
-
-**Known serious dependency issues remain. This report does not certify every
-protocol as safe; Xray SS2022 identity handling, TUIC UDP user deletion and Sing
-node retirement require follow-up before claiming a complete protocol repair.**
+Codex and scoped audit/review agents reproduced the defects below and prepared
+repairs for v1.7.5. No production server was changed during this audit.
+The serious follow-ups from the initial review are included below; remaining
+issues and the limits of local validation are listed separately.
 
 ## Reproduced defects and repairs
 
@@ -14,6 +12,10 @@ node retirement require follow-up before claiming a complete protocol repair.**
 | --- | --- | --- |
 | AnyTLS authentication | User updates run alongside actual TLS authentication; the race detector reported the shared password map | Publish immutable authentication tables atomically |
 | SS2022 authentication | Encrypted TCP handshakes and persistent UDP traffic continue during user updates; key/hash/cipher maps raced | Publish all three maps in one immutable generation; retain existing UDP sessions and response cipher generation |
+| Xray SS2022 identity | Removing a user during an actual encrypted handshake changed its authenticated slice index, causing wrong-account admission or an out-of-range panic | Authenticate with stable user pointers, reject retired generations and apply credential/membership updates transactionally; retain persistent UDP sessions |
+| TUIC authentication | Concurrent updates could pair a user from one generation with a password from another; concurrent authentication streams could both close the session signal | Publish one immutable user/password table and reserve authentication once per session |
+| TUIC UDP deletion | Removing a user asserted `net.Conn` on a packet-only connection and could panic | Track `io.Closer` connections by immutable user generation and close them outside the membership lock |
+| AnyTLS pooled sessions | Idle authenticated and pending-authentication physical sessions could survive user removal or inbound close | Track pending physical sockets and authenticated user generations; close captured sockets outside locks and reject late old-generation authentication |
 | Sing admission | A stream authenticates before its user is removed but reaches tracking afterward; removed TCP/UDP streams remained open | Check current membership under a short shared registration lock |
 | Sing deletion | Closing a slow AnyTLS stream while holding the membership write lock blocked another node's admission | Detach/tombstone the old connection generation under the membership lock, close it after releasing locks; a re-added generation stays intact |
 | Sing and Xray SS2022 credentials | Short panel credentials caused `[:16]` / `[:32]` slicing panics | Validate key lengths before conversion; valid credentials retain their previous derivation |
@@ -27,19 +29,42 @@ node retirement require follow-up before claiming a complete protocol repair.**
 | TrustTunnel credentials | Concurrent snapshots wrote and renamed the same temporary file, producing errors or stale overwrites | Serialize the snapshot and atomic file replacement; perform file I/O outside the node state lock |
 | MDNS listeners | A node configured for a particular listen address still bound all interfaces | Pass `ListenIP` into the underlying UDP/TCP host option; a real DNS socket test verifies it |
 | Panel user-list decoding | Invalid JSON or preferred-format MessagePack could be cached as an empty user list, revoking all access | Require a complete top-level users array, reject duplicate/trailing values, and advance ETag only after successful validation |
-| Shutdown reporting | No scheduled poll had collected the latest reportable bytes when the controller stopped | Collect the final available sample and flush saved below-threshold report bytes before core teardown |
+| Sing node retirement | Deleted nodes retained tracked streams and UIDs; final read/write callbacks could lose bytes or attribute them to a re-added UID | Revoke listener generations, close tracked streams, join counted I/O and retain final bytes under the original UID until consumed; exact node ownership protects names containing delimiters |
+| Retirement reporting | Selector deleted the core mapping before final samples were available; a replacement node could fail to start before reporting | Collect after completed Sing teardown, transfer samples through a separate synchronized queue and report them even while the replacement is down |
+| Shutdown reporting | No scheduled poll had collected the latest reportable bytes when the controller stopped | Close and drain Sing I/O, collect the final sample and flush saved below-threshold report bytes; other cores retain their existing pre-delete snapshot behavior |
 | Windows ACME files | `path.Dir` did not recognize Windows separators, so the account's parent directory was not created | Use `filepath`; retain Unix permission checks on systems supporting them |
 | Sing port conversion | An out-of-range port narrowed to an unrelated `uint16` port | Reject negative/overflow values; retain intentional ephemeral port 0 |
 
 The authentication sources are exact pinned local copies, without protocol-version
 upgrades. See [third-party provenance](../third_party/README.md) and
-[file hashes](../third_party/upstream-manifest.json). Only the two declared
-upstream source files differ from the original modules, and licenses are retained.
+[file hashes](../third_party/upstream-manifest.json). Only three declared
+upstream source files differ among 133 original files, one added TUIC regression
+is recorded separately, and licenses are retained. The existing downstream
+sing-box and Xray forks are pinned to `v1.13.21-v2bx.2` and `v1.260909.1`.
 
 ## Verification performed
 
 All runtime tests here run on Windows/amd64, Go 1.27.1 with `GOEXPERIMENT=jsonv2`.
 Race checks use GCC. The protocol exchanges use loopback endpoints.
+
+- Release follow-up tests use the final root module graph, including patched
+  sing-box and Xray pins: AnyTLS physical-session retirement, TUIC user deletion,
+  TUIC paired authentication snapshots and Xray SS2022 passed three race runs.
+  The Xray fork additionally passed ten race runs using 100 encrypted TCP
+  handshakes and 201 persistent UDP exchanges per run.
+- Sing's normal suite passed. Tagged AnyTLS reuse/authentication and slow-close
+  regressions passed three race runs. The real AnyTLS same-tag retirement/rebuild
+  regression passed three runs with exact final billing retained under the old
+  UID and new traffic attributed to the new UID. Focused retirement tests cover
+  concurrent final read/write callbacks, missing/old listener tokens, exact node
+  ownership, 64 compacted generations, unwrapping barriers and close-error retry.
+  A real UDP read/write regression pauses after successful packet transport and
+  verifies retirement joins the final counter callbacks; three race runs passed.
+  Per-device cleanup uses one scan per removal batch rather than one per user.
+- Bash syntax and all 65 isolated release/updater regression cases passed.
+  Installed 7-Zip supplied test fixture ZIPs because Git Bash lacks `zip`.
+
+Initial audit validation, retained for comparison:
 
 - Root ran the normal broad race suite over `api`, `node`, `conf`, `common`,
   `limiter` and every `core` package: passed. The final additional Sing lock
@@ -70,8 +95,8 @@ as a passing run.
 
 Native Linux CI was not executed. GitHub Actions rejected dispatch in the prior
 session with `Actions has been disabled for this repository`; this audit makes
-no CI-pass claim. No production node, live WAN packet-loss measurement, Docker
-image or public release was changed.
+no CI-pass claim. No production node, live WAN packet-loss measurement or Docker
+image was changed. Public build provenance belongs to the v1.7.5 release record.
 
 ## Measured panel polling improvement
 
@@ -93,11 +118,7 @@ machine load and network conditions can change runtime timing.
 
 | Priority | Finding | Evidence and next work |
 | --- | --- | --- |
-| High | Xray multi-user SS2022 maps authenticated indices onto a mutable users slice | Source-confirmed: concurrent deletion swaps/truncates the slice; TCP/UDP callbacks index it without synchronization. Possible incorrect identity/billing or panic. Not repaired or runtime-reproduced here; requires stable identity handling in the pinned Xray dependency |
-| High | TUIC UDP user deletion asserts `net.Conn` on stored packet connections | Source-confirmed through the concrete packet wrapper types. A UDP connection does not satisfy that interface. No live deletion-panic test or dependency repair was performed |
-| High | Sing node retirement and billing generation | `DelNode` does not retire all tracked identities/sessions. Safely retiring counters needs a bounded ledger and proof in-flight accounting completed; immediate deletion can lose bytes. No speculative cleanup was added |
 | Medium | MasterDNS asynchronous bind failures | Its public `Start` discards the asynchronous `Run` error; a failed listener can appear started. The ListenIP repair does not solve this lifecycle issue |
-| Medium | AnyTLS physical pooled-session deletion | The pinned inbound records physical sessions before authenticated user metadata is available. The repaired hook rejects removed users' new routed streams, but does not immediately destroy every old physical session |
 | Investigated only | TrustTunnel startup readiness and user-file changes | A possible missed-reload window was identified by source review but not reproduced; no repair is claimed |
 | Existing behavior | Socket deadlines during throttling | Socket deadlines are forwarded; only connection close/interrupt cancels the limiter wait. Custom waiters lacking cancellation cannot be interrupted internally |
 

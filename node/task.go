@@ -267,7 +267,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 
 	// Remove old node
 	if c.nodeUp {
-		if err := c.server.DelNode(tag); err != nil {
+		if err := c.retireCoreNode(tag); err != nil {
 			// Don't crash the whole process (all other nodes) over one node's
 			// reload failure; the next poll retries.
 			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Delete node failed")

@@ -31,6 +31,8 @@ type Controller struct {
 	aliveMap                  map[int]int
 	reportAccum               map[int][2]int64 // UID -> [up,down] carried over below node_report_min_traffic
 	pendingReports            []pendingReport  // traffic batches not yet accepted by the panel, oldest first
+	retiredTrafficMu          sync.Mutex
+	retiredTraffic            map[int][2]int64 // final samples from reload; report task drains them
 	nodeInfoMonitorPeriodic   *task.Task
 	userReportPeriodic        *task.Task
 	renewCertPeriodic         *task.Task
@@ -241,18 +243,17 @@ func (c *Controller) Close() error {
 			t.Wait()
 		}
 	}
-	// The report task has stopped; this flush has sole ownership of its
-	// queue and accumulator. Collect bytes since its last poll as well as
-	// sub-threshold bytes before the core discards the node's counters.
-	if c.apiClient != nil {
-		if up {
-			tag, _, _ := c.state()
-			if traffic, terr := c.server.GetUserTrafficSlice(tag, true); terr != nil {
-				log.WithField("tag", tag).WithError(terr).Warn("Read final user traffic failed")
-			} else if len(traffic) > 0 {
-				c.queueTrafficReport(c.applyReportMinTraffic(traffic, 0))
-			}
+	tag, _, _ := c.state()
+	var err error
+	if up {
+		if derr := c.retireCoreNode(tag); derr != nil {
+			err = fmt.Errorf("del node error: %s", derr)
 		}
+	}
+	// The report task has stopped. A retiring core has now joined its final
+	// I/O, so include those bytes as well as saved sub-threshold traffic.
+	if c.apiClient != nil {
+		c.queueRetiredTraffic()
 		if len(c.reportAccum) > 0 {
 			c.queueTrafficReport(c.applyReportMinTraffic(nil, 0))
 		}
@@ -260,17 +261,37 @@ func (c *Controller) Close() error {
 			c.flushTrafficReports()
 		}
 	}
-	tag, _, _ := c.state()
-	var err error
-	if up {
-		if derr := c.server.DelNode(tag); derr != nil {
-			err = fmt.Errorf("del node error: %s", derr)
-		}
-	}
 	// The limiter goes after the node, not before: a connection arriving in
 	// between would find no limiter - hysteria2 treated that as fatal, sing
 	// let the connection through unlimited and uncounted.
 	limiter.DeleteLimiterIf(tag, c.limiter)
+	return err
+}
+
+func (c *Controller) retireCoreNode(tag string) error {
+	var traffic []panel.UserTraffic
+	var err error
+	if retiring, ok := c.server.(vCore.NodeRetirer); ok {
+		traffic, err = retiring.RetireNode(tag)
+	} else {
+		var readErr error
+		traffic, readErr = c.server.GetUserTrafficSlice(tag, true)
+		if readErr != nil {
+			log.WithField("tag", tag).WithError(readErr).Warn("Read final user traffic failed")
+		}
+		err = c.server.DelNode(tag)
+	}
+	c.retiredTrafficMu.Lock()
+	if len(traffic) > 0 && c.retiredTraffic == nil {
+		c.retiredTraffic = make(map[int][2]int64)
+	}
+	for _, sample := range traffic {
+		value := c.retiredTraffic[sample.UID]
+		value[0] += sample.Upload
+		value[1] += sample.Download
+		c.retiredTraffic[sample.UID] = value
+	}
+	c.retiredTrafficMu.Unlock()
 	return err
 }
 

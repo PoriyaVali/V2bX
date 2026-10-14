@@ -94,9 +94,19 @@ jobs:
         env:
           GOEXPERIMENT: jsonv2
         run: |
-          go test -count=3 -timeout 1m \
+          go test -race -count=3 -timeout 2m \
             -tags "soak sing with_quic with_grpc with_utls with_wireguard with_acme with_gvisor" \
-            ./core/sing/... -run '^Test(AnytlsReusedSessionAcknowledgesSilentDestination|AnyTLSUsersReloadDuringAuthentication|TUICInvalidUUIDDoesNotPoisonLaterUserUpdates)$'
+            ./core/sing/... -run '^Test(AnytlsReusedSessionAcknowledgesSilentDestination|AnyTLSUsersReloadDuringAuthentication|TUICInvalidUUIDDoesNotPoisonLaterUserUpdates|AnyTLSNodeRetirementClosesStreamAndRebuildsSameTag)$'
+
+      - name: Pinned protocol authentication and retirement regressions
+        env:
+          GOEXPERIMENT: jsonv2
+        run: |
+          go test -race -count=3 -timeout 2m -tags "with_quic" \
+            github.com/sagernet/sing-box/protocol/anytls \
+            github.com/sagernet/sing-box/protocol/tuic \
+            github.com/sagernet/sing-quic/tuic \
+            github.com/xtls/xray-core/proxy/shadowsocks_2022
 
       # api/ and core/ are included for their regression tests: the cores run
       # for real there (a sing-box and an xray instance with live connections,

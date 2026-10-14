@@ -21,11 +21,12 @@ import (
 )
 
 type Service struct {
-	users           atomic.TypedValue[map[[32]byte]string]
-	padding         atomic.TypedValue[*padding.PaddingFactory]
-	handler         N.TCPConnectionHandlerEx
-	fallbackHandler N.TCPConnectionHandlerEx
-	logger          logger.ContextLogger
+	users                       atomic.TypedValue[map[[32]byte]string]
+	authenticatedSessionHandler atomic.TypedValue[func(context.Context, net.Conn) (func(), error)]
+	padding                     atomic.TypedValue[*padding.PaddingFactory]
+	handler                     N.TCPConnectionHandlerEx
+	fallbackHandler             N.TCPConnectionHandlerEx
+	logger                      logger.ContextLogger
 }
 
 type ServiceConfig struct {
@@ -71,8 +72,16 @@ func (s *Service) UpdateUsers(users []User) {
 	s.users.Store(u)
 }
 
+// SetAuthenticatedSessionHandler installs an optional physical-session observer.
+// The handler may refuse a user generation removed during authentication and
+// returns cleanup that runs when the session ends, including an idle session.
+func (s *Service) SetAuthenticatedSessionHandler(handler func(context.Context, net.Conn) (func(), error)) {
+	s.authenticatedSessionHandler.Store(handler)
+}
+
 // NewConnection `conn` should be plaintext
 func (s *Service) NewConnection(ctx context.Context, conn net.Conn, source M.Socksaddr, onClose N.CloseHandlerFunc) error {
+	sessionConn := conn
 	b := buf.NewPacket()
 	defer b.Release()
 
@@ -106,6 +115,15 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, source M.Soc
 		if err != nil {
 			b.Resize(0, n)
 			return s.fallback(ctx, conn, source, E.Extend(err, "read padding"), onClose)
+		}
+	}
+	if handler := s.authenticatedSessionHandler.Load(); handler != nil {
+		cleanup, err := handler(ctx, sessionConn)
+		if err != nil {
+			return err
+		}
+		if cleanup != nil {
+			defer cleanup()
 		}
 	}
 

@@ -50,7 +50,7 @@
       {
         "path": "service.go",
         "upstream_sha256": "eab7bd2b780ece06bef1711e59f84d64f3d85a0f3de7db10186da0392ce47837",
-        "patched_sha256": "56fe13058deef7045d114a722f602e8339a99a42b8e73fe3b1988cf092637d4f"
+        "patched_sha256": "17b00d1161212e7668e3890dbf791d918d2da56ee9bb1f77efa3f7731da45de5"
       },
       {
         "path": "session/client.go",
@@ -112,7 +112,8 @@
         "upstream_sha256": "a83c3845a762feb9f6e71622f5c20f97f331fb66341bcbb122acd58107941f19",
         "patched_sha256": "a83c3845a762feb9f6e71622f5c20f97f331fb66341bcbb122acd58107941f19"
       }
-    ]
+    ],
+    "added_files": []
   },
   {
     "module": "github.com/sagernet/sing-shadowsocks",
@@ -256,6 +257,448 @@
         "path": "shadowstream/protocol.go",
         "upstream_sha256": "7624e67d4dcbd19efb95e8231ce39749f034b3f1161ebf206f373396b59ac829",
         "patched_sha256": "7624e67d4dcbd19efb95e8231ce39749f034b3f1161ebf206f373396b59ac829"
+      }
+    ],
+    "added_files": []
+  },
+  {
+    "module": "github.com/sagernet/sing-quic",
+    "version": "v0.6.5",
+    "directory": "sing-quic",
+    "modified_files": [
+      "tuic/service.go"
+    ],
+    "files": [
+      {
+        "path": ".github/update_dependencies.sh",
+        "upstream_sha256": "c4c5f89f2fd7bfcbb33ed0bd674d23f6b06a3d0f7ade26f9f7601174c4bf1c0f",
+        "patched_sha256": "c4c5f89f2fd7bfcbb33ed0bd674d23f6b06a3d0f7ade26f9f7601174c4bf1c0f"
+      },
+      {
+        "path": ".github/workflows/debug.yml",
+        "upstream_sha256": "699f77a30d18942f89577d866179703fe2ec7c61d83e7553a7c5236511eff5e7",
+        "patched_sha256": "699f77a30d18942f89577d866179703fe2ec7c61d83e7553a7c5236511eff5e7"
+      },
+      {
+        "path": ".github/workflows/lint.yml",
+        "upstream_sha256": "bb210ed20a268352894c0fa755aa835ec1b9b0a9642985b9272f33b17e3ab730",
+        "patched_sha256": "bb210ed20a268352894c0fa755aa835ec1b9b0a9642985b9272f33b17e3ab730"
+      },
+      {
+        "path": ".gitignore",
+        "upstream_sha256": "058c16cad197cec0c6874b2027e2ffa286fa8ec8d6259536bae775918e0a925c",
+        "patched_sha256": "058c16cad197cec0c6874b2027e2ffa286fa8ec8d6259536bae775918e0a925c"
+      },
+      {
+        "path": ".golangci.yml",
+        "upstream_sha256": "00d96fc32871f70d4e6af47d856331c0d65ee967c0d674702244fb1e526344a8",
+        "patched_sha256": "00d96fc32871f70d4e6af47d856331c0d65ee967c0d674702244fb1e526344a8"
+      },
+      {
+        "path": "congestion_bbr1/bandwidth.go",
+        "upstream_sha256": "dcb5e89706f882f4c1d2d3239944e66b7153fc061bc2bb485eb885aaa197a29d",
+        "patched_sha256": "dcb5e89706f882f4c1d2d3239944e66b7153fc061bc2bb485eb885aaa197a29d"
+      },
+      {
+        "path": "congestion_bbr1/bandwidth_sampler.go",
+        "upstream_sha256": "45d63f64efdf471a3cbe5231921d86e8d1f220575402c1ae7d0c8d6f106f990c",
+        "patched_sha256": "45d63f64efdf471a3cbe5231921d86e8d1f220575402c1ae7d0c8d6f106f990c"
+      },
+      {
+        "path": "congestion_bbr1/bbr_sender.go",
+        "upstream_sha256": "c745aab352d72dd1025d4b4b2dfdc7b8c38fdf33d58e831666744025d5594e30",
+        "patched_sha256": "c745aab352d72dd1025d4b4b2dfdc7b8c38fdf33d58e831666744025d5594e30"
+      },
+      {
+        "path": "congestion_bbr1/clock.go",
+        "upstream_sha256": "1e9d55008fddb54124f239071d5b7d9b9cf274470479dda6af091c081f02ace8",
+        "patched_sha256": "1e9d55008fddb54124f239071d5b7d9b9cf274470479dda6af091c081f02ace8"
+      },
+      {
+        "path": "congestion_bbr1/pacer.go",
+        "upstream_sha256": "ff8503966745089af9a4b02c04e8538093b2a91fe238fc752c7a6313de7a7dd6",
+        "patched_sha256": "ff8503966745089af9a4b02c04e8538093b2a91fe238fc752c7a6313de7a7dd6"
+      },
+      {
+        "path": "congestion_bbr1/packet_number_indexed_queue.go",
+        "upstream_sha256": "4f59fe52e424225d377e75b574c244bf3c3a2b463338edcbac8e3b1574d7c5e7",
+        "patched_sha256": "4f59fe52e424225d377e75b574c244bf3c3a2b463338edcbac8e3b1574d7c5e7"
+      },
+      {
+        "path": "congestion_bbr1/windowed_filter.go",
+        "upstream_sha256": "63bd5b5b5f6414edc062b074582db1c06e6e6caee622737e898e9575d6dd5484",
+        "patched_sha256": "63bd5b5b5f6414edc062b074582db1c06e6e6caee622737e898e9575d6dd5484"
+      },
+      {
+        "path": "congestion_bbr2/bandwidth.go",
+        "upstream_sha256": "e2354afa7f038e1d5811a2d50e79e33447d71e71fc8e91c327408a5d6cfe4a54",
+        "patched_sha256": "e2354afa7f038e1d5811a2d50e79e33447d71e71fc8e91c327408a5d6cfe4a54"
+      },
+      {
+        "path": "congestion_bbr2/bandwidth_sampler.go",
+        "upstream_sha256": "f0deb656dcf018d4f2fb8f9e354fc123dc99021fe1dae34119e1232cb7685d9f",
+        "patched_sha256": "f0deb656dcf018d4f2fb8f9e354fc123dc99021fe1dae34119e1232cb7685d9f"
+      },
+      {
+        "path": "congestion_bbr2/bbr2_sender.go",
+        "upstream_sha256": "ddea7f1043565070e4cc844207ac2f3b541c62aa8b4095a6dda19fb70be90d31",
+        "patched_sha256": "ddea7f1043565070e4cc844207ac2f3b541c62aa8b4095a6dda19fb70be90d31"
+      },
+      {
+        "path": "congestion_bbr2/clock.go",
+        "upstream_sha256": "646f2aa82eae6e7e6ca630d36af836b574ec53bd84418f8a97b95b75d4c3ec46",
+        "patched_sha256": "646f2aa82eae6e7e6ca630d36af836b574ec53bd84418f8a97b95b75d4c3ec46"
+      },
+      {
+        "path": "congestion_bbr2/drain.go",
+        "upstream_sha256": "4db70db002690e3ed322d142e6d7de50bd6bd0da71bc166b6a875e706d1d1020",
+        "patched_sha256": "4db70db002690e3ed322d142e6d7de50bd6bd0da71bc166b6a875e706d1d1020"
+      },
+      {
+        "path": "congestion_bbr2/mode.go",
+        "upstream_sha256": "a4c931f56fb6118ab83fad148ee79f7893b80386f1570131ca9da4fd8ee8b5ed",
+        "patched_sha256": "a4c931f56fb6118ab83fad148ee79f7893b80386f1570131ca9da4fd8ee8b5ed"
+      },
+      {
+        "path": "congestion_bbr2/network_model.go",
+        "upstream_sha256": "a7e3949c8fea63c67926e7e9416cb4ca37cca5aa65cc15c0500df9bc6ef32c2e",
+        "patched_sha256": "a7e3949c8fea63c67926e7e9416cb4ca37cca5aa65cc15c0500df9bc6ef32c2e"
+      },
+      {
+        "path": "congestion_bbr2/pacer.go",
+        "upstream_sha256": "6afadb0020c40d3c248e3e11cd5862241a47e1ab8d0fb2e2166a7bf302c7785e",
+        "patched_sha256": "6afadb0020c40d3c248e3e11cd5862241a47e1ab8d0fb2e2166a7bf302c7785e"
+      },
+      {
+        "path": "congestion_bbr2/params.go",
+        "upstream_sha256": "9ce932c07111e298e526e8b85f3d9636b230dca4877bdce190c1a56037bd30e0",
+        "patched_sha256": "9ce932c07111e298e526e8b85f3d9636b230dca4877bdce190c1a56037bd30e0"
+      },
+      {
+        "path": "congestion_bbr2/probe_bw.go",
+        "upstream_sha256": "e0a51fc1a481ee9244608f20b7f85f345e609609f251f1375757a3f002f00bbb",
+        "patched_sha256": "e0a51fc1a481ee9244608f20b7f85f345e609609f251f1375757a3f002f00bbb"
+      },
+      {
+        "path": "congestion_bbr2/probe_rtt.go",
+        "upstream_sha256": "8bb31f49bbe6206a237dd920422abfbf2f91e78150df042c90f43ea09516395d",
+        "patched_sha256": "8bb31f49bbe6206a237dd920422abfbf2f91e78150df042c90f43ea09516395d"
+      },
+      {
+        "path": "congestion_bbr2/startup.go",
+        "upstream_sha256": "a328c7df2bdc6694a1f5e3bc62aa01a95ea4c5e320e878ea107b6499ec4cfb0e",
+        "patched_sha256": "a328c7df2bdc6694a1f5e3bc62aa01a95ea4c5e320e878ea107b6499ec4cfb0e"
+      },
+      {
+        "path": "congestion_bbr2/windowed_filter.go",
+        "upstream_sha256": "f1d36aac8bac05999e04f5ddd8279315346fa47068a0fabd926874caa447b369",
+        "patched_sha256": "f1d36aac8bac05999e04f5ddd8279315346fa47068a0fabd926874caa447b369"
+      },
+      {
+        "path": "congestion_meta1/bandwidth.go",
+        "upstream_sha256": "1da6fa18cbdc01f44fbc326af47f2edf4d2d9d47a0c9585187abd00da51c68ac",
+        "patched_sha256": "1da6fa18cbdc01f44fbc326af47f2edf4d2d9d47a0c9585187abd00da51c68ac"
+      },
+      {
+        "path": "congestion_meta1/bandwidth_sampler.go",
+        "upstream_sha256": "6f7bba2f4e9130fc5ea0e0b868e4c4ce3ee7d153992f65ee7b0e4d304c62e93d",
+        "patched_sha256": "6f7bba2f4e9130fc5ea0e0b868e4c4ce3ee7d153992f65ee7b0e4d304c62e93d"
+      },
+      {
+        "path": "congestion_meta1/bbr_sender.go",
+        "upstream_sha256": "88c308a257fa5e239774db2d0a79799a9d00c20b2314036b672755b86e2dc5f5",
+        "patched_sha256": "88c308a257fa5e239774db2d0a79799a9d00c20b2314036b672755b86e2dc5f5"
+      },
+      {
+        "path": "congestion_meta1/clock.go",
+        "upstream_sha256": "28040f55e97e0c816b3a54b9237fe6bc7af9c7f7c4e2fa195e940ddaf8582c23",
+        "patched_sha256": "28040f55e97e0c816b3a54b9237fe6bc7af9c7f7c4e2fa195e940ddaf8582c23"
+      },
+      {
+        "path": "congestion_meta1/cubic.go",
+        "upstream_sha256": "6ab024b69f1497ce8db7a2a42a78b135a60cd5302b3e6d021774ef0332cafc49",
+        "patched_sha256": "6ab024b69f1497ce8db7a2a42a78b135a60cd5302b3e6d021774ef0332cafc49"
+      },
+      {
+        "path": "congestion_meta1/cubic_sender.go",
+        "upstream_sha256": "53e1bfe88c7d1c91bf5da1c0ae90fcff6df066f575829ccfad9cd3862e477dee",
+        "patched_sha256": "53e1bfe88c7d1c91bf5da1c0ae90fcff6df066f575829ccfad9cd3862e477dee"
+      },
+      {
+        "path": "congestion_meta1/hybrid_slow_start.go",
+        "upstream_sha256": "55be496408b4e73ced85bc69d6c0f396795efbad0f8079cf08e2b43eeafa1777",
+        "patched_sha256": "55be496408b4e73ced85bc69d6c0f396795efbad0f8079cf08e2b43eeafa1777"
+      },
+      {
+        "path": "congestion_meta1/minmax.go",
+        "upstream_sha256": "72a7227855b0f273dfccb4b11b94cfe2d0cccda49928624cd0b86318ad14f339",
+        "patched_sha256": "72a7227855b0f273dfccb4b11b94cfe2d0cccda49928624cd0b86318ad14f339"
+      },
+      {
+        "path": "congestion_meta1/pacer.go",
+        "upstream_sha256": "b9423a79c79738819a766f27e693ed5030341d3c54d85a8320bd8f838900e13c",
+        "patched_sha256": "b9423a79c79738819a766f27e693ed5030341d3c54d85a8320bd8f838900e13c"
+      },
+      {
+        "path": "congestion_meta1/README.md",
+        "upstream_sha256": "1afbd5acd3e5791ebbc2388879b78b83296593cea2364c509365c4d964da3820",
+        "patched_sha256": "1afbd5acd3e5791ebbc2388879b78b83296593cea2364c509365c4d964da3820"
+      },
+      {
+        "path": "congestion_meta1/windowed_filter.go",
+        "upstream_sha256": "b0595e4e4171249c65ca35b8cca0ec05e6c588bac65859bb47b956b558eff01b",
+        "patched_sha256": "b0595e4e4171249c65ca35b8cca0ec05e6c588bac65859bb47b956b558eff01b"
+      },
+      {
+        "path": "congestion_meta2/bandwidth.go",
+        "upstream_sha256": "9d33769c8700715a64ef63855134b6e3b0951b51a0c65a6bab2b7726ae5da2ab",
+        "patched_sha256": "9d33769c8700715a64ef63855134b6e3b0951b51a0c65a6bab2b7726ae5da2ab"
+      },
+      {
+        "path": "congestion_meta2/bandwidth_sampler.go",
+        "upstream_sha256": "b4e435b3352a4c4296888110ecca82c7795b6ac1a6d5aeb656f5c5fb6e03c4d4",
+        "patched_sha256": "b4e435b3352a4c4296888110ecca82c7795b6ac1a6d5aeb656f5c5fb6e03c4d4"
+      },
+      {
+        "path": "congestion_meta2/bbr_sender.go",
+        "upstream_sha256": "5080379260ec0c5ee21f177bd1ee5ab7cd52ad233ec9d88d83c13eb33824da90",
+        "patched_sha256": "5080379260ec0c5ee21f177bd1ee5ab7cd52ad233ec9d88d83c13eb33824da90"
+      },
+      {
+        "path": "congestion_meta2/clock.go",
+        "upstream_sha256": "014e3ae32eb5767c550635325d8679d33e87beb293a788da10500f063f664589",
+        "patched_sha256": "014e3ae32eb5767c550635325d8679d33e87beb293a788da10500f063f664589"
+      },
+      {
+        "path": "congestion_meta2/minmax_go120.go",
+        "upstream_sha256": "5f3e879e15603944c730b10223539579f5cc402f47f807880142613aa21ba41c",
+        "patched_sha256": "5f3e879e15603944c730b10223539579f5cc402f47f807880142613aa21ba41c"
+      },
+      {
+        "path": "congestion_meta2/minmax_go121.go",
+        "upstream_sha256": "aca3cec996b4448bf7c1135fbdec97c4a673c7f74b1e3a87b9a68d44b552a125",
+        "patched_sha256": "aca3cec996b4448bf7c1135fbdec97c4a673c7f74b1e3a87b9a68d44b552a125"
+      },
+      {
+        "path": "congestion_meta2/pacer.go",
+        "upstream_sha256": "7f4399911cf52306c1454ec6a2d1f45327f8be4a8d87cd71b958c313ee0f12cd",
+        "patched_sha256": "7f4399911cf52306c1454ec6a2d1f45327f8be4a8d87cd71b958c313ee0f12cd"
+      },
+      {
+        "path": "congestion_meta2/packet_number_indexed_queue.go",
+        "upstream_sha256": "8e6f91a6622168e23dd031d147463c6442d8a665ad494268ce731b8ec223779f",
+        "patched_sha256": "8e6f91a6622168e23dd031d147463c6442d8a665ad494268ce731b8ec223779f"
+      },
+      {
+        "path": "congestion_meta2/README.md",
+        "upstream_sha256": "45bb3d31468f463c50a8db9f56933523bcbe593c180a77c15c746ab5899ff3fb",
+        "patched_sha256": "45bb3d31468f463c50a8db9f56933523bcbe593c180a77c15c746ab5899ff3fb"
+      },
+      {
+        "path": "congestion_meta2/ringbuffer.go",
+        "upstream_sha256": "1297397064255de70f0eaccfeffd5244fccc1ebaa0d38f51488f2fb582b0fa5f",
+        "patched_sha256": "1297397064255de70f0eaccfeffd5244fccc1ebaa0d38f51488f2fb582b0fa5f"
+      },
+      {
+        "path": "congestion_meta2/windowed_filter.go",
+        "upstream_sha256": "288fe039f41a4e060c64418271ad277fbfe77c0f81529c20cce355b7ca5afa5c",
+        "patched_sha256": "288fe039f41a4e060c64418271ad277fbfe77c0f81529c20cce355b7ca5afa5c"
+      },
+      {
+        "path": "go.mod",
+        "upstream_sha256": "8a7cfcf0e9d10e1c37d3bf2bf0b526837f1de110f4d132a43ddec8111cdacf60",
+        "patched_sha256": "8a7cfcf0e9d10e1c37d3bf2bf0b526837f1de110f4d132a43ddec8111cdacf60"
+      },
+      {
+        "path": "go.sum",
+        "upstream_sha256": "044aa9eaa4308cc09f8fc14999f23f16fb98479c2f846dedbb8464a10dc314c4",
+        "patched_sha256": "044aa9eaa4308cc09f8fc14999f23f16fb98479c2f846dedbb8464a10dc314c4"
+      },
+      {
+        "path": "hysteria/client.go",
+        "upstream_sha256": "2bd7e62ce62f3408182e1941c8814fc8885ad4f68418d87f4422be3b87ea1ba3",
+        "patched_sha256": "2bd7e62ce62f3408182e1941c8814fc8885ad4f68418d87f4422be3b87ea1ba3"
+      },
+      {
+        "path": "hysteria/client_packet.go",
+        "upstream_sha256": "dd53420799fad7590cd66a061a9a50ea59f3c4ba2f1271ba85bce573165ebef7",
+        "patched_sha256": "dd53420799fad7590cd66a061a9a50ea59f3c4ba2f1271ba85bce573165ebef7"
+      },
+      {
+        "path": "hysteria/congestion/brutal.go",
+        "upstream_sha256": "31ecef5b509fd963ca3876b7bf2372aa21e4c6df76997da8742f924ffc923f4f",
+        "patched_sha256": "31ecef5b509fd963ca3876b7bf2372aa21e4c6df76997da8742f924ffc923f4f"
+      },
+      {
+        "path": "hysteria/congestion/pacer.go",
+        "upstream_sha256": "848e216c27ffdf6af2bac53c55fa035eeeffcd7bca543a620c0db8263a973442",
+        "patched_sha256": "848e216c27ffdf6af2bac53c55fa035eeeffcd7bca543a620c0db8263a973442"
+      },
+      {
+        "path": "hysteria/hop.go",
+        "upstream_sha256": "3babe8c098c68dc03901cfcfd42d94ac84dc27f7127b50b112ae45137a0957aa",
+        "patched_sha256": "3babe8c098c68dc03901cfcfd42d94ac84dc27f7127b50b112ae45137a0957aa"
+      },
+      {
+        "path": "hysteria/packet.go",
+        "upstream_sha256": "924676deb90dac0bb16873cf3bf87737f14bb80601f0f49732d6c99257fc1a77",
+        "patched_sha256": "924676deb90dac0bb16873cf3bf87737f14bb80601f0f49732d6c99257fc1a77"
+      },
+      {
+        "path": "hysteria/packet_wait.go",
+        "upstream_sha256": "b1ff5a7ba07c38acb5e3672d0b02e5212c90b396cfb5b47a9cb144041cde2aec",
+        "patched_sha256": "b1ff5a7ba07c38acb5e3672d0b02e5212c90b396cfb5b47a9cb144041cde2aec"
+      },
+      {
+        "path": "hysteria/protocol.go",
+        "upstream_sha256": "be013c8d0e1e8230040a1bc428b69df28978fdd0baa33185a38f609c03cf1604",
+        "patched_sha256": "be013c8d0e1e8230040a1bc428b69df28978fdd0baa33185a38f609c03cf1604"
+      },
+      {
+        "path": "hysteria/service.go",
+        "upstream_sha256": "51fa3841b26468bd28de6251c85780c103f231786657443f8288dfdb64f605f8",
+        "patched_sha256": "51fa3841b26468bd28de6251c85780c103f231786657443f8288dfdb64f605f8"
+      },
+      {
+        "path": "hysteria/service_packet.go",
+        "upstream_sha256": "dca5be0ddefaae6427f22776734ddc9743a426878fd135a611e541718c7cddcc",
+        "patched_sha256": "dca5be0ddefaae6427f22776734ddc9743a426878fd135a611e541718c7cddcc"
+      },
+      {
+        "path": "hysteria/xplus.go",
+        "upstream_sha256": "8c67b4d65ea06a4f0ccd0f646ab6be5a2b52c75dcad1c90c853ec6ccb85c2bcd",
+        "patched_sha256": "8c67b4d65ea06a4f0ccd0f646ab6be5a2b52c75dcad1c90c853ec6ccb85c2bcd"
+      },
+      {
+        "path": "hysteria2/client.go",
+        "upstream_sha256": "655a3b11fb3c7a94af529902c103f441ad8c937f06927d5460ff88db8c9f3983",
+        "patched_sha256": "655a3b11fb3c7a94af529902c103f441ad8c937f06927d5460ff88db8c9f3983"
+      },
+      {
+        "path": "hysteria2/client_packet.go",
+        "upstream_sha256": "3fc781ad2afca7b87696a0127db73c3dc22b3aea8f14c757da2eb4b9303c7c2f",
+        "patched_sha256": "3fc781ad2afca7b87696a0127db73c3dc22b3aea8f14c757da2eb4b9303c7c2f"
+      },
+      {
+        "path": "hysteria2/internal/protocol/http.go",
+        "upstream_sha256": "c3ca34963c3d207f5e759e8b4f267267b49ade3808f464c6368bb580d6667505",
+        "patched_sha256": "c3ca34963c3d207f5e759e8b4f267267b49ade3808f464c6368bb580d6667505"
+      },
+      {
+        "path": "hysteria2/internal/protocol/padding.go",
+        "upstream_sha256": "ca93d4b0e173df3fa1a422655fa98e8af5160c8c592f6eaf7f8e530d78387908",
+        "patched_sha256": "ca93d4b0e173df3fa1a422655fa98e8af5160c8c592f6eaf7f8e530d78387908"
+      },
+      {
+        "path": "hysteria2/internal/protocol/proxy.go",
+        "upstream_sha256": "80c5f6db6055522c1fa78baf6204aae76a0f6ff2d4bfebda205c19463438e173",
+        "patched_sha256": "80c5f6db6055522c1fa78baf6204aae76a0f6ff2d4bfebda205c19463438e173"
+      },
+      {
+        "path": "hysteria2/packet.go",
+        "upstream_sha256": "891f9a732dd0b16f8feb429efdbde39e4cab5f17ef27b0b836280a2fa33495e3",
+        "patched_sha256": "891f9a732dd0b16f8feb429efdbde39e4cab5f17ef27b0b836280a2fa33495e3"
+      },
+      {
+        "path": "hysteria2/packet_wait.go",
+        "upstream_sha256": "324477a112fc579e7878a2b5928752964274be1d387ae2732f00ac3de3323ea6",
+        "patched_sha256": "324477a112fc579e7878a2b5928752964274be1d387ae2732f00ac3de3323ea6"
+      },
+      {
+        "path": "hysteria2/salamander.go",
+        "upstream_sha256": "231907b093bc2b8d6a2a69cdece74ea2b802bc9196caefce8281c85162264273",
+        "patched_sha256": "231907b093bc2b8d6a2a69cdece74ea2b802bc9196caefce8281c85162264273"
+      },
+      {
+        "path": "hysteria2/service.go",
+        "upstream_sha256": "685cc74cc1d7a61ee990d5e890621751f3a17a08f2973fa67d99348e54fd4514",
+        "patched_sha256": "685cc74cc1d7a61ee990d5e890621751f3a17a08f2973fa67d99348e54fd4514"
+      },
+      {
+        "path": "hysteria2/service_packet.go",
+        "upstream_sha256": "c03e0a575af90adad3c597a6cbfee7a92ed8046ec7cf30341642e84c6cfe574a",
+        "patched_sha256": "c03e0a575af90adad3c597a6cbfee7a92ed8046ec7cf30341642e84c6cfe574a"
+      },
+      {
+        "path": "LICENSE",
+        "upstream_sha256": "2f02b7486bcfa90d115c71a20437f3906b6fd5bef81c5dc0efd341399e89d0fd",
+        "patched_sha256": "2f02b7486bcfa90d115c71a20437f3906b6fd5bef81c5dc0efd341399e89d0fd"
+      },
+      {
+        "path": "Makefile",
+        "upstream_sha256": "7bb06130de435e7bcb71c2ce2f56003f7a6fee8e6197573c114ee58c80475385",
+        "patched_sha256": "7bb06130de435e7bcb71c2ce2f56003f7a6fee8e6197573c114ee58c80475385"
+      },
+      {
+        "path": "quic.go",
+        "upstream_sha256": "c30a521e303b4c44497dbd9363e4acd7695b1d876cb66bc7fef91a47d9e4c628",
+        "patched_sha256": "c30a521e303b4c44497dbd9363e4acd7695b1d876cb66bc7fef91a47d9e4c628"
+      },
+      {
+        "path": "quic_error.go",
+        "upstream_sha256": "1f6b7cfcf296ed332c302997e3d31c83a3b1ee66ce7c1ef45e39ea875d7a953e",
+        "patched_sha256": "1f6b7cfcf296ed332c302997e3d31c83a3b1ee66ce7c1ef45e39ea875d7a953e"
+      },
+      {
+        "path": "README.md",
+        "upstream_sha256": "23d164192acf8cd50a54a5cc479ba7425da359897b032947003818189773a090",
+        "patched_sha256": "23d164192acf8cd50a54a5cc479ba7425da359897b032947003818189773a090"
+      },
+      {
+        "path": "tuic/address.go",
+        "upstream_sha256": "e6ccf63311b791f2291cf533c10b3bf8fabdb911f33efae1b681516c0590041d",
+        "patched_sha256": "e6ccf63311b791f2291cf533c10b3bf8fabdb911f33efae1b681516c0590041d"
+      },
+      {
+        "path": "tuic/client.go",
+        "upstream_sha256": "333b40727921f4ab8dacd863347ab074fdb7f3ffc92fb87097794cf9f2d13783",
+        "patched_sha256": "333b40727921f4ab8dacd863347ab074fdb7f3ffc92fb87097794cf9f2d13783"
+      },
+      {
+        "path": "tuic/client_packet.go",
+        "upstream_sha256": "4d354b775bf998902d1efd5ce9dfca9fde2e12db622ca4964057075c2dcd1f9c",
+        "patched_sha256": "4d354b775bf998902d1efd5ce9dfca9fde2e12db622ca4964057075c2dcd1f9c"
+      },
+      {
+        "path": "tuic/congestion.go",
+        "upstream_sha256": "6792b6b90c1d50963fa004a53932ace052bacb78c8156a4696fde7fc00e3aa0b",
+        "patched_sha256": "6792b6b90c1d50963fa004a53932ace052bacb78c8156a4696fde7fc00e3aa0b"
+      },
+      {
+        "path": "tuic/packet.go",
+        "upstream_sha256": "026c5874609c2514a849e8bf9c4bcc8dd2d78b3bcc83b32a9c605ceed4b1ae8f",
+        "patched_sha256": "026c5874609c2514a849e8bf9c4bcc8dd2d78b3bcc83b32a9c605ceed4b1ae8f"
+      },
+      {
+        "path": "tuic/packet_wait.go",
+        "upstream_sha256": "f2c1052f0808c20218727a74196cf0eb785fde111de794f98c8b7b0a0b0c8440",
+        "patched_sha256": "f2c1052f0808c20218727a74196cf0eb785fde111de794f98c8b7b0a0b0c8440"
+      },
+      {
+        "path": "tuic/protocol.go",
+        "upstream_sha256": "19d2613c78a9884d7c5823b8e9912c8aaf16479670e7be0f20c4d2369a0fda00",
+        "patched_sha256": "19d2613c78a9884d7c5823b8e9912c8aaf16479670e7be0f20c4d2369a0fda00"
+      },
+      {
+        "path": "tuic/service.go",
+        "upstream_sha256": "61b709a63ff047de52463fe4402e3a4774ab562d38acd64578aca7782822baf1",
+        "patched_sha256": "a55c9b85c21a9e9aeff3af91d75c697e6fbd45ba6bbe13c8a714d9e2fb1ff613"
+      },
+      {
+        "path": "tuic/service_packet.go",
+        "upstream_sha256": "6381f8b22bde5fa930e0876fcb28825d3f13f9e62265f3a9a17449ffff490bc1",
+        "patched_sha256": "6381f8b22bde5fa930e0876fcb28825d3f13f9e62265f3a9a17449ffff490bc1"
+      },
+      {
+        "path": "workflows/debug.yml",
+        "upstream_sha256": "4c87b2640d9e6c777a701c5ae08972ccf33dbb241a44f19b021a80e6fa6c8464",
+        "patched_sha256": "4c87b2640d9e6c777a701c5ae08972ccf33dbb241a44f19b021a80e6fa6c8464"
+      }
+    ],
+    "added_files": [
+      {
+        "path": "tuic/auth_snapshot_test.go",
+        "patched_sha256": "1971ab162a3d3a76fd10cb593fa934cc43691dd8f1ddc90308798a662850685a"
       }
     ]
   }
