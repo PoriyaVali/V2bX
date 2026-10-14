@@ -397,8 +397,15 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.21-v2bx.1
+replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.21-v2bx.2
 
-replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v1.260909.0
+replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v1.260909.1
 
 replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261008165903-6be6cf2eeaa4
+
+// Keep the pinned protocol versions with atomic user-table publication fixes.
+replace github.com/anytls/sing-anytls => ./third_party/sing-anytls
+
+replace github.com/sagernet/sing-shadowsocks => ./third_party/sing-shadowsocks
+
+replace github.com/sagernet/sing-quic => ./third_party/sing-quic

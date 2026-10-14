@@ -41,8 +41,12 @@ type Sing struct {
 }
 
 type UserMap struct {
-	uidMap  map[string]int // format.UserTag(node tag, uuid) -> panel UID
-	mapLock sync.RWMutex   // guards uidMap and Sing.nodeReportMinTrafficBytes
+	nodeUsers  map[string]map[string]struct{}         // exact per-node ownership; node tags may contain '|'
+	uidMap     map[string]int                         // format.UserTag(node tag, uuid) -> panel UID
+	nodes      map[string]*nodeGeneration             // active listener generations by node tag
+	retired    map[string]map[int]*retiredUserTraffic // pending final bytes, removed by reset poll
+	mapLock    sync.RWMutex                           // guards uidMap and Sing.nodeReportMinTrafficBytes
+	updateLock sync.Mutex                             // serialises inbound user mutations, separate from admission
 }
 
 func init() {
@@ -142,19 +146,19 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	if err != nil {
 		return nil, err
 	}
+	users := &UserMap{uidMap: make(map[string]int)}
 	hs := &HookServer{
+		users:   users,
 		counter: sync.Map{},
 	}
 	b.Router().AppendTracker(hs)
 	return &Sing{
-		ctx:        b.Router().GetCtx(),
-		box:        b,
-		hookServer: hs,
-		router:     b.Router(),
-		logFactory: b.LogFactory(),
-		users: &UserMap{
-			uidMap: make(map[string]int),
-		},
+		ctx:                       b.Router().GetCtx(),
+		box:                       b,
+		hookServer:                hs,
+		router:                    b.Router(),
+		logFactory:                b.LogFactory(),
+		users:                     users,
 		nodeReportMinTrafficBytes: make(map[string]int64),
 		decoys:                    make(map[string]*decoy),
 	}, nil

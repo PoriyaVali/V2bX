@@ -1,6 +1,7 @@
 package rate
 
 import (
+	"context"
 	"net"
 	"sync"
 
@@ -9,7 +10,8 @@ import (
 )
 
 func NewConnRateLimiter(c net.Conn, l Waiter) *Conn {
-	conn := &Conn{Conn: c, limiter: l}
+	ctx, cancel := context.WithCancel(context.Background())
+	conn := &Conn{Conn: c, limiter: l, ctx: ctx, cancel: cancel}
 	// Detach sniffed data before the copy and close goroutines start. CachedConn
 	// does not synchronize plain Read with Close; hiding its CachedReader
 	// interface would leave its buffer in that unsafe path.
@@ -35,6 +37,8 @@ func NewConnRateLimiter(c net.Conn, l Waiter) *Conn {
 type Conn struct {
 	net.Conn
 	limiter Waiter
+	ctx     context.Context
+	cancel  context.CancelFunc
 	cacheMu sync.Mutex
 	cached  []*buf.Buffer
 }
@@ -58,11 +62,17 @@ func (c *Conn) ReadCached() *buf.Buffer {
 	c.cached[0] = nil
 	c.cached = c.cached[1:]
 	c.cacheMu.Unlock()
-	c.limiter.Wait(int64(buffer.Len()))
+	if err := waitWithContext(c.ctx, c.limiter, int64(buffer.Len())); err != nil {
+		buffer.Release()
+		return nil
+	}
 	return buffer
 }
 
 func (c *Conn) Read(b []byte) (n int, err error) {
+	if c.ctx.Err() != nil {
+		return 0, net.ErrClosed
+	}
 	c.cacheMu.Lock()
 	if len(c.cached) > 0 {
 		buffer := c.cached[0]
@@ -74,27 +84,37 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 		}
 		c.cacheMu.Unlock()
 		if n > 0 {
-			c.limiter.Wait(int64(n))
+			if waitErr := waitWithContext(c.ctx, c.limiter, int64(n)); waitErr != nil {
+				err = waitErr
+			}
 		}
 		return n, err
 	}
 	c.cacheMu.Unlock()
 	n, err = c.Conn.Read(b)
 	if n > 0 {
-		c.limiter.Wait(int64(n))
+		if waitErr := waitWithContext(c.ctx, c.limiter, int64(n)); waitErr != nil {
+			err = waitErr
+		}
 	}
 	return n, err
 }
 
 func (c *Conn) Write(b []byte) (n int, err error) {
+	if c.ctx.Err() != nil {
+		return 0, net.ErrClosed
+	}
 	n, err = c.Conn.Write(b)
 	if n > 0 {
-		c.limiter.Wait(int64(n))
+		if waitErr := waitWithContext(c.ctx, c.limiter, int64(n)); waitErr != nil {
+			err = waitErr
+		}
 	}
 	return n, err
 }
 
 func (c *Conn) Close() error {
+	c.cancel()
 	c.cacheMu.Lock()
 	for _, buffer := range c.cached {
 		buffer.Release()

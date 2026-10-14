@@ -41,12 +41,33 @@ func TestCloseFlushesSubThresholdTraffic(t *testing.T) {
 	c.setInfo(&info)
 	core.setTraffic([]panel.UserTraffic{{UID: 1, Upload: 12, Download: 34}})
 	_ = c.reportUserTrafficTask()
+	// This snapshot stub does not implement the core's reset=true side effect.
+	// No further bytes have arrived since that report sampled the counters.
+	core.setTraffic(nil)
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
 	pushes := f.pushLog()
 	if len(pushes) != 1 || pushes[0].body[1][0] != 12 || pushes[0].body[1][1] != 34 {
 		t.Fatalf("shutdown lost sub-threshold bytes: %+v", pushes)
+	}
+}
+
+// Bytes since the last scheduled report are still owed when the node stops.
+func TestCloseReportsUnpolledTraffic(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u"}})
+	core := &stubCore{}
+	c := newSyncedController(t, f, core)
+	info := *c.info
+	info.NodeReportMinTraffic = 100
+	c.setInfo(&info)
+	core.setTraffic([]panel.UserTraffic{{UID: 1, Upload: 123, Download: 456}})
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	pushes := f.pushLog()
+	if len(pushes) != 1 || pushes[0].body[1][0] != 123 || pushes[0].body[1][1] != 456 {
+		t.Fatalf("shutdown discarded bytes since the last scheduled report: %+v", pushes)
 	}
 }
 

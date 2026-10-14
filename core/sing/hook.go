@@ -19,12 +19,16 @@ import (
 	"github.com/PoriyaVali/V2bX/common/counter"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
+	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
 
 var _ adapter.ConnectionTracker = (*HookServer)(nil)
 
 type HookServer struct {
+	users   *UserMap // production admission is serialised with panel user updates
 	counter sync.Map //map[string]*counter.TrafficCounter
 	conns   sync.Map //map[string]*userConns, keyed by format.UserTag
 
@@ -184,9 +188,11 @@ type userConns struct {
 // the lifetime of the process - far worse than the billing gap being fixed.
 type trackedConn struct {
 	net.Conn
-	release func()
-	mu      sync.Mutex
-	once    sync.Once
+	release  func()
+	mu       sync.Mutex
+	once     sync.Once
+	lifetime connectionLifetime
+	closeErr error
 }
 
 func (c *trackedConn) Close() error {
@@ -194,55 +200,62 @@ func (c *trackedConn) Close() error {
 		c.mu.Lock()
 		release := c.release
 		c.mu.Unlock()
-		if release != nil {
-			release()
-		}
+		c.lifetime.stop()
+		c.closeErr = c.Conn.Close()
+		c.lifetime.transportClosed(release)
 	})
-	return c.Conn.Close()
+	c.lifetime.wait()
+	return c.closeErr
 }
 
-// The three methods below keep this wrapper out of the data path.
-//
-// What it wraps is a *counter.ConnCounter, which is not a plain net.Conn: it
-// carries ReadBuffer/WriteBuffer plus sing's unwrap protocol (Upstream,
-// UnwrapReader, UnwrapWriter) that lets a copy run straight against the raw
-// connection while the byte counts are applied through CountFuncs. Embedding
-// an INTERFACE only promotes that interface's own methods, so wrapping in
-// net.Conn hid every one of them - sing could no longer see a counter, chose a
-// copy path that never went through it, and traffic stopped being counted
-// while data kept flowing perfectly. Nothing failed; the numbers simply went
-// quiet, which cost a release to notice.
-//
-// Declaring the upstream replaceable hands reads and writes back to the
-// counter untouched. Close still belongs to this type, which is all the
-// tracking needs.
+// Keep control interfaces (AnyTLS SYNACK, headroom) discoverable, while the
+// actual data and its byte counters must cross the lifetime completion gate.
 func (c *trackedConn) Upstream() any { return c.Conn }
 
-func (c *trackedConn) ReaderReplaceable() bool { return true }
+func (c *trackedConn) ReaderReplaceable() bool { return false }
 
-func (c *trackedConn) WriterReplaceable() bool { return true }
+func (c *trackedConn) WriterReplaceable() bool { return false }
 
-// The three methods below keep this wrapper out of the data path.
-//
-// What it wraps is a *counter.ConnCounter, which is not a plain net.Conn: it
-// carries ReadBuffer/WriteBuffer plus sing's unwrap protocol (Upstream,
-// UnwrapReader, UnwrapWriter) that lets a copy run straight against the raw
-// connection while the byte counts are applied through CountFuncs. Embedding
-// an INTERFACE only promotes that interface's own methods, so wrapping in
-// net.Conn hid every one of them - sing could no longer see a counter, chose a
-// copy path that never went through it, and traffic stopped being counted
-// while data kept flowing perfectly. Nothing failed; the numbers simply went
-// quiet, which cost a release to notice.
-//
-// Declaring the upstream replaceable hands reads and writes back to the
-// counter untouched. Close still belongs to this type, which is all the
-// tracking needs.
+func (c *trackedConn) Read(p []byte) (int, error) {
+	if !c.lifetime.begin() {
+		return 0, net.ErrClosed
+	}
+	defer c.lifetime.end()
+	return c.Conn.Read(p)
+}
+
+func (c *trackedConn) Write(p []byte) (int, error) {
+	if !c.lifetime.begin() {
+		return 0, net.ErrClosed
+	}
+	defer c.lifetime.end()
+	return c.Conn.Write(p)
+}
+
+func (c *trackedConn) ReadBuffer(buffer *buf.Buffer) error {
+	if !c.lifetime.begin() {
+		return net.ErrClosed
+	}
+	defer c.lifetime.end()
+	return bufio.NewExtendedConn(c.Conn).ReadBuffer(buffer)
+}
+
+func (c *trackedConn) WriteBuffer(buffer *buf.Buffer) error {
+	if !c.lifetime.begin() {
+		buffer.Release()
+		return net.ErrClosed
+	}
+	defer c.lifetime.end()
+	return bufio.NewExtendedConn(c.Conn).WriteBuffer(buffer)
+}
 
 type trackedPacketConn struct {
 	N.PacketConn
-	release func()
-	mu      sync.Mutex
-	once    sync.Once
+	release  func()
+	mu       sync.Mutex
+	once     sync.Once
+	lifetime connectionLifetime
+	closeErr error
 }
 
 func (c *trackedPacketConn) Close() error {
@@ -250,20 +263,38 @@ func (c *trackedPacketConn) Close() error {
 		c.mu.Lock()
 		release := c.release
 		c.mu.Unlock()
-		if release != nil {
-			release()
-		}
+		c.lifetime.stop()
+		c.closeErr = c.PacketConn.Close()
+		c.lifetime.transportClosed(release)
 	})
-	return c.PacketConn.Close()
+	c.lifetime.wait()
+	return c.closeErr
 }
 
 // Same reasoning as trackedConn: PacketConnCounter carries the packet unwrap
 // protocol, and hiding it would silently stop UDP being counted.
 func (c *trackedPacketConn) Upstream() any { return c.PacketConn }
 
-func (c *trackedPacketConn) ReaderReplaceable() bool { return true }
+func (c *trackedPacketConn) ReaderReplaceable() bool { return false }
 
-func (c *trackedPacketConn) WriterReplaceable() bool { return true }
+func (c *trackedPacketConn) WriterReplaceable() bool { return false }
+
+func (c *trackedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+	if !c.lifetime.begin() {
+		return M.Socksaddr{}, net.ErrClosed
+	}
+	defer c.lifetime.end()
+	return c.PacketConn.ReadPacket(buffer)
+}
+
+func (c *trackedPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	if !c.lifetime.begin() {
+		buffer.Release()
+		return net.ErrClosed
+	}
+	defer c.lifetime.end()
+	return c.PacketConn.WritePacket(buffer, destination)
+}
 
 // Same reasoning as trackedConn: PacketConnCounter carries the packet unwrap
 // protocol, and hiding it would silently stop UDP being counted.
@@ -281,6 +312,22 @@ const (
 // may hold at once (0 = no cap); the connection that would go over it is
 // refused, so a single runaway client cannot exhaust the node.
 func (h *HookServer) register(key string, c io.Closer, max int, deviceIP ...string) (func(), registerResult) {
+	if h.users != nil {
+		// An authenticated stream may still be routing when DelUsers finishes.
+		// Hold the same lock through registration so removal either finds this
+		// connection and closes it, or the late registration is refused.
+		h.users.mapLock.RLock()
+		defer h.users.mapLock.RUnlock()
+		if _, active := h.users.uidMap[key]; !active {
+			return nil, userRemoved
+		}
+	}
+	return h.registerLocked(key, c, max, deviceIP...)
+}
+
+// registerLocked is also used by production routing, whose membership lock
+// must cover both storage pointer creation and connection-set registration.
+func (h *HookServer) registerLocked(key string, c io.Closer, max int, deviceIP ...string) (func(), registerResult) {
 	// Load first: the set almost always exists already, and LoadOrStore alone
 	// built (and threw away) a fresh set and map on every connection.
 	v, ok := h.conns.Load(key)
@@ -337,6 +384,28 @@ func (h *HookServer) hasActiveDevice(tag, uuid, ip string) bool {
 // OnlineDevices samples current connections rather than just handshakes.
 func (h *HookServer) OnlineDevices(tag string, uidOf func(string) int) []panel.OnlineUser {
 	var out []panel.OnlineUser
+	if h.users != nil {
+		// Explicit ownership avoids interpreting node "A|B" as a user of "A".
+		for uuid := range h.users.nodeUsers[tag] {
+			v, found := h.conns.Load(format.UserTag(tag, uuid))
+			if !found {
+				continue
+			}
+			uid := uidOf(uuid)
+			if uid == 0 {
+				continue
+			}
+			uc := v.(*userConns)
+			uc.mu.Lock()
+			for ip, count := range uc.devices {
+				if count > 0 {
+					out = append(out, panel.OnlineUser{UID: uid, IP: ip})
+				}
+			}
+			uc.mu.Unlock()
+		}
+		return out
+	}
 	prefix := format.UserTag(tag, "")
 	h.conns.Range(func(key, value any) bool {
 		k := key.(string)
@@ -381,7 +450,14 @@ func logEvery(key string, every time.Duration) bool {
 // CloseUserConns drops every connection these users still have open on the
 // inbound. Returns how many were closed.
 func (h *HookServer) CloseUserConns(inbound string, uuids []string) int {
-	closed := 0
+	return closeDetachedConns(h.detachUserConns(inbound, uuids))
+}
+
+// detachUserConns tombstones and removes the old generation without network
+// I/O. Production user removal calls this while holding the membership lock;
+// a later re-add can then register into a fresh set safely.
+func (h *HookServer) detachUserConns(inbound string, uuids []string) []io.Closer {
+	var list []io.Closer
 	for _, uuid := range uuids {
 		v, ok := h.conns.LoadAndDelete(format.UserTag(inbound, uuid))
 		if !ok {
@@ -393,29 +469,34 @@ func (h *HookServer) CloseUserConns(inbound string, uuids []string) int {
 		// it would deadlock the node.
 		uc.mu.Lock()
 		uc.closed = true
-		list := make([]io.Closer, 0, len(uc.m))
 		for c := range uc.m {
 			list = append(list, c)
 		}
 		uc.m = nil
 		uc.devices = nil
 		uc.mu.Unlock()
-		for _, c := range list {
-			_ = c.Close()
-			closed++
-		}
 	}
-	return closed
+	return list
+}
+
+func closeDetachedConns(list []io.Closer) int {
+	for _, c := range list {
+		_ = c.Close()
+	}
+	return len(list)
 }
 
 func (h *HookServer) ModeList() []string {
 	return nil
 }
 
-func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) net.Conn {
+func (h *HookServer) RoutedConnection(ctx context.Context, conn net.Conn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) net.Conn {
 	l, err := limiter.GetLimiter(m.Inbound)
 	if err != nil {
 		log.Warn("get limiter for ", m.Inbound, " error: ", err)
+		if h.managedInbound(ctx, m.Inbound) {
+			_ = conn.Close()
+		}
 		return conn
 	}
 	taguuid := format.UserTag(m.Inbound, m.User)
@@ -459,6 +540,16 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	// Count into the user's ledger and, when this source is a real device, into
 	// that device's own ledger as well. countDevice is already false for the
 	// node's own addresses, which are not devices and must not be counted as one.
+	if h.users != nil {
+		h.users.mapLock.RLock()
+	}
+	if !h.currentGenerationLocked(ctx, m.Inbound, taguuid) {
+		if h.users != nil {
+			h.users.mapLock.RUnlock()
+		}
+		_ = conn.Close()
+		return conn
+	}
 	conn = counter.NewConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	tc := &trackedConn{Conn: conn}
 	deviceIP := ""
@@ -466,9 +557,12 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 		deviceIP = ip
 	}
 	tc.mu.Lock()
-	release, res := h.register(taguuid, tc, l.MaxConns, deviceIP)
+	release, res := h.registerLocked(taguuid, tc, l.MaxConns, deviceIP)
 	if res != registered {
 		tc.mu.Unlock()
+		if h.users != nil {
+			h.users.mapLock.RUnlock()
+		}
 		// the user was removed while this was being set up, or holds too many
 		conn.Close()
 		h.logRefused(m.Inbound, m.User, taguuid, res, l.MaxConns)
@@ -476,13 +570,19 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 	}
 	tc.release = release
 	tc.mu.Unlock()
+	if h.users != nil {
+		h.users.mapLock.RUnlock()
+	}
 	return tc
 }
 
-func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) N.PacketConn {
+func (h *HookServer) RoutedPacketConnection(ctx context.Context, conn N.PacketConn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) N.PacketConn {
 	l, err := limiter.GetLimiter(m.Inbound)
 	if err != nil {
 		log.Warn("get limiter for ", m.Inbound, " error: ", err)
+		if h.managedInbound(ctx, m.Inbound) {
+			_ = conn.Close()
+		}
 		return conn
 	}
 	ip := strings.TrimPrefix(m.Source.Addr.String(), "::ffff:")
@@ -532,6 +632,16 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 	// fresh inbound (every user reconnecting after a restart) could each store
 	// their own counter, and the one overwritten was never read again - the
 	// traffic of the connections holding it went unbilled.
+	if h.users != nil {
+		h.users.mapLock.RLock()
+	}
+	if !h.currentGenerationLocked(ctx, m.Inbound, taguuid) {
+		if h.users != nil {
+			h.users.mapLock.RUnlock()
+		}
+		_ = conn.Close()
+		return conn
+	}
 	conn = counter.NewPacketConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
 	pc := &trackedPacketConn{PacketConn: conn}
 	deviceIP := ""
@@ -539,16 +649,49 @@ func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn
 		deviceIP = ip
 	}
 	pc.mu.Lock()
-	release, res := h.register(taguuid, pc, l.MaxConns, deviceIP)
+	release, res := h.registerLocked(taguuid, pc, l.MaxConns, deviceIP)
 	if res != registered {
 		pc.mu.Unlock()
+		if h.users != nil {
+			h.users.mapLock.RUnlock()
+		}
 		conn.Close()
 		h.logRefused(m.Inbound, m.User, taguuid, res, l.MaxConns)
 		return conn
 	}
 	pc.release = release
 	pc.mu.Unlock()
+	if h.users != nil {
+		h.users.mapLock.RUnlock()
+	}
 	return pc
+}
+
+func (h *HookServer) currentGenerationLocked(ctx context.Context, tag, key string) bool {
+	if h.users == nil {
+		return true
+	}
+	if _, active := h.users.uidMap[key]; !active {
+		return false
+	}
+	if generation, carried := ctx.Value(nodeGenerationKey{}).(*nodeGeneration); carried {
+		return generation.tag == tag && h.users.nodes[tag] == generation
+	}
+	// Isolated hooks constructed without listener generations are used by
+	// embedders/tests. A managed production listener must carry its token.
+	return h.users.nodes == nil
+}
+
+func (h *HookServer) managedInbound(ctx context.Context, tag string) bool {
+	if _, carried := ctx.Value(nodeGenerationKey{}).(*nodeGeneration); carried {
+		return true
+	}
+	if h.users == nil {
+		return false
+	}
+	h.users.mapLock.RLock()
+	defer h.users.mapLock.RUnlock()
+	return h.users.nodes[tag] != nil
 }
 
 func (h *HookServer) logRefused(inbound, user, taguuid string, res registerResult, max int) {

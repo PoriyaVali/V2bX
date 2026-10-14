@@ -10,13 +10,18 @@ import (
 	mdnssrv "masterdnsvpn-go/server"
 )
 
-func (m *Mdns) AddNode(tag string, info *panel.NodeInfo, _ *conf.Options) error {
+func (m *Mdns) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) error {
 	if info.Mdns == nil {
 		return fmt.Errorf("mdns: node %s has no mdns params", tag)
 	}
 
+	var listenIP string
+	if config != nil {
+		listenIP = config.ListenIP
+	}
 	srv, err := mdnssrv.New(mdnssrv.Options{
 		Domains:          info.Mdns.Domain,
+		UDPHost:          listenIP,
 		UDPPort:          info.Mdns.ServerPort,
 		EncryptionMethod: info.Mdns.EncryptionMethod,
 		EncryptionKey:    info.Mdns.EncryptionKey,

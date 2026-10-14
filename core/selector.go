@@ -166,6 +166,32 @@ func (s *Selector) DelNode(tag string) error {
 	return errors.New("the node is not have")
 }
 
+// Capture the owning core before removing the selector entry. A post-close
+// read through GetUserTrafficSlice would otherwise have no route to it.
+func (s *Selector) RetireNode(tag string) ([]panel.UserTraffic, error) {
+	value, found := s.nodes.Load(tag)
+	if !found {
+		return nil, errors.New("the node is not have")
+	}
+	owner := value.(Core)
+	var traffic []panel.UserTraffic
+	var err error
+	if retiring, ok := owner.(NodeRetirer); ok {
+		traffic, err = retiring.RetireNode(tag)
+	} else {
+		var readErr error
+		traffic, readErr = owner.GetUserTrafficSlice(tag, true)
+		if readErr != nil {
+			log.WithField("tag", tag).WithError(readErr).Warn("Read final user traffic failed")
+		}
+		err = owner.DelNode(tag)
+	}
+	if err == nil {
+		s.nodes.CompareAndDelete(tag, owner)
+	}
+	return traffic, err
+}
+
 func (s *Selector) AddUsers(p *AddUsersParams) (added int, err error) {
 	t, e := s.nodes.Load(p.Tag)
 	if !e {

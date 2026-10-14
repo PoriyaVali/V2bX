@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/PoriyaVali/V2bX/conf"
@@ -33,7 +34,7 @@ func TestWriteCert_KeyIsPrivate(t *testing.T) {
 	if err := l.writeCert(&certificate.Resource{Certificate: []byte("c"), PrivateKey: []byte("k")}); err != nil {
 		t.Fatal(err)
 	}
-	if m := mode(t, keyPath); m != 0600 {
+	if m := mode(t, keyPath); runtime.GOOS != "windows" && m != 0600 {
 		t.Fatalf("private key mode = %o, want 600", m)
 	}
 }
@@ -47,7 +48,7 @@ func TestLegoUser_SaveIsPrivateAndLoads(t *testing.T) {
 	if err := u.Save(path); err != nil {
 		t.Fatal(err)
 	}
-	if m := mode(t, path); m != 0600 {
+	if m := mode(t, path); runtime.GOOS != "windows" && m != 0600 {
 		t.Fatalf("account file mode = %o, want 600", m)
 	}
 	var back User

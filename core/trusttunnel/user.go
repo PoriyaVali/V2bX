@@ -110,6 +110,8 @@ func (n *node) applyUsers() error {
 }
 
 func (n *node) writeCredentials() error {
+	n.credentialsMu.Lock()
+	defer n.credentialsMu.Unlock()
 	n.mu.Lock()
 	users := make(map[string]string, len(n.users))
 	for k, v := range n.users {
@@ -188,19 +190,7 @@ func (n *node) drain(reset bool) (map[string]usage, error) {
 		url += "?reset=0"
 	}
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			// The endpoint binds its metrics port to loopback and refuses to
-			// serve user data anywhere else, so there is nothing to reach
-			// through a proxy - and inheriting one from the environment would
-			// send the subscriber list somewhere it should never go.
-			Proxy:       nil,
-			DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
-		},
-	}
-
-	resp, err := client.Get(url)
+	resp, err := n.metricsHTTPClient().Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +206,26 @@ func (n *node) drain(reset bool) (map[string]usage, error) {
 		return nil, fmt.Errorf("decode drain response: %w", err)
 	}
 	return out, nil
+}
+
+func (n *node) metricsHTTPClient() *http.Client {
+	n.metricsOnce.Do(func() {
+		n.metricsClient = &http.Client{
+			Timeout: 5 * time.Second,
+			Transport: &http.Transport{
+				// The endpoint binds its metrics port to loopback and refuses to
+				// serve user data anywhere else, so there is nothing to reach
+				// through a proxy - and inheriting one from the environment would
+				// send the subscriber list somewhere it should never go.
+				Proxy:               nil,
+				DialContext:         (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
+				MaxIdleConns:        1,
+				MaxIdleConnsPerHost: 1,
+				IdleConnTimeout:     30 * time.Second,
+			},
+		}
+	})
+	return n.metricsClient
 }
 
 // freePort asks the kernel for an unused port and hands back the number.

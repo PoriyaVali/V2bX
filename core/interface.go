@@ -22,3 +22,9 @@ type Core interface {
 	Protocols() []string
 	Type() string
 }
+
+// NodeRetirer closes a node and returns its final reportable traffic after
+// in-flight accounting has completed. An error means teardown did not finish.
+type NodeRetirer interface {
+	RetireNode(tag string) ([]panel.UserTraffic, error)
+}

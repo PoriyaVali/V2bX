@@ -194,7 +194,11 @@ func TestNodeConfig_IncludeURLErrorStatus(t *testing.T) {
 func TestNodeConfig_IncludeFromFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "node.json")
 	os.WriteFile(path, []byte(`{"NodeID":7,"NodeType":"trojan"}`), 0o600)
-	n := parseNode(t, `{"Include":"`+path+`"}`)
+	include, err := json.Marshal(map[string]string{"Include": path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := parseNode(t, string(include))
 	if n.ApiConfig.NodeID != 7 {
 		t.Fatalf("include from file not applied: %+v", n.ApiConfig)
 	}

@@ -3,9 +3,9 @@ package panel
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -71,41 +71,58 @@ func (c *Client) GetUserList() ([]UserInfo, error) {
 	userlist := &UserListBody{}
 	if strings.Contains(r.Header().Get("Content-Type"), "application/x-msgpack") {
 		decoder := msgpack.NewDecoder(r.RawResponse.Body)
-		if err := decoder.Decode(userlist); err != nil {
+		if err := decodeMsgpackUserList(decoder, userlist); err != nil {
 			return nil, fmt.Errorf("decode user list error: %w", err)
 		}
 	} else {
-		dec := jsontext.NewDecoder(r.RawResponse.Body)
-		for {
-			tok, err := dec.ReadToken()
-			if err != nil {
-				return nil, fmt.Errorf("decode user list error: %w", err)
-			}
-			if tok.Kind() == '"' && tok.String() == "users" {
-				break
-			}
-		}
-		tok, err := dec.ReadToken()
-		if err != nil {
+		// Decode the entire top-level envelope before remembering its ETag.
+		// Scanning tokens for the first "users" also matched nested metadata or
+		// a string value, and accepted truncated/trailing-invalid responses as
+		// an empty list that would revoke every user's access.
+		if err := json.UnmarshalRead(r.RawResponse.Body, userlist); err != nil {
 			return nil, fmt.Errorf("decode user list error: %w", err)
 		}
-		if tok.Kind() != '[' {
-			return nil, fmt.Errorf(`decode user list error: expected "users" array`)
-		}
-		for dec.PeekKind() != ']' {
-			val, err := dec.ReadValue()
-			if err != nil {
-				return nil, fmt.Errorf("decode user list error: read user object: %w", err)
-			}
-			var u UserInfo
-			if err := json.Unmarshal(val, &u); err != nil {
-				return nil, fmt.Errorf("decode user list error: unmarshal user error: %w", err)
-			}
-			userlist.Users = append(userlist.Users, u)
-		}
+	}
+	if userlist.Users == nil {
+		return nil, fmt.Errorf(`decode user list error: expected "users" array`)
 	}
 	c.userEtag = r.Header().Get("ETag")
 	return userlist.Users, nil
+}
+
+func decodeMsgpackUserList(decoder *msgpack.Decoder, userlist *UserListBody) error {
+	fields, err := decoder.DecodeMapLen()
+	if err != nil {
+		return err
+	}
+	if fields < 0 {
+		return fmt.Errorf("expected user-list object")
+	}
+	seen := make(map[string]struct{})
+	for i := 0; i < fields; i++ {
+		name, err := decoder.DecodeString()
+		if err != nil {
+			return err
+		}
+		if _, exists := seen[name]; exists {
+			return fmt.Errorf("duplicate member %q", name)
+		}
+		seen[name] = struct{}{}
+		if name == "users" {
+			if err := decoder.Decode(&userlist.Users); err != nil {
+				return err
+			}
+		} else if err := decoder.Skip(); err != nil {
+			return err
+		}
+	}
+	if _, err := decoder.PeekCode(); err != io.EOF {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("unexpected data after user-list object")
+	}
+	return nil
 }
 
 // GetUserAlive fetches the fleet-wide alive_ip count per user.

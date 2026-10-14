@@ -98,9 +98,6 @@ func (x *Xray) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 func (c *Xray) AddUsers(p *vCore.AddUsersParams) (added int, err error) {
 	c.users.mapLock.Lock()
 	defer c.users.mapLock.Unlock()
-	for i := range p.Users {
-		c.users.uidMap[format.UserTag(p.Tag, p.Users[i].Uuid)] = p.Users[i].Id
-	}
 	var users []*protocol.User
 	switch p.NodeInfo.Type {
 	case "vmess":
@@ -110,26 +107,36 @@ func (c *Xray) AddUsers(p *vCore.AddUsersParams) (added int, err error) {
 	case "trojan":
 		users = buildTrojanUsers(p.Tag, p.Users)
 	case "shadowsocks":
-		users = buildSSUsers(p.Tag,
+		users, err = buildSSUsers(p.Tag,
 			p.Users,
 			p.Shadowsocks.Cipher,
 			p.Shadowsocks.ServerKey)
 	default:
 		return 0, fmt.Errorf("unsupported node type: %s", p.NodeInfo.Type)
 	}
+	if err != nil {
+		return 0, err
+	}
+	// Validate the whole batch before installing any user. A malformed panel
+	// credential must not leave an earlier user half-installed on the node.
+	memoryUsers := make([]*protocol.MemoryUser, len(users))
+	for i, u := range users {
+		memoryUsers[i], err = u.ToMemoryUser()
+		if err != nil {
+			return 0, err
+		}
+	}
 	man, err := c.GetUserManager(p.Tag)
 	if err != nil {
 		return 0, fmt.Errorf("get user manager error: %s", err)
 	}
-	for _, u := range users {
-		mUser, err := u.ToMemoryUser()
+	for i, u := range memoryUsers {
+		err = man.AddUser(context.Background(), u)
 		if err != nil {
-			return 0, err
+			return added, err
 		}
-		err = man.AddUser(context.Background(), mUser)
-		if err != nil {
-			return 0, err
-		}
+		c.users.uidMap[u.Email] = p.Users[i].Id
+		added++
 	}
-	return len(users), nil
+	return added, nil
 }
