@@ -104,7 +104,7 @@ func plaintextWebSocket(node *panel.NodeInfo) bool {
 }
 
 // logFilteringAdvice writes a node's advice to the log once per start or
-// reload.
+// reload, and starts the background check of a REALITY node's target.
 func logFilteringAdvice(tag string, node *panel.NodeInfo, opts *conf.Options) {
 	for _, a := range filteringAdviceFor(node, opts) {
 		entry := log.WithField("tag", tag)
@@ -114,4 +114,5 @@ func logFilteringAdvice(tag string, node *panel.NodeInfo, opts *conf.Options) {
 			entry.Info(a.msg)
 		}
 	}
+	checkRealityTarget(tag, node)
 }

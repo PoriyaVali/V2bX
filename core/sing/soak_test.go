@@ -75,11 +75,18 @@ type soakRig struct {
 
 func startSoakRig(t *testing.T) *soakRig {
 	t.Helper()
+	return startSoakRigWithOutbounds(t, `{"outbounds":[{"type":"direct","tag":"direct"}]}`)
+}
+
+// startSoakRigWithOutbounds is startSoakRig with the server core's own config
+// (its outbounds, where users' traffic leaves) given as originJSON.
+func startSoakRigWithOutbounds(t *testing.T, originJSON string) *soakRig {
+	t.Helper()
 	dir := t.TempDir()
 	certFile, keyFile := writeSelfSigned(t, dir)
 
 	origin := filepath.Join(dir, "origin.json")
-	os.WriteFile(origin, []byte(`{"outbounds":[{"type":"direct","tag":"direct"}]}`), 0o644)
+	os.WriteFile(origin, []byte(originJSON), 0o644)
 	sc := conf.NewSingConfig()
 	sc.OriginalPath = origin
 	sc.LogConfig.Disabled = true

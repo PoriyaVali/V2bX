@@ -369,14 +369,30 @@ func (s *Session) streamClosed(sid uint32) error {
 	return err
 }
 
+// maxFrameDataLen is the most a frame's 16-bit length field can describe.
+const maxFrameDataLen = 0xFFFF
+
+// writeDataFrame sends data on stream sid, as several PSH frames when it does
+// not fit in one. A single frame used to be written whatever the size, its
+// length truncated to 16 bits, and the client - reading the stated length and
+// then the rest of the data as frame headers - lost the session. Upstream
+// splits the same way (anytls v0.0.13). The frames go out in one write, so
+// nothing interleaves with them.
 func (s *Session) writeDataFrame(sid uint32, data []byte) (int, error) {
 	dataLen := len(data)
-
-	buffer := buf.NewSize(dataLen + headerOverHeadSize)
-	buffer.WriteByte(cmdPSH)
-	binary.BigEndian.PutUint32(buffer.Extend(4), sid)
-	binary.BigEndian.PutUint16(buffer.Extend(2), uint16(dataLen))
-	buffer.Write(data)
+	if dataLen == 0 {
+		return 0, nil
+	}
+	frames := (dataLen + maxFrameDataLen - 1) / maxFrameDataLen
+	buffer := buf.NewSize(dataLen + frames*headerOverHeadSize)
+	for rest := data; len(rest) > 0; {
+		chunk := rest[:min(len(rest), maxFrameDataLen)]
+		rest = rest[len(chunk):]
+		buffer.WriteByte(cmdPSH)
+		binary.BigEndian.PutUint32(buffer.Extend(4), sid)
+		binary.BigEndian.PutUint16(buffer.Extend(2), uint16(len(chunk)))
+		buffer.Write(chunk)
+	}
 	_, err := s.writeConn(buffer.Bytes())
 	buffer.Release()
 	if err != nil {
@@ -395,23 +411,42 @@ func (s *Session) writeControlFrame(frame frame) (int, error) {
 	binary.BigEndian.PutUint16(buffer.Extend(2), uint16(dataLen))
 	buffer.Write(frame.data)
 
-	s.conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
-
-	_, err := s.writeConn(buffer.Bytes())
+	_, err := s.writeConnWithin(buffer.Bytes(), controlFrameWriteTimeout)
 	buffer.Release()
 	if err != nil {
 		s.Close()
 		return 0, err
 	}
 
-	s.conn.SetWriteDeadline(time.Time{})
-
 	return dataLen, nil
 }
 
+// controlFrameWriteTimeout bounds how long one control frame may take to leave,
+// once it holds the connection. A peer that stops reading must not hold the
+// session forever, but a throttled link drains slowly and a timed-out TLS
+// write corrupts the session, so this is generous.
+//
+// It used to be five seconds, set on the whole connection before waiting for
+// the write lock: the clock ran while a data frame was still draining, that
+// data frame inherited the deadline and failed, and the control frame, given
+// the lock with its deadline spent, closed the session over nothing but a
+// slow link.
+const controlFrameWriteTimeout = 30 * time.Second
+
 func (s *Session) writeConn(b []byte) (n int, err error) {
+	return s.writeConnWithin(b, 0)
+}
+
+// writeConnWithin is writeConn with a write deadline of timeout, when it is not
+// zero, applied while this write holds the connection and cleared after it.
+func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err error) {
 	s.connLock.Lock()
 	defer s.connLock.Unlock()
+
+	if timeout > 0 && !s.buffering {
+		s.conn.SetWriteDeadline(time.Now().Add(timeout))
+		defer s.conn.SetWriteDeadline(time.Time{})
+	}
 
 	if s.buffering {
 		s.buffer = slices.Concat(s.buffer, b)
