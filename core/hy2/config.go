@@ -297,14 +297,19 @@ func (n *Hysteria2node) getOutboundConfig(c *serverConfig) (server.Outbound, err
 	return Outbound, nil
 }
 
-func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.PacketConn, c *serverConfig) (http.Handler, error) {
+func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.PacketConn, c *serverConfig, decoySite bool) (http.Handler, error) {
 	var handler http.Handler
 	switch strings.ToLower(c.Masquerade.Type) {
 	case "":
 		// Unconfigured, an unauthenticated HTTP/3 request - what a prober
 		// sends to tell a Hysteria2 server apart - got a bare 404 on every
 		// path. It gets the node's decoy site instead, and so does the TCP
-		// masquerade if the config enables one. "404" keeps the old answer.
+		// masquerade if the config enables one. "404", or the node option
+		// `"DecoySite": false`, keeps the old answer.
+		if !decoySite {
+			handler = http.NotFoundHandler()
+			break
+		}
 		handler = decoy.Handler(decoy.Seed(n.Tag))
 	case "404":
 		handler = http.NotFoundHandler()
@@ -425,7 +430,7 @@ func (n *Hysteria2node) getHyConfig(info *panel.NodeInfo, config *conf.Options, 
 	if err != nil {
 		return fail(err)
 	}
-	Masq, err := n.getMasqHandler(tls, conn, c)
+	Masq, err := n.getMasqHandler(tls, conn, c, config.DecoySite == nil || *config.DecoySite)
 	if err != nil {
 		return fail(err)
 	}

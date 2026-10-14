@@ -421,10 +421,10 @@ func (s *Session) writeControlFrame(frame frame) (int, error) {
 	return dataLen, nil
 }
 
-// controlFrameWriteTimeout bounds how long one control frame may take to leave,
-// once it holds the connection. A peer that stops reading must not hold the
-// session forever, but a throttled link drains slowly and a timed-out TLS
-// write corrupts the session, so this is generous.
+// controlFrameWriteTimeout bounds how long one control frame may wait for the
+// connection, and then how long it may take to leave. A peer that stops
+// reading must not hold the session forever, but a throttled link drains
+// slowly and a timed-out TLS write corrupts the session, so this is generous.
 //
 // It used to be five seconds, set on the whole connection before waiting for
 // the write lock: the clock ran while a data frame was still draining, that
@@ -437,10 +437,38 @@ func (s *Session) writeConn(b []byte) (n int, err error) {
 	return s.writeConnWithin(b, 0)
 }
 
-// writeConnWithin is writeConn with a write deadline of timeout, when it is not
-// zero, applied while this write holds the connection and cleared after it.
-func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err error) {
+// lockConnWithin takes connLock for a control frame. Waiting is normal: a data
+// write ahead of it may still be draining over a slow link, and data writes
+// carry no deadline so that such a link is never cut. But a write that holds
+// the connection for timeout means the peer stopped reading or the path is
+// gone, and nothing else would interrupt it until the operating system gives
+// up on the connection. The session is closed then: that write fails and
+// frees the lock, and this frame's own write fails in turn, so whoever closes
+// a stream gets an answer instead of hanging with the session.
+func (s *Session) lockConnWithin(timeout time.Duration) {
+	if s.connLock.TryLock() {
+		return
+	}
+	var locked atomic.Bool
+	stalled := time.AfterFunc(timeout, func() {
+		if !locked.Load() {
+			s.Close()
+		}
+	})
 	s.connLock.Lock()
+	locked.Store(true)
+	stalled.Stop()
+}
+
+// writeConnWithin is writeConn for a control frame, bounded by timeout when it
+// is not zero: in waiting for the connection, and in the write itself, whose
+// deadline is cleared after it.
+func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err error) {
+	if timeout > 0 {
+		s.lockConnWithin(timeout)
+	} else {
+		s.connLock.Lock()
+	}
 	defer s.connLock.Unlock()
 
 	if timeout > 0 && !s.buffering {

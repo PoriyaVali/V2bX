@@ -116,6 +116,19 @@ func TestCertConfigIsReadFromTheNodeTopLevel(t *testing.T) {
 	}
 }
 
+// The hysteria2 core has no options block of its own, so its DecoySite comes
+// from the node's top level, beside Hysteria2ConfigPath. Unset stays unset,
+// which means on.
+func TestHysteria2DecoySiteIsReadFromTheNodeTopLevel(t *testing.T) {
+	n := parseNode(t, `{"Core":"hysteria2","NodeID":46,"DecoySite":false}`)
+	if n.Options.DecoySite == nil || *n.Options.DecoySite {
+		t.Fatalf("DecoySite false not read for a hysteria2 node: %v", n.Options.DecoySite)
+	}
+	if n := parseNode(t, `{"Core":"hysteria2","NodeID":46}`); n.Options.DecoySite != nil {
+		t.Fatalf("an unmentioned DecoySite was set: %v", *n.Options.DecoySite)
+	}
+}
+
 // 🔴 On by default. It used to be opt-in, and the cost was a node behind the
 // relay reporting every tunnelled user as 127.0.0.1 for weeks - device counting
 // dead, online list useless, no output saying so. The install wizard also drops

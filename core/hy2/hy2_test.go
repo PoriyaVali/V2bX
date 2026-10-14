@@ -238,13 +238,17 @@ func TestHy2_MasqueradeSurvivesReload(t *testing.T) {
 // With no masquerade type configured, a stranger's request is answered by the
 // node's decoy site - on HTTP/3 and on the TCP masquerade alike, which share
 // one handler - where it used to be a bare 404 on every path. An explicit
-// "404" still gets the 404.
+// "404" still gets the 404, and so does a node whose options say
+// `"DecoySite": false`, as on the sing and Xray cores.
 func TestHy2_UnconfiguredMasqueradeServesDecoySite(t *testing.T) {
+	off := false
 	for _, tc := range []struct {
 		typ        string
+		decoySite  *bool
 		wantStatus int
-	}{{"", http.StatusOK}, {"404", http.StatusNotFound}} {
+	}{{"", nil, http.StatusOK}, {"404", nil, http.StatusNotFound}, {"", &off, http.StatusNotFound}} {
 		r := newHyRig(t)
+		r.opts.DecoySite = tc.decoySite
 		httpPort, httpsPort := freeTCPPort(t), freeTCPPort(t)
 		cfg := filepath.Join(t.TempDir(), "hy2.yaml")
 		masq := "masquerade:\n"
@@ -264,7 +268,7 @@ func TestHy2_UnconfiguredMasqueradeServesDecoySite(t *testing.T) {
 		if resp.StatusCode != tc.wantStatus {
 			t.Fatalf("type %q: status %d, want %d", tc.typ, resp.StatusCode, tc.wantStatus)
 		}
-		if tc.typ == "" && (resp.Header.Get("Server") != "nginx" || !strings.Contains(string(body), "<title>")) {
+		if tc.wantStatus == http.StatusOK && (resp.Header.Get("Server") != "nginx" || !strings.Contains(string(body), "<title>")) {
 			t.Fatalf("unconfigured masquerade is not the decoy site: Server %q, body %.80q", resp.Header.Get("Server"), body)
 		}
 		if err := r.h.DelNode("A"); err != nil {

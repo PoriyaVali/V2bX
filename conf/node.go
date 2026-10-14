@@ -128,7 +128,12 @@ type Options struct {
 	XrayOptions            *XrayOptions    `json:"XrayOptions"`
 	SingOptions            *SingOptions    `json:"SingOptions"`
 	Hysteria2ConfigPath    string          `json:"Hysteria2ConfigPath"`
-	CertConfig             *CertConfig     `json:"CertConfig"`
+	// DecoySite, for the hysteria2 core: whether a node whose Hysteria2 config
+	// names no masquerade type answers probers with the decoy site
+	// (common/decoy) instead of a bare 404. Unset means yes. The sing and Xray
+	// cores read the same key into SingOptions and XrayOptions.
+	DecoySite  *bool       `json:"DecoySite"`
+	CertConfig *CertConfig `json:"CertConfig"`
 }
 
 // overlayCoreOptions applies a nested `"<key>": { … }` block on top of options

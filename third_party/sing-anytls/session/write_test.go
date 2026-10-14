@@ -49,6 +49,81 @@ func slowLinkPair(t *testing.T) net.Conn {
 	return server
 }
 
+// stalledLinkPair is a server-side connection whose peer never reads: a client
+// that stopped reading, or a path that died with data in flight.
+func stalledLinkPair(t *testing.T) net.Conn {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err == nil {
+			accepted <- c
+		}
+	}()
+	client, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := <-accepted
+	_ = server.(*net.TCPConn).SetWriteBuffer(4096)
+	_ = client.(*net.TCPConn).SetReadBuffer(4096)
+	t.Cleanup(func() { server.Close(); client.Close() })
+	return server
+}
+
+// 🔴 A control frame behind a data write that can never finish must not wait
+// for it forever.
+//
+// Data writes carry no deadline, so a slow link is never cut. When the peer
+// stops reading for good, though, the data writer holds the line until the
+// operating system gives up on the connection - possibly never, while the
+// peer keeps advertising a zero window - and a FIN behind it, from a stream
+// being closed, waited just as long.
+func TestControlFrameBehindStalledWriteIsBounded(t *testing.T) {
+	var pad atomic.TypedValue[*padding.PaddingFactory]
+	padding.UpdatePaddingScheme(padding.DefaultPaddingScheme, &pad)
+	s := NewServerSession(stalledLinkPair(t), nil, &pad, logger.NOP())
+	defer s.Close()
+
+	dataErr := make(chan error, 1)
+	go func() {
+		// Far more than the socket buffers hold.
+		_, err := s.writeDataFrame(1, make([]byte, 1<<20))
+		dataErr <- err
+	}()
+	time.Sleep(300 * time.Millisecond) // the data writer is stuck holding the line
+	ctrlErr := make(chan error, 1)
+	go func() {
+		_, err := s.writeConnWithin([]byte{cmdFIN, 0, 0, 0, 1, 0, 0}, 500*time.Millisecond)
+		ctrlErr <- err
+	}()
+
+	select {
+	case err := <-ctrlErr:
+		if err == nil {
+			t.Fatal("a control frame reported success on a connection that stopped draining")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a control frame behind a stalled data write waited without bound")
+	}
+	select {
+	case err := <-dataErr:
+		if err == nil {
+			t.Fatal("the stalled data write reported success")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stalled data write was never released")
+	}
+	if !s.IsClosed() {
+		t.Fatal("the session was left open on a connection that cannot drain")
+	}
+}
+
 // 🔴 A control frame queued behind a long data write must neither cut that
 // write short nor close the session.
 //
