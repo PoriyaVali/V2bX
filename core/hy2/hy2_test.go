@@ -54,6 +54,16 @@ func freeTCPPort(t *testing.T) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
+func freeUDPPort(t *testing.T) int {
+	t.Helper()
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	return conn.LocalAddr().(*net.UDPAddr).Port
+}
+
 type hyRig struct {
 	h     *Hysteria2
 	infos map[string]*panel.NodeInfo
@@ -81,7 +91,7 @@ func (r *hyRig) addNode(t *testing.T, tag string, users ...panel.UserInfo) {
 	info := r.infos[tag]
 	if info == nil {
 		hy := &panel.Hysteria2Node{}
-		hy.ServerPort = freeTCPPort(t) // UDP; any free number will do on loopback
+		hy.ServerPort = freeUDPPort(t)
 		info = &panel.NodeInfo{Type: "hysteria2", Hysteria2: hy, Common: &hy.CommonNode, Security: panel.Tls}
 		r.infos[tag] = info
 		limiter.AddLimiter(tag, &conf.LimitConfig{}, users, map[int]int{})

@@ -2,6 +2,7 @@ package xray
 
 import (
 	"encoding/base64"
+	"fmt"
 	"strings"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
@@ -12,15 +13,18 @@ import (
 	"github.com/xtls/xray-core/proxy/shadowsocks_2022"
 )
 
-func buildSSUsers(tag string, userInfo []panel.UserInfo, cypher string, serverKey string) (users []*protocol.User) {
+func buildSSUsers(tag string, userInfo []panel.UserInfo, cypher string, serverKey string) (users []*protocol.User, err error) {
 	users = make([]*protocol.User, len(userInfo))
 	for i := range userInfo {
-		users[i] = buildSSUser(tag, &userInfo[i], cypher, serverKey)
+		users[i], err = buildSSUser(tag, &userInfo[i], cypher, serverKey)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return users
+	return users, nil
 }
 
-func buildSSUser(tag string, userInfo *panel.UserInfo, cypher string, serverKey string) (user *protocol.User) {
+func buildSSUser(tag string, userInfo *panel.UserInfo, cypher string, serverKey string) (user *protocol.User, err error) {
 	if serverKey == "" {
 		ssAccount := &shadowsocks.Account{
 			Password:   userInfo.Uuid,
@@ -30,7 +34,7 @@ func buildSSUser(tag string, userInfo *panel.UserInfo, cypher string, serverKey 
 			Level:   0,
 			Email:   format.UserTag(tag, userInfo.Uuid),
 			Account: serial.ToTypedMessage(ssAccount),
-		}
+		}, nil
 	} else {
 		var keyLength int
 		switch cypher {
@@ -38,17 +42,20 @@ func buildSSUser(tag string, userInfo *panel.UserInfo, cypher string, serverKey 
 			keyLength = 16
 		case "2022-blake3-aes-256-gcm":
 			keyLength = 32
-		case "2022-blake3-chacha20-poly1305":
-			keyLength = 32
+		default:
+			return nil, fmt.Errorf("unsupported multi-user shadowsocks 2022 cipher: %s", cypher)
+		}
+		if len(userInfo.Uuid) < keyLength {
+			return nil, fmt.Errorf("shadowsocks 2022 credential for UID %d needs at least %d bytes", userInfo.Id, keyLength)
 		}
 		ssAccount := &shadowsocks_2022.Account{
-			Key:   base64.StdEncoding.EncodeToString([]byte(userInfo.Uuid[:keyLength])),
+			Key: base64.StdEncoding.EncodeToString([]byte(userInfo.Uuid[:keyLength])),
 		}
 		return &protocol.User{
 			Level:   0,
 			Email:   format.UserTag(tag, userInfo.Uuid),
 			Account: serial.ToTypedMessage(ssAccount),
-		}
+		}, nil
 	}
 }
 

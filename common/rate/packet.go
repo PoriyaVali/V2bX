@@ -1,6 +1,8 @@
 package rate
 
 import (
+	"context"
+	"net"
 	"sync"
 
 	"github.com/sagernet/sing/common/buf"
@@ -23,6 +25,8 @@ import (
 type PacketConn struct {
 	N.PacketConn
 	limiter Waiter
+	ctx     context.Context
+	cancel  context.CancelFunc
 	cacheMu sync.Mutex
 	cached  []*N.PacketBuffer
 }
@@ -34,7 +38,8 @@ func (c *PacketConn) ReaderReplaceable() bool { return false }
 func (c *PacketConn) WriterReplaceable() bool { return false }
 
 func NewPacketConnRateLimiter(c N.PacketConn, l Waiter) N.PacketConn {
-	conn := &PacketConn{PacketConn: c, limiter: l}
+	ctx, cancel := context.WithCancel(context.Background())
+	conn := &PacketConn{PacketConn: c, limiter: l, ctx: ctx, cancel: cancel}
 	reader := N.UnwrapPacketReader(c)
 	for {
 		cached, ok := reader.(N.CachedPacketReader)
@@ -69,11 +74,18 @@ func (c *PacketConn) ReadCachedPacket() *N.PacketBuffer {
 	c.cached[0] = nil
 	c.cached = c.cached[1:]
 	c.cacheMu.Unlock()
-	c.limiter.Wait(int64(packet.Buffer.Len()))
+	if err := waitWithContext(c.ctx, c.limiter, int64(packet.Buffer.Len())); err != nil {
+		packet.Buffer.Release()
+		N.PutPacketBuffer(packet)
+		return nil
+	}
 	return packet
 }
 
 func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+	if c.ctx.Err() != nil {
+		return M.Socksaddr{}, net.ErrClosed
+	}
 	if packet := c.ReadCachedPacket(); packet != nil {
 		destination := packet.Destination
 		_, err := buffer.ReadOnceFrom(packet.Buffer)
@@ -81,21 +93,26 @@ func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		N.PutPacketBuffer(packet)
 		return destination, err
 	}
+	if c.ctx.Err() != nil {
+		return M.Socksaddr{}, net.ErrClosed
+	}
 	destination, err := c.PacketConn.ReadPacket(buffer)
 	if err == nil && buffer.Len() > 0 {
-		c.limiter.Wait(int64(buffer.Len()))
+		err = waitWithContext(c.ctx, c.limiter, int64(buffer.Len()))
 	}
 	return destination, err
 }
 
 func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	if n := buffer.Len(); n > 0 {
-		c.limiter.Wait(int64(n))
+	if err := waitWithContext(c.ctx, c.limiter, int64(buffer.Len())); err != nil {
+		buffer.Release()
+		return err
 	}
 	return c.PacketConn.WritePacket(buffer, destination)
 }
 
 func (c *PacketConn) Close() error {
+	c.cancel()
 	c.cacheMu.Lock()
 	N.ReleaseMultiPacketBuffer(c.cached)
 	c.cached = nil

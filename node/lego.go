@@ -9,7 +9,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,7 +32,7 @@ type Lego struct {
 }
 
 func NewLego(config *conf.CertConfig) (*Lego, error) {
-	user, err := NewLegoUser(path.Join(path.Dir(config.CertFile),
+	user, err := NewLegoUser(filepath.Join(filepath.Dir(config.CertFile),
 		"user",
 		fmt.Sprintf("user-%s.json", config.Email)),
 		config.Email)
@@ -58,8 +58,8 @@ func NewLego(config *conf.CertConfig) (*Lego, error) {
 }
 
 func checkPath(p string) error {
-	if !file.IsExist(path.Dir(p)) {
-		err := os.MkdirAll(path.Dir(p), 0755)
+	if !file.IsExist(filepath.Dir(p)) {
+		err := os.MkdirAll(filepath.Dir(p), 0755)
 		if err != nil {
 			return fmt.Errorf("create dir error: %s", err)
 		}

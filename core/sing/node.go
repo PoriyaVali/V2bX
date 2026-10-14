@@ -53,6 +53,9 @@ type HttpupgradeNetworkConfig struct {
 }
 
 func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (option.Inbound, error) {
+	if info.Common.ServerPort < 0 || info.Common.ServerPort > 65535 {
+		return option.Inbound{}, fmt.Errorf("server_port %d is outside 0-65535", info.Common.ServerPort)
+	}
 	addr, err := netip.ParseAddr(c.ListenIP)
 	if err != nil {
 		return option.Inbound{}, fmt.Errorf("the listen ip not vail")

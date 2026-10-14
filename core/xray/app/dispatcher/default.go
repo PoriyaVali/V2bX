@@ -46,9 +46,6 @@ type cachedReader struct {
 
 func (r *cachedReader) Cache(b *buf.Buffer, deadline time.Duration) error {
 	mb, err := r.reader.ReadMultiBufferTimeout(deadline)
-	if err != nil {
-		return err
-	}
 	r.Lock()
 	if !mb.IsEmpty() {
 		r.cache, _ = buf.MergeMulti(r.cache, mb)
@@ -58,7 +55,9 @@ func (r *cachedReader) Cache(b *buf.Buffer, deadline time.Duration) error {
 	n := r.cache.Copy(rawBytes)
 	b.Resize(0, int32(n))
 	r.Unlock()
-	return nil
+	// A reader may return its final bytes together with EOF. Keep those
+	// bytes for the outbound even when sniffing stops on the error.
+	return err
 }
 
 func (r *cachedReader) readInternal() buf.MultiBuffer {

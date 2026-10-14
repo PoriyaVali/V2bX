@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,6 +48,13 @@ type node struct {
 	tag         string
 	dir         string
 	metricsPort int
+	// A poll reuses its bounded loopback transport instead of abandoning a
+	// new keep-alive connection and its goroutines on every metrics request.
+	metricsOnce   sync.Once
+	metricsClient *http.Client
+	// Serialize the snapshot and replacement together. Concurrent syncs must
+	// not truncate the same temporary file or overwrite a newer user list.
+	credentialsMu sync.Mutex
 
 	mu      sync.Mutex
 	cmd     *exec.Cmd
@@ -433,6 +441,7 @@ func (n *node) shutdown() {
 	}
 	cmd := n.cmd
 	n.mu.Unlock()
+	n.metricsHTTPClient().CloseIdleConnections()
 
 	if cmd != nil && cmd.Process != nil {
 		// SIGTERM, which the endpoint handles by closing its listeners and

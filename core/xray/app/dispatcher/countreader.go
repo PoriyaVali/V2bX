@@ -20,22 +20,16 @@ type CounterReader struct {
 // full second on a VLESS node before its first byte.
 func (c *CounterReader) ReadMultiBufferTimeout(timeout time.Duration) (buf.MultiBuffer, error) {
 	mb, err := c.Reader.ReadMultiBufferTimeout(timeout)
-	if err != nil {
-		return nil, err
-	}
 	if mb.Len() > 0 {
 		c.Counter.Add(int64(mb.Len()))
 	}
-	return mb, nil
+	return mb, err
 }
 
 func (c *CounterReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 	mb, err := c.Reader.ReadMultiBuffer()
-	if err != nil {
-		return nil, err
-	}
 	if mb.Len() > 0 {
 		c.Counter.Add(int64(mb.Len()))
 	}
-	return mb, nil
+	return mb, err
 }

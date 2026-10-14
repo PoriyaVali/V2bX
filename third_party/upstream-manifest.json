@@ -1,0 +1,262 @@
+[
+  {
+    "module": "github.com/anytls/sing-anytls",
+    "version": "v0.0.11",
+    "directory": "sing-anytls",
+    "modified_files": [
+      "service.go"
+    ],
+    "files": [
+      {
+        "path": "client.go",
+        "upstream_sha256": "982910de783d0f8864a2bf254cec9e75ddd35a7ebd806a4cb243c44896c5bfe4",
+        "patched_sha256": "982910de783d0f8864a2bf254cec9e75ddd35a7ebd806a4cb243c44896c5bfe4"
+      },
+      {
+        "path": "go.mod",
+        "upstream_sha256": "166eb1c4595a895630b5d98098c0228ed0692d9a6b270cbc3dc12c28c4c5d79a",
+        "patched_sha256": "166eb1c4595a895630b5d98098c0228ed0692d9a6b270cbc3dc12c28c4c5d79a"
+      },
+      {
+        "path": "go.sum",
+        "upstream_sha256": "fb7aea31aa00849554c3cfbe55c4abfaff6549bda417585014e49798859e88c7",
+        "patched_sha256": "fb7aea31aa00849554c3cfbe55c4abfaff6549bda417585014e49798859e88c7"
+      },
+      {
+        "path": "LICENSE",
+        "upstream_sha256": "df8e304aaa400c40a02bb48836a6172ee9ffb3666a5b28088d7201cf1a8b740e",
+        "patched_sha256": "df8e304aaa400c40a02bb48836a6172ee9ffb3666a5b28088d7201cf1a8b740e"
+      },
+      {
+        "path": "padding/padding.go",
+        "upstream_sha256": "d6c81ba227c992433de797771c4cd16ef73e4fcf40e857bc6880e0d534d27ca9",
+        "patched_sha256": "d6c81ba227c992433de797771c4cd16ef73e4fcf40e857bc6880e0d534d27ca9"
+      },
+      {
+        "path": "pipe/deadline.go",
+        "upstream_sha256": "052dc5dacf68e8453d74e4a59ddd5ba718f5e6edbced0aa3d98d954e57faf38f",
+        "patched_sha256": "052dc5dacf68e8453d74e4a59ddd5ba718f5e6edbced0aa3d98d954e57faf38f"
+      },
+      {
+        "path": "pipe/io_pipe.go",
+        "upstream_sha256": "d50d3b9657d73aeb20889bf4b3ec3c1f8f0030faf2ac6c10bf4b076ecabd6904",
+        "patched_sha256": "d50d3b9657d73aeb20889bf4b3ec3c1f8f0030faf2ac6c10bf4b076ecabd6904"
+      },
+      {
+        "path": "README.md",
+        "upstream_sha256": "acd89205ecd7c888ba545258ffebcab6a9313f7ee7a37087b3766362772125d0",
+        "patched_sha256": "acd89205ecd7c888ba545258ffebcab6a9313f7ee7a37087b3766362772125d0"
+      },
+      {
+        "path": "service.go",
+        "upstream_sha256": "eab7bd2b780ece06bef1711e59f84d64f3d85a0f3de7db10186da0392ce47837",
+        "patched_sha256": "56fe13058deef7045d114a722f602e8339a99a42b8e73fe3b1988cf092637d4f"
+      },
+      {
+        "path": "session/client.go",
+        "upstream_sha256": "6ece60c575b6b654ae29dada879f4d273dc4befa7b88ae07bdf204d1e8a9d740",
+        "patched_sha256": "6ece60c575b6b654ae29dada879f4d273dc4befa7b88ae07bdf204d1e8a9d740"
+      },
+      {
+        "path": "session/frame.go",
+        "upstream_sha256": "a7bbe42c049f314c6c2fda7059b7301e5452962057826bdfccf1d5bef81a8fc8",
+        "patched_sha256": "a7bbe42c049f314c6c2fda7059b7301e5452962057826bdfccf1d5bef81a8fc8"
+      },
+      {
+        "path": "session/session.go",
+        "upstream_sha256": "14e27f2cca6118a3025b1875ffe8963d2fe840f5554bd2ff4464dd0a5f162fb8",
+        "patched_sha256": "14e27f2cca6118a3025b1875ffe8963d2fe840f5554bd2ff4464dd0a5f162fb8"
+      },
+      {
+        "path": "session/stream.go",
+        "upstream_sha256": "1f7ebfeb99ab5b0857d007dfedf664a667ef513aa3c95637ee58e86569a972d3",
+        "patched_sha256": "1f7ebfeb99ab5b0857d007dfedf664a667ef513aa3c95637ee58e86569a972d3"
+      },
+      {
+        "path": "skiplist/contianer.go",
+        "upstream_sha256": "546786c68aaa0c58c3d40467fd338de0e48c44f4b8a54cb7bf2f67dac8ef49a8",
+        "patched_sha256": "546786c68aaa0c58c3d40467fd338de0e48c44f4b8a54cb7bf2f67dac8ef49a8"
+      },
+      {
+        "path": "skiplist/skiplist.go",
+        "upstream_sha256": "f08a755dde5510ffd9f12ec86f22d1db81d2c6efee18244af45a6b73a57238a9",
+        "patched_sha256": "f08a755dde5510ffd9f12ec86f22d1db81d2c6efee18244af45a6b73a57238a9"
+      },
+      {
+        "path": "skiplist/skiplist_newnode.go",
+        "upstream_sha256": "a2f2afd8de5b0c5278c4eab710aacf1b6affb78dc7cad8fd7df23caf42414510",
+        "patched_sha256": "a2f2afd8de5b0c5278c4eab710aacf1b6affb78dc7cad8fd7df23caf42414510"
+      },
+      {
+        "path": "skiplist/types.go",
+        "upstream_sha256": "cc344ed697230edc57ae3dd057e55008df06b02de9029a2dc8e3ddbbf8b0c898",
+        "patched_sha256": "cc344ed697230edc57ae3dd057e55008df06b02de9029a2dc8e3ddbbf8b0c898"
+      },
+      {
+        "path": "util/deadline.go",
+        "upstream_sha256": "ebba69dca94d1c1ba416dc85a0a094f93316d5ee71440c358efef8de20ba2776",
+        "patched_sha256": "ebba69dca94d1c1ba416dc85a0a094f93316d5ee71440c358efef8de20ba2776"
+      },
+      {
+        "path": "util/string_map.go",
+        "upstream_sha256": "53108e5086796e7efde38b849d20883dd577007fe749aeb59cae6e5e8714985c",
+        "patched_sha256": "53108e5086796e7efde38b849d20883dd577007fe749aeb59cae6e5e8714985c"
+      },
+      {
+        "path": "util/type.go",
+        "upstream_sha256": "1f381a30a57a33b669e37507017c514ac03811063a1c9ca9272a38daa0550502",
+        "patched_sha256": "1f381a30a57a33b669e37507017c514ac03811063a1c9ca9272a38daa0550502"
+      },
+      {
+        "path": "util/version.go",
+        "upstream_sha256": "a83c3845a762feb9f6e71622f5c20f97f331fb66341bcbb122acd58107941f19",
+        "patched_sha256": "a83c3845a762feb9f6e71622f5c20f97f331fb66341bcbb122acd58107941f19"
+      }
+    ]
+  },
+  {
+    "module": "github.com/sagernet/sing-shadowsocks",
+    "version": "v0.2.8",
+    "directory": "sing-shadowsocks",
+    "modified_files": [
+      "shadowaead_2022/service_multi.go"
+    ],
+    "files": [
+      {
+        "path": ".github/update_dependencies.sh",
+        "upstream_sha256": "85785c228a94888eb4828f16df25f812feba0b86f099c66b8df9b599b3054abc",
+        "patched_sha256": "85785c228a94888eb4828f16df25f812feba0b86f099c66b8df9b599b3054abc"
+      },
+      {
+        "path": ".github/workflows/lint.yml",
+        "upstream_sha256": "fd956ea20530f1d574f7600031c9053d7bd74cb7389286a0727940de4e2ebbd6",
+        "patched_sha256": "fd956ea20530f1d574f7600031c9053d7bd74cb7389286a0727940de4e2ebbd6"
+      },
+      {
+        "path": ".github/workflows/test.yml",
+        "upstream_sha256": "df1c96373575e7228da52961ec437c9f911a8f3b801b45bd4bb793988669efd5",
+        "patched_sha256": "df1c96373575e7228da52961ec437c9f911a8f3b801b45bd4bb793988669efd5"
+      },
+      {
+        "path": ".gitignore",
+        "upstream_sha256": "619a754b37b7bf159791d2f3af67800e2654d2c211a4706842604b0cbbf15a48",
+        "patched_sha256": "619a754b37b7bf159791d2f3af67800e2654d2c211a4706842604b0cbbf15a48"
+      },
+      {
+        "path": ".golangci.yml",
+        "upstream_sha256": "b7d829060624a84f2c9c1613d34b0ea637505feeaf11dfd92f52b4e7d592363c",
+        "patched_sha256": "b7d829060624a84f2c9c1613d34b0ea637505feeaf11dfd92f52b4e7d592363c"
+      },
+      {
+        "path": "go.mod",
+        "upstream_sha256": "14f7ba3b6780fd160c9cbc8096e67ecd07e25ca3dafd2ffedbfae930f628d7d3",
+        "patched_sha256": "14f7ba3b6780fd160c9cbc8096e67ecd07e25ca3dafd2ffedbfae930f628d7d3"
+      },
+      {
+        "path": "go.sum",
+        "upstream_sha256": "88fd646766986f8436062b010481327e0995343ace8aa3761c0440a87dd38999",
+        "patched_sha256": "88fd646766986f8436062b010481327e0995343ace8aa3761c0440a87dd38999"
+      },
+      {
+        "path": "LICENSE",
+        "upstream_sha256": "2f02b7486bcfa90d115c71a20437f3906b6fd5bef81c5dc0efd341399e89d0fd",
+        "patched_sha256": "2f02b7486bcfa90d115c71a20437f3906b6fd5bef81c5dc0efd341399e89d0fd"
+      },
+      {
+        "path": "Makefile",
+        "upstream_sha256": "7bb06130de435e7bcb71c2ce2f56003f7a6fee8e6197573c114ee58c80475385",
+        "patched_sha256": "7bb06130de435e7bcb71c2ce2f56003f7a6fee8e6197573c114ee58c80475385"
+      },
+      {
+        "path": "none.go",
+        "upstream_sha256": "f6d260b54feee2c529a58c1c82596d732e9796afdc84026b726b677259719cfd",
+        "patched_sha256": "f6d260b54feee2c529a58c1c82596d732e9796afdc84026b726b677259719cfd"
+      },
+      {
+        "path": "README.md",
+        "upstream_sha256": "5fe3f0af2fdcf65ee8166ad6f612f996a32ec4a288bfd81f073441e617801dff",
+        "patched_sha256": "5fe3f0af2fdcf65ee8166ad6f612f996a32ec4a288bfd81f073441e617801dff"
+      },
+      {
+        "path": "shadowaead/aead.go",
+        "upstream_sha256": "d7a37769c28cb0ef4d03ee104f8d6e834af56e5dc3ee573ce5f694b9739ae082",
+        "patched_sha256": "d7a37769c28cb0ef4d03ee104f8d6e834af56e5dc3ee573ce5f694b9739ae082"
+      },
+      {
+        "path": "shadowaead/protocol.go",
+        "upstream_sha256": "c177711b439ab33416651e8e039ff21affd6954d27d2e0a6cd3726936201cfc8",
+        "patched_sha256": "c177711b439ab33416651e8e039ff21affd6954d27d2e0a6cd3726936201cfc8"
+      },
+      {
+        "path": "shadowaead/service.go",
+        "upstream_sha256": "f6f0a46f04d21c4e62b1e5289140af3766b4cf026b8e73f1f6fed20425972924",
+        "patched_sha256": "f6f0a46f04d21c4e62b1e5289140af3766b4cf026b8e73f1f6fed20425972924"
+      },
+      {
+        "path": "shadowaead/service_multi.go",
+        "upstream_sha256": "5173c5a663d11395ce9a50c69153a53b47640bddde11bb43906e5714debbf12c",
+        "patched_sha256": "5173c5a663d11395ce9a50c69153a53b47640bddde11bb43906e5714debbf12c"
+      },
+      {
+        "path": "shadowaead_2022/protocol.go",
+        "upstream_sha256": "d7e7f40a4485ef7fe32508ac261b382162f27cfc7c2150f776192cef53857b3f",
+        "patched_sha256": "d7e7f40a4485ef7fe32508ac261b382162f27cfc7c2150f776192cef53857b3f"
+      },
+      {
+        "path": "shadowaead_2022/relay.go",
+        "upstream_sha256": "858e9a9e8f64ebe57e09a96c794852b33c3da70e35f7dacc17922dc941437d55",
+        "patched_sha256": "858e9a9e8f64ebe57e09a96c794852b33c3da70e35f7dacc17922dc941437d55"
+      },
+      {
+        "path": "shadowaead_2022/service.go",
+        "upstream_sha256": "1e8a23112b31e59a0af5e6e68f1c2581464dd5a8db4734dd939744b63dfc35b8",
+        "patched_sha256": "1e8a23112b31e59a0af5e6e68f1c2581464dd5a8db4734dd939744b63dfc35b8"
+      },
+      {
+        "path": "shadowaead_2022/service_multi.go",
+        "upstream_sha256": "bcfe41fb547eb6eedc15d53e4de564bc4055c9bfe0419e3d98cbbffb26cbc0b2",
+        "patched_sha256": "78c9cffd589df3546825e02c8548383dfd0577a3d4578f930f8dc1de04154368"
+      },
+      {
+        "path": "shadowaead_2022/service_multi_test.go",
+        "upstream_sha256": "8de8849b8fc50b5490289b6d1cc6b59d3d6b44e778f012aafdca4873ee38cea9",
+        "patched_sha256": "8de8849b8fc50b5490289b6d1cc6b59d3d6b44e778f012aafdca4873ee38cea9"
+      },
+      {
+        "path": "shadowaead_2022/service_test.go",
+        "upstream_sha256": "00f3b74250aef465ff32b350692e90989e201ed5fd6ca75ca90fd1cf56b7bdf0",
+        "patched_sha256": "00f3b74250aef465ff32b350692e90989e201ed5fd6ca75ca90fd1cf56b7bdf0"
+      },
+      {
+        "path": "shadowaead_2022/slidingwindow.go",
+        "upstream_sha256": "5b594d3bea9e12cd7071d089531206041f8801b1e0307481c6755b591a8828da",
+        "patched_sha256": "5b594d3bea9e12cd7071d089531206041f8801b1e0307481c6755b591a8828da"
+      },
+      {
+        "path": "shadowaead_2022/xor.go",
+        "upstream_sha256": "6886e10e9e9400d6c79069256807eee83b4fd498e98c8d8c4453a3b92eb6e967",
+        "patched_sha256": "6886e10e9e9400d6c79069256807eee83b4fd498e98c8d8c4453a3b92eb6e967"
+      },
+      {
+        "path": "shadowaead_2022/xor_go119.go",
+        "upstream_sha256": "68a311eaa801d9702d6fc517254825bd21e38d99c5531cd4a4be54ed1dc421ff",
+        "patched_sha256": "68a311eaa801d9702d6fc517254825bd21e38d99c5531cd4a4be54ed1dc421ff"
+      },
+      {
+        "path": "shadowimpl/fetcher.go",
+        "upstream_sha256": "148d73b6f03cd63756286294cf27f1d9d9ea6b80f6fdf67a3d97cdddcd93dada",
+        "patched_sha256": "148d73b6f03cd63756286294cf27f1d9d9ea6b80f6fdf67a3d97cdddcd93dada"
+      },
+      {
+        "path": "shadowsocks.go",
+        "upstream_sha256": "66a53a887c26d77f70b64dc0463b2b03713415bc37db647d649dc36f6dfe7755",
+        "patched_sha256": "66a53a887c26d77f70b64dc0463b2b03713415bc37db647d649dc36f6dfe7755"
+      },
+      {
+        "path": "shadowstream/protocol.go",
+        "upstream_sha256": "7624e67d4dcbd19efb95e8231ce39749f034b3f1161ebf206f373396b59ac829",
+        "patched_sha256": "7624e67d4dcbd19efb95e8231ce39749f034b3f1161ebf206f373396b59ac829"
+      }
+    ]
+  }
+]

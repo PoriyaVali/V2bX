@@ -55,7 +55,8 @@ type Limiter struct {
 // at. Plain fields here were a data race (confirmed by the race detector:
 // UpdateDynamicSpeedLimit writing ExpireTime against CheckLimit reading it).
 type UserLimitInfo struct {
-	UID               int // immutable after construction
+	UID               int        // immutable after construction
+	dynamicMu         sync.Mutex // serializes renewal with expiry of the same window
 	SpeedLimit        atomic.Int64
 	DeviceLimit       atomic.Int64
 	DynamicSpeedLimit atomic.Int64
@@ -216,11 +217,13 @@ func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire ti
 		return errors.New("not found")
 	}
 	info := v.(*UserLimitInfo)
+	info.dynamicMu.Lock()
 	info.DynamicSpeedLimit.Store(int64(limit))
 	info.ExpireTime.Store(expire.Unix())
 	// Drop the cached bucket: it is keyed by user only, so a stale one would keep
 	// serving the old rate and the throttle would silently never take effect.
 	l.SpeedLimiter.Delete(key)
+	info.dynamicMu.Unlock()
 	return nil
 }
 
@@ -349,11 +352,18 @@ func (l *Limiter) speedBucket(taguuid string) *ratelimit.Bucket {
 	u := v.(*UserLimitInfo)
 	dynamic := int(u.DynamicSpeedLimit.Load())
 	if exp := u.ExpireTime.Load(); exp != 0 && exp < time.Now().Unix() {
-		if u.ExpireTime.CompareAndSwap(exp, 0) {
+		// An atomic CAS of ExpireTime alone is insufficient: a renewal can
+		// arrive between that CAS and clearing DynamicSpeedLimit. Recheck both
+		// fields while serialized with the updater before expiring anything.
+		u.dynamicMu.Lock()
+		dynamic = int(u.DynamicSpeedLimit.Load())
+		if exp := u.ExpireTime.Load(); exp != 0 && exp < time.Now().Unix() {
+			u.ExpireTime.Store(0)
 			u.DynamicSpeedLimit.Store(0)
 			l.SpeedLimiter.Delete(taguuid)
+			dynamic = 0
 		}
-		dynamic = 0
+		u.dynamicMu.Unlock()
 	}
 	userLimit := determineSpeedLimit(int(u.SpeedLimit.Load()), dynamic)
 	limit := int64(determineSpeedLimit(l.SpeedLimit, userLimit)) * 1000000 / 8

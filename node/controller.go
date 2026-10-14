@@ -242,8 +242,17 @@ func (c *Controller) Close() error {
 		}
 	}
 	// The report task has stopped; this flush has sole ownership of its
-	// queue and accumulator. Include sub-threshold bytes before teardown.
+	// queue and accumulator. Collect bytes since its last poll as well as
+	// sub-threshold bytes before the core discards the node's counters.
 	if c.apiClient != nil {
+		if up {
+			tag, _, _ := c.state()
+			if traffic, terr := c.server.GetUserTrafficSlice(tag, true); terr != nil {
+				log.WithField("tag", tag).WithError(terr).Warn("Read final user traffic failed")
+			} else if len(traffic) > 0 {
+				c.queueTrafficReport(c.applyReportMinTraffic(traffic, 0))
+			}
+		}
 		if len(c.reportAccum) > 0 {
 			c.queueTrafficReport(c.applyReportMinTraffic(nil, 0))
 		}

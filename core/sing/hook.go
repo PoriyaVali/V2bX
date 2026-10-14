@@ -25,6 +25,7 @@ import (
 var _ adapter.ConnectionTracker = (*HookServer)(nil)
 
 type HookServer struct {
+	users   *UserMap // production admission is serialised with panel user updates
 	counter sync.Map //map[string]*counter.TrafficCounter
 	conns   sync.Map //map[string]*userConns, keyed by format.UserTag
 
@@ -281,6 +282,16 @@ const (
 // may hold at once (0 = no cap); the connection that would go over it is
 // refused, so a single runaway client cannot exhaust the node.
 func (h *HookServer) register(key string, c io.Closer, max int, deviceIP ...string) (func(), registerResult) {
+	if h.users != nil {
+		// An authenticated stream may still be routing when DelUsers finishes.
+		// Hold the same lock through registration so removal either finds this
+		// connection and closes it, or the late registration is refused.
+		h.users.mapLock.RLock()
+		defer h.users.mapLock.RUnlock()
+		if _, active := h.users.uidMap[key]; !active {
+			return nil, userRemoved
+		}
+	}
 	// Load first: the set almost always exists already, and LoadOrStore alone
 	// built (and threw away) a fresh set and map on every connection.
 	v, ok := h.conns.Load(key)
@@ -381,7 +392,14 @@ func logEvery(key string, every time.Duration) bool {
 // CloseUserConns drops every connection these users still have open on the
 // inbound. Returns how many were closed.
 func (h *HookServer) CloseUserConns(inbound string, uuids []string) int {
-	closed := 0
+	return closeDetachedConns(h.detachUserConns(inbound, uuids))
+}
+
+// detachUserConns tombstones and removes the old generation without network
+// I/O. Production user removal calls this while holding the membership lock;
+// a later re-add can then register into a fresh set safely.
+func (h *HookServer) detachUserConns(inbound string, uuids []string) []io.Closer {
+	var list []io.Closer
 	for _, uuid := range uuids {
 		v, ok := h.conns.LoadAndDelete(format.UserTag(inbound, uuid))
 		if !ok {
@@ -393,19 +411,21 @@ func (h *HookServer) CloseUserConns(inbound string, uuids []string) int {
 		// it would deadlock the node.
 		uc.mu.Lock()
 		uc.closed = true
-		list := make([]io.Closer, 0, len(uc.m))
 		for c := range uc.m {
 			list = append(list, c)
 		}
 		uc.m = nil
 		uc.devices = nil
 		uc.mu.Unlock()
-		for _, c := range list {
-			_ = c.Close()
-			closed++
-		}
 	}
-	return closed
+	return list
+}
+
+func closeDetachedConns(list []io.Closer) int {
+	for _, c := range list {
+		_ = c.Close()
+	}
+	return len(list)
 }
 
 func (h *HookServer) ModeList() []string {
