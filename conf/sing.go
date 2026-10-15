@@ -60,12 +60,12 @@ type SingOptions struct {
 	// TLS handshake but is not one of our users — an active prober, in other
 	// words. Closing on them instead, which is what happens with this off, makes
 	// the port answer like nothing else on the internet. Served in-process (see
-	// core/sing/decoy.go), so there is nothing to install on the node.
+	// common/decoy), so there is nothing to install on the node.
 	//
 	// Defaults ON: NewSingOptions is the base every node config unmarshals over,
 	// so existing nodes pick it up on upgrade without an edit. Set false to opt
-	// out. Only anytls inbounds use it today — it is the only protocol here
-	// whose library accepts a fallback handler.
+	// out. It answers for anytls, and as hysteria2's masquerade when none is
+	// configured (core/sing wantsDecoy says why not the other protocols).
 	DecoySite *bool `json:"DecoySite"`
 	// Seconds; 0 = the defaults below.
 	TCPKeepAliveIdle     int `json:"TCPKeepAliveIdle"`

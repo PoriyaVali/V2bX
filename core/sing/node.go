@@ -14,7 +14,9 @@ import (
 	"encoding/json"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/json/badoption"
@@ -398,7 +400,7 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		tls.ALPN = append(tls.ALPN, "h3")
 		in.Options = &option.TUICInboundOptions{
 			ListenOptions:     listen,
-			CongestionControl: info.Tuic.CongestionControl,
+			CongestionControl: tuicCongestion(info.Tuic.CongestionControl),
 			ZeroRTTHandshake:  info.Tuic.ZeroRTTHandshake,
 			InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{
 				TLS: &tls,
@@ -484,6 +486,57 @@ func echKeyToPEM(key string) (string, error) {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "ECH KEYS", Bytes: raw})), nil
 }
 
+// tuicCongestion is the node's congestion control for what it sends to TUIC
+// clients: the panel's choice, else bbr. sing-box would use cubic, which reads
+// every lost packet as congestion and halves its rate - on Iranian mobile
+// paths, where loss comes from the radio and from throttling rather than from
+// full queues, that keeps a QUIC tunnel far below what the path carries. TCP
+// nodes already default to bbr for the same reason (conf.TCPCongestionName).
+func tuicCongestion(panelValue string) string {
+	if panelValue == "" {
+		return "bbr"
+	}
+	return panelValue
+}
+
+// wantsDecoy reports whether an inbound has somewhere to send unauthenticated
+// connections that nothing has claimed yet.
+//
+//   - anytls: its fallback, which this fork's sing-box dials directly.
+//   - hysteria2 without a masquerade: sing-box answered an unauthenticated
+//     HTTP/3 request with a bare 404 on every path. Its masquerade proxies the
+//     request itself, so the site is reached directly too.
+//
+// Not trojan: sing-box sends a trojan fallback through the router, and the
+// private-destination rules refuse 127.0.0.1 there - as they must, or a
+// subscriber could reach the node's own services. The prober would get a
+// closed socket either way, so nothing is attached rather than something that
+// never answers. VLESS and TUIC have no such hook in sing-box; a REALITY node
+// needs none, since strangers are relayed to the borrowed site.
+func wantsDecoy(in option.Inbound) bool {
+	switch o := in.Options.(type) {
+	case *option.AnyTLSInboundOptions:
+		return o.Fallback == nil
+	case *option.Hysteria2InboundOptions:
+		return o.Masquerade == nil
+	}
+	return false
+}
+
+// attachDecoy points the slot wantsDecoy found at the site.
+func attachDecoy(in option.Inbound, d *decoy.Site) {
+	host, port := d.HostPort()
+	switch o := in.Options.(type) {
+	case *option.AnyTLSInboundOptions:
+		o.Fallback = &option.ServerOptions{Server: host, ServerPort: port}
+	case *option.Hysteria2InboundOptions:
+		o.Masquerade = &option.Hysteria2Masquerade{
+			Type:         C.Hysterai2MasqueradeTypeProxy,
+			ProxyOptions: option.Hysteria2MasqueradeProxy{URL: d.URL()},
+		}
+	}
+}
+
 func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) error {
 	b.users.updateLock.Lock()
 	defer b.users.updateLock.Unlock()
@@ -498,29 +551,26 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	if err != nil {
 		return err
 	}
-	// Point the anytls inbound's fallback at this node's own decoy site, so a
-	// prober that speaks TLS and then fails authentication is answered by a
-	// web page instead of a closed socket. Started here rather than inside
-	// getInboundOptions because the listener's lifetime belongs to the node,
-	// not to the options struct.
+	// Point the inbound's fallback (or Hysteria2's masquerade) at this node's
+	// own decoy site, so a prober that completes the handshake and then fails
+	// authentication is answered by a web page instead of a closed socket.
+	// Started here rather than inside getInboundOptions because the listener's
+	// lifetime belongs to the node, not to the options struct.
 	//
 	// A failure to start it is deliberately NOT fatal: losing the disguise is
 	// worse than nothing, but refusing to bring the node up would cost every
 	// user their connection over a cosmetic listener.
-	if c.Type == "anytls" && config.SingOptions.DecoyEnabled() {
-		if opts, ok := c.Options.(*option.AnyTLSInboundOptions); ok {
-			if d, derr := startDecoy(decoySeed(tag)); derr != nil {
-				log.WithField("err", derr).Warn("decoy site unavailable; unauthenticated connections will be closed")
-			} else {
-				host, port := d.hostPort()
-				opts.Fallback = &option.ServerOptions{Server: host, ServerPort: port}
-				b.decoysMu.Lock()
-				if old := b.decoys[tag]; old != nil {
-					_ = old.Close() // node re-added: replace, never leak
-				}
-				b.decoys[tag] = d
-				b.decoysMu.Unlock()
+	if config.SingOptions.DecoyEnabled() && wantsDecoy(c) {
+		if d, derr := decoy.Start(decoy.Seed(tag)); derr != nil {
+			log.WithField("err", derr).Warn("decoy site unavailable; unauthenticated connections will be closed")
+		} else {
+			attachDecoy(c, d)
+			b.decoysMu.Lock()
+			if old := b.decoys[tag]; old != nil {
+				_ = old.Close() // node re-added: replace, never leak
 			}
+			b.decoys[tag] = d
+			b.decoysMu.Unlock()
 		}
 	}
 	in := b.box.Inbound()

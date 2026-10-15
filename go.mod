@@ -11,6 +11,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-acme/lego/v4 v4.34.0
 	github.com/go-resty/resty/v2 v2.17.2
+	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/juju/ratelimit v1.0.2
 	github.com/sagernet/sing v0.8.14
 	github.com/sagernet/sing-box v1.13.0
@@ -139,7 +140,6 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
-	github.com/gofrs/uuid/v5 v5.4.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
@@ -400,6 +400,14 @@ require (
 replace github.com/sagernet/sing-box v1.13.0 => github.com/PoriyaVali/sing-box v1.13.21-v2bx.2
 
 replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v1.260909.1
+
+// REALITY one commit before 8cdf7bf9c7f0, whose only change is that from it on
+// a ClientHello without an X25519MLKEM768 key share is relayed to the borrowed
+// site instead of authenticated. mihomo sends that share only when a profile
+// opts in and sing-box clients never do, so all of those users failed with
+// "reality verification failed" on xray REALITY nodes. Drop this once the
+// clients send the share by default. Guarded by core/xray/reality_compat_test.go.
+replace github.com/xtls/reality => github.com/xtls/reality v0.0.0-20260908045812-e1986a4d31ca
 
 replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261008165903-6be6cf2eeaa4
 

@@ -284,6 +284,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 			return
 		}
 	}
+	logFilteringAdvice(tag, newN, c.Options)
 	// add new node
 	if err := c.server.AddNode(tag, newN, c.Options); err != nil {
 		// The old node was already removed above, so it's down until the next

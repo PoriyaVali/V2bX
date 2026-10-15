@@ -128,9 +128,20 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, source M.Soc
 	}
 
 	session := session.NewServerSession(conn, func(stream *session.Stream) {
+		// Acknowledge the stream now, not once the destination is dialled.
+		// A v2 client reusing a pooled session closes it unless the SYNACK
+		// arrives within three seconds of opening the stream. Sent after the
+		// dial, the acknowledgement waited on sniffing, DNS and the
+		// destination's own latency on top of the round trip, so slow sites
+		// and lossy links killed healthy sessions. Liveness is what the client
+		// checks; a dial that fails still closes the stream with FIN.
+		_ = stream.HandshakeSuccess()
 		destination, err := M.SocksaddrSerializer.ReadAddrPort(stream)
 		if err != nil {
 			s.logger.ErrorContext(ctx, "ReadAddrPort:", err)
+			// Nothing else will ever close it: the client would wait on a
+			// stream the server has abandoned.
+			_ = stream.Close()
 			return
 		}
 

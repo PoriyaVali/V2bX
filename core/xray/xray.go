@@ -8,6 +8,7 @@ import (
 
 	"encoding/json/v2"
 
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	"github.com/PoriyaVali/V2bX/core/xray/app/dispatcher"
@@ -41,6 +42,9 @@ type Xray struct {
 	// Outbound (and rule) tags each node's panel route rules installed.
 	routeMu   sync.Mutex
 	routeTags map[string][]string
+	// Each TLS node's own decoy site (common/decoy), by node tag.
+	decoysMu sync.Mutex
+	decoys   map[string]*decoy.Site
 }
 
 type UserMap struct {
@@ -56,6 +60,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		},
 		nodeReportMinTrafficBytes: make(map[string]int64),
 		routeTags:                 make(map[string][]string),
+		decoys:                    make(map[string]*decoy.Site),
 	}, nil
 }
 
@@ -223,6 +228,12 @@ func (c *Xray) Close() error {
 	c.ohm = nil
 	c.dispatcher = nil
 	err := c.Server.Close()
+	c.decoysMu.Lock()
+	for tag, d := range c.decoys {
+		_ = d.Close()
+		delete(c.decoys, tag)
+	}
+	c.decoysMu.Unlock()
 	if err != nil {
 		return err
 	}

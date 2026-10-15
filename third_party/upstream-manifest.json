@@ -4,7 +4,8 @@
     "version": "v0.0.11",
     "directory": "sing-anytls",
     "modified_files": [
-      "service.go"
+      "service.go",
+      "session/session.go"
     ],
     "files": [
       {
@@ -50,7 +51,7 @@
       {
         "path": "service.go",
         "upstream_sha256": "eab7bd2b780ece06bef1711e59f84d64f3d85a0f3de7db10186da0392ce47837",
-        "patched_sha256": "17b00d1161212e7668e3890dbf791d918d2da56ee9bb1f77efa3f7731da45de5"
+        "patched_sha256": "43466d587d5eb38c3e76324b520056bd3b49c251d63c0936ea5ea78916abd029"
       },
       {
         "path": "session/client.go",
@@ -65,7 +66,7 @@
       {
         "path": "session/session.go",
         "upstream_sha256": "14e27f2cca6118a3025b1875ffe8963d2fe840f5554bd2ff4464dd0a5f162fb8",
-        "patched_sha256": "14e27f2cca6118a3025b1875ffe8963d2fe840f5554bd2ff4464dd0a5f162fb8"
+        "patched_sha256": "f336011f92e59d73bf4b394f7150a385e466e30066e00c060c7cdcd681ae9baa"
       },
       {
         "path": "session/stream.go",
@@ -113,7 +114,12 @@
         "patched_sha256": "a83c3845a762feb9f6e71622f5c20f97f331fb66341bcbb122acd58107941f19"
       }
     ],
-    "added_files": []
+    "added_files": [
+      {
+        "path": "session/write_test.go",
+        "patched_sha256": "0738c14171cc89c178c25a4210800b429332b047d1080ba51a4d55221c40067a"
+      }
+    ]
   },
   {
     "module": "github.com/sagernet/sing-shadowsocks",

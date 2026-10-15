@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/apernet/hysteria/core/v2/server"
 	"github.com/apernet/hysteria/extras/v2/correctnet"
@@ -296,10 +297,21 @@ func (n *Hysteria2node) getOutboundConfig(c *serverConfig) (server.Outbound, err
 	return Outbound, nil
 }
 
-func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.PacketConn, c *serverConfig) (http.Handler, error) {
+func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.PacketConn, c *serverConfig, decoySite bool) (http.Handler, error) {
 	var handler http.Handler
 	switch strings.ToLower(c.Masquerade.Type) {
-	case "", "404":
+	case "":
+		// Unconfigured, an unauthenticated HTTP/3 request - what a prober
+		// sends to tell a Hysteria2 server apart - got a bare 404 on every
+		// path. It gets the node's decoy site instead, and so does the TCP
+		// masquerade if the config enables one. "404", or the node option
+		// `"DecoySite": false`, keeps the old answer.
+		if !decoySite {
+			handler = http.NotFoundHandler()
+			break
+		}
+		handler = decoy.Handler(decoy.Seed(n.Tag))
+	case "404":
 		handler = http.NotFoundHandler()
 	case "file":
 		if c.Masquerade.File.Dir == "" {
@@ -418,7 +430,7 @@ func (n *Hysteria2node) getHyConfig(info *panel.NodeInfo, config *conf.Options, 
 	if err != nil {
 		return fail(err)
 	}
-	Masq, err := n.getMasqHandler(tls, conn, c)
+	Masq, err := n.getMasqHandler(tls, conn, c, config.DecoySite == nil || *config.DecoySite)
 	if err != nil {
 		return fail(err)
 	}

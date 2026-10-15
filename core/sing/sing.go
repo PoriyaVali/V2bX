@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/log"
 
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	box "github.com/sagernet/sing-box"
@@ -36,7 +37,7 @@ type Sing struct {
 	// One decoy site per node tag: each node has its own certificate and
 	// hostname, so each gets its own page. Ten nodes serving one identical
 	// page would just relocate the fingerprint into the repetition.
-	decoys   map[string]*decoy
+	decoys   map[string]*decoy.Site
 	decoysMu sync.Mutex
 }
 
@@ -160,7 +161,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		logFactory:                b.LogFactory(),
 		users:                     users,
 		nodeReportMinTrafficBytes: make(map[string]int64),
-		decoys:                    make(map[string]*decoy),
+		decoys:                    make(map[string]*decoy.Site),
 	}, nil
 }
 

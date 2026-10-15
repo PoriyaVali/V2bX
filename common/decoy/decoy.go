@@ -1,4 +1,37 @@
-package sing
+// Package decoy is a decoy web site, served by V2bX itself, that answers
+// whoever reaches a node's port without being one of its users.
+//
+// A listener that completes the TLS handshake and then closes the moment the
+// password does not match answers nothing like a web server, and that is
+// exactly what an active prober looks for: connect, speak TLS, send an
+// ordinary GET, see what comes back. Nothing did, so the port was a tell.
+// Iranian operators probe suspected proxies this way, and an address judged a
+// proxy is blocked for every user on it.
+//
+// An inbound's fallback (anytls, trojan, VLESS over TLS) or masquerade
+// (Hysteria2) points here instead, and this serves a small, ordinary-looking
+// site. Deliberately in-process: needing an nginx per node would mean ten
+// manual installs, a second service to keep running, and a config that drifts.
+// Everything here ships with the binary.
+//
+// It speaks HTTP/1.1 and prior-knowledge HTTP/2 on the same port, because a
+// fallback hands over the stream the prober's TLS negotiated: when a node
+// offers ALPN h2, a browser-like prober arrives speaking HTTP/2, and an
+// HTTP/1-only server would answer it with garbage.
+//
+// Two rules the design follows:
+//
+//  1. **Never impersonate a real organisation.** A page copying a real
+//     company would be both a legal problem and a weaker disguise - a prober
+//     can diff it against the genuine site. These are plain, unremarkable
+//     pages that claim to be nobody.
+//
+//  2. **Different per node.** Ten nodes serving one identical page just moves
+//     the fingerprint: the repetition itself becomes the signature. The
+//     template and its details are picked deterministically from the node's
+//     own identity, so each node keeps its own site across restarts without
+//     an operator choosing anything.
+package decoy
 
 import (
 	"crypto/sha256"
@@ -14,31 +47,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// A decoy site, served by V2bX itself.
-//
-// An anytls listener that completes the TLS handshake and then closes the
-// moment the password does not match answers nothing like a web server, and
-// that is exactly what an active prober looks for: connect, speak TLS, send an
-// ordinary GET, see what comes back. Nothing did, so the port was a tell.
-//
-// The inbound's fallback now points here instead, and this serves a small,
-// ordinary-looking site. Deliberately in-process: needing an nginx per node
-// would mean ten manual installs, a second service to keep running, and a
-// config that drifts. Everything here ships with the binary.
-//
-// Two rules the design follows:
-//
-//  1. **Never impersonate a real organisation.** A page copying a real
-//     company would be both a legal problem and a weaker disguise - a prober
-//     can diff it against the genuine site. These are plain, unremarkable
-//     pages that claim to be nobody.
-//
-//  2. **Different per node.** Ten nodes serving one identical page just moves
-//     the fingerprint: the repetition itself becomes the signature. The
-//     template and its details are picked deterministically from the node's
-//     own identity, so each node keeps its own site across restarts without
-//     an operator choosing anything.
-type decoy struct {
+// Site is one node's decoy site, served on a loopback port.
+type Site struct {
 	listener net.Listener
 	server   *http.Server
 	addr     string
@@ -226,15 +236,16 @@ const nginx404 = "<html>\r\n" +
 	"</body>\r\n" +
 	"</html>\r\n"
 
-// startDecoy binds a loopback listener and serves the site. The port is chosen
-// by the OS so nothing has to be reserved or configured, and it is loopback
-// only: a decoy reachable from outside on its own port would be a fresh tell,
-// since the site would then exist twice on one host.
-func startDecoy(seed string) (*decoy, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, fmt.Errorf("listen decoy: %w", err)
-	}
+// Handler is the site for seed as an http.Handler, for a server that answers
+// unauthenticated requests in-process (Hysteria2's masquerade) instead of
+// forwarding a connection to a listener.
+func Handler(seed string) http.Handler {
+	h, _ := newHandler(seed)
+	return h
+}
+
+// newHandler builds the site picked for seed and reports its title.
+func newHandler(seed string) (http.Handler, string) {
 	tpl, accent, built := pickDecoy(seed)
 	page := renderDecoy(tpl, accent, built)
 	// nginx's own ETag for a static file: last-modified time and size, in hex.
@@ -286,12 +297,28 @@ func startDecoy(seed string) (*decoy, error) {
 		// Server header, which gives the disguise away.
 		write(w, r, http.StatusNotFound, nginx404, "text/html")
 	})
+	return mux, tpl.title
+}
 
-	d := &decoy{
+// Start binds a loopback listener and serves the site. The port is chosen by
+// the OS so nothing has to be reserved or configured, and it is loopback only:
+// a decoy reachable from outside on its own port would be a fresh tell, since
+// the site would then exist twice on one host.
+func Start(seed string) (*Site, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen decoy: %w", err)
+	}
+	handler, title := newHandler(seed)
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	d := &Site{
 		listener: ln,
 		addr:     ln.Addr().String(),
 		server: &http.Server{
-			Handler:           mux,
+			Handler:           handler,
+			Protocols:         &protocols,
 			ReadHeaderTimeout: 10 * time.Second,
 			IdleTimeout:       30 * time.Second,
 		},
@@ -302,13 +329,14 @@ func startDecoy(seed string) (*decoy, error) {
 		}
 	}()
 	log.WithFields(log.Fields{
-		"site": tpl.title,
+		"site": title,
 		"addr": d.addr,
 	}).Info("decoy site serving unauthenticated connections")
 	return d, nil
 }
 
-func (d *decoy) Close() error {
+// Close stops the site. Safe on a nil Site and safe to repeat.
+func (d *Site) Close() error {
 	if d == nil {
 		return nil
 	}
@@ -319,8 +347,14 @@ func (d *decoy) Close() error {
 	return err
 }
 
-// Host and Port split for building the sing-box fallback ServerOptions.
-func (d *decoy) hostPort() (string, uint16) {
+// Addr is the site's loopback address, "127.0.0.1:port".
+func (d *Site) Addr() string { return d.addr }
+
+// URL is the site's address as an http URL, for a reverse-proxy masquerade.
+func (d *Site) URL() string { return "http://" + d.addr }
+
+// HostPort splits Addr, for a sing-box fallback's ServerOptions.
+func (d *Site) HostPort() (string, uint16) {
 	host, portStr, err := net.SplitHostPort(d.addr)
 	if err != nil {
 		return "127.0.0.1", 0
@@ -330,8 +364,8 @@ func (d *decoy) hostPort() (string, uint16) {
 	return host, port
 }
 
-// decoySeed keeps the site stable for a node: same node, same site, restart
-// after restart. format.UserTag-style joining keeps it readable in logs.
-func decoySeed(tag string) string {
+// Seed keeps the site stable for a node: same node, same site, restart after
+// restart. format.UserTag-style joining keeps it readable in logs.
+func Seed(tag string) string {
 	return format.UserTag("decoy", tag)
 }

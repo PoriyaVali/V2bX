@@ -8,11 +8,13 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -226,6 +228,48 @@ func TestHy2_MasqueradeSurvivesReload(t *testing.T) {
 		resp.Body.Close()
 		if resp.Header.Get("Alt-Svc") == "" {
 			t.Fatalf("round %d: Alt-Svc header missing", i)
+		}
+		if err := r.h.DelNode("A"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// With no masquerade type configured, a stranger's request is answered by the
+// node's decoy site - on HTTP/3 and on the TCP masquerade alike, which share
+// one handler - where it used to be a bare 404 on every path. An explicit
+// "404" still gets the 404, and so does a node whose options say
+// `"DecoySite": false`, as on the sing and Xray cores.
+func TestHy2_UnconfiguredMasqueradeServesDecoySite(t *testing.T) {
+	off := false
+	for _, tc := range []struct {
+		typ        string
+		decoySite  *bool
+		wantStatus int
+	}{{"", nil, http.StatusOK}, {"404", nil, http.StatusNotFound}, {"", &off, http.StatusNotFound}} {
+		r := newHyRig(t)
+		r.opts.DecoySite = tc.decoySite
+		httpPort, httpsPort := freeTCPPort(t), freeTCPPort(t)
+		cfg := filepath.Join(t.TempDir(), "hy2.yaml")
+		masq := "masquerade:\n"
+		if tc.typ != "" {
+			masq += fmt.Sprintf("  type: %q\n", tc.typ)
+		}
+		masq += fmt.Sprintf("  listenHTTP: 127.0.0.1:%d\n  listenHTTPS: 127.0.0.1:%d\n", httpPort, httpsPort)
+		os.WriteFile(cfg, []byte(masq), 0o600)
+		r.opts.Hysteria2ConfigPath = cfg
+		r.addNode(t, "A", panel.UserInfo{Id: 1, Uuid: "u1"})
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", httpPort))
+		if err != nil {
+			t.Fatalf("type %q: masquerade not answering: %v", tc.typ, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != tc.wantStatus {
+			t.Fatalf("type %q: status %d, want %d", tc.typ, resp.StatusCode, tc.wantStatus)
+		}
+		if tc.wantStatus == http.StatusOK && (resp.Header.Get("Server") != "nginx" || !strings.Contains(string(body), "<title>")) {
+			t.Fatalf("unconfigured masquerade is not the decoy site: Server %q, body %.80q", resp.Header.Get("Server"), body)
 		}
 		if err := r.h.DelNode("A"); err != nil {
 			t.Fatal(err)
