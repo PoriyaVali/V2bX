@@ -33,12 +33,12 @@ lossy links killed healthy sessions (`core/sing/anytls_synack_test.go`). A
 control frame's five-second deadline was set on the whole connection before
 taking the write lock, cutting data writes still draining over a slow link and
 then closing the session. Data writes still carry no deadline, so that a slow
-link is never cut, and go out in 16 KiB chunks (a client's padded records
-whole), each noting progress; a control frame waiting behind one that has
-handed nothing to the connection for 30 seconds - a peer that stopped reading,
-or a dead path - closes the session instead of hanging with it, however long a
-moving write takes. And a write over 65535 bytes went out as one frame with a
-wrapped length (`sing-anytls/session/write_test.go`).
+link is never cut, and go out in pieces of at most 16 KiB (a client's padded
+records whole up to that size), each noting progress; a control frame waiting
+behind one that has handed nothing to the connection for 30 seconds - a peer
+that stopped reading, or a dead path - closes the session instead of hanging
+with it, however long a moving write takes. And a write over 65535 bytes went
+out as one frame with a wrapped length (`sing-anytls/session/write_test.go`).
 
 Real protocol regressions live in `core/sing/ss2022_audit_test.go` and
 `core/sing/anytls_users_audit_test.go`. Recheck these tests and the provenance

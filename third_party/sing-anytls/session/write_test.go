@@ -173,6 +173,45 @@ func TestControlFrameWaitsOutSlowPaddedRecords(t *testing.T) {
 	}
 }
 
+// 🔴 One padded record larger than a chunk must show progress while it drains,
+// not only once it is gone: a scheme may size a record at up to 64 KiB, and on
+// a weak link such a record outlasts a control frame's patience by itself.
+func TestControlFrameWaitsOutALargePaddedRecord(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drains a large padded record over a deliberately slow link")
+	}
+	var pad atomic.TypedValue[*padding.PaddingFactory]
+	// One 60000-byte record: three and a half seconds at this rate, well past
+	// the patience below, in chunks of a second each.
+	if !padding.UpdatePaddingScheme([]byte("stop=2\n1=60000-60000"), &pad) {
+		t.Fatal("padding scheme rejected")
+	}
+	s := NewClientSession(pacedLink(t, 250*time.Millisecond), &pad, logger.NOP())
+	defer s.Close()
+
+	dataErr := make(chan error, 1)
+	go func() {
+		_, err := s.writeConnWithin(make([]byte, 100), 0)
+		dataErr <- err
+	}()
+	time.Sleep(300 * time.Millisecond) // the padded record holds the line
+	ctrlErr := make(chan error, 1)
+	go func() {
+		_, err := s.writeConnWithin([]byte{cmdFIN, 0, 0, 0, 2, 0, 0}, 2*time.Second)
+		ctrlErr <- err
+	}()
+
+	if err := <-dataErr; err != nil {
+		t.Fatalf("a large padded record that kept draining was cut: %v", err)
+	}
+	if err := <-ctrlErr; err != nil {
+		t.Fatalf("the control frame failed behind a large padded record: %v", err)
+	}
+	if s.IsClosed() {
+		t.Fatal("the session was closed although its padded record kept leaving")
+	}
+}
+
 // 🔴 A control frame queued behind a long data write must neither cut that
 // write short nor close the session.
 //

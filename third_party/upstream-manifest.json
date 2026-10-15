@@ -66,7 +66,7 @@
       {
         "path": "session/session.go",
         "upstream_sha256": "14e27f2cca6118a3025b1875ffe8963d2fe840f5554bd2ff4464dd0a5f162fb8",
-        "patched_sha256": "d0a596751a8e802809e62c635d861da92088a5500bb1854c6320a22599664665"
+        "patched_sha256": "f336011f92e59d73bf4b394f7150a385e466e30066e00c060c7cdcd681ae9baa"
       },
       {
         "path": "session/stream.go",
@@ -117,7 +117,7 @@
     "added_files": [
       {
         "path": "session/write_test.go",
-        "patched_sha256": "a429e5837519c0134d3355879318b2a3888fa64c37fccf4e826a513f5eabdaee"
+        "patched_sha256": "0738c14171cc89c178c25a4210800b429332b047d1080ba51a4d55221c40067a"
       }
     ]
   },

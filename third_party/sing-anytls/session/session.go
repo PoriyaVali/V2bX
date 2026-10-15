@@ -480,12 +480,21 @@ func (s *Session) lockConnWithin(timeout time.Duration) {
 }
 
 // writeChunk is how much of a write goes to the connection at a time, with the
-// session's progress noted after each: one TLS record's worth.
+// session's progress noted after each: one TLS record's worth. No write leaves
+// in a larger piece, so the slowest link a waiting control frame still tells
+// from a dead one moves a chunk per controlFrameWriteTimeout - about half a
+// KiB a second, slower than any connection can be used at.
 const writeChunk = 16 << 10
 
-// writeRecord writes one padded record to the connection whole, as the
-// padding scheme sized it, and notes the progress. The caller holds connLock.
+// writeRecord writes one padded record to the connection and notes the
+// progress. A record no larger than a chunk goes in one write, as the padding
+// scheme sized it; a larger one goes a chunk at a time like any other write,
+// so that it shows progress while it drains - TLS cuts it into records of at
+// most that size anyway. The caller holds connLock.
 func (s *Session) writeRecord(b []byte) (int, error) {
+	if len(b) > writeChunk {
+		return s.writeInChunks(b)
+	}
 	n, err := s.conn.Write(b)
 	if err == nil {
 		s.progress.Store(time.Now().UnixNano())
