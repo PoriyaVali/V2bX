@@ -21,6 +21,10 @@ import (
 type Session struct {
 	conn     net.Conn
 	connLock sync.Mutex
+	// progress is when the holder of connLock took it or last handed a chunk
+	// to conn (UnixNano): how a control frame waiting for the lock tells a
+	// slow write from a stalled one.
+	progress atomic.Int64
 
 	streams    map[uint32]*Stream
 	streamId   atomic.Uint32
@@ -438,26 +442,62 @@ func (s *Session) writeConn(b []byte) (n int, err error) {
 }
 
 // lockConnWithin takes connLock for a control frame. Waiting is normal: a data
-// write ahead of it may still be draining over a slow link, and data writes
-// carry no deadline so that such a link is never cut. But a write that holds
-// the connection for timeout means the peer stopped reading or the path is
-// gone, and nothing else would interrupt it until the operating system gives
-// up on the connection. The session is closed then: that write fails and
-// frees the lock, and this frame's own write fails in turn, so whoever closes
-// a stream gets an answer instead of hanging with the session.
+// write ahead of it may still be draining over a slow link, however long that
+// takes, and data writes carry no deadline so that such a link is never cut.
+// But a holder that has handed nothing to the connection for timeout means the
+// peer stopped reading or the path is gone, and nothing else would interrupt
+// it until the operating system gives up on the connection. The session is
+// closed then: that write fails and frees the lock, and this frame's own write
+// fails in turn, so whoever closes a stream gets an answer instead of hanging
+// with the session.
+//
+// Elapsed time alone does not say a write is stuck: a large one over a weak
+// link can hold the lock for minutes while every chunk keeps leaving.
 func (s *Session) lockConnWithin(timeout time.Duration) {
 	if s.connLock.TryLock() {
 		return
 	}
-	var locked atomic.Bool
-	stalled := time.AfterFunc(timeout, func() {
-		if !locked.Load() {
-			s.Close()
+	acquired := make(chan struct{})
+	go func() {
+		wait := time.NewTimer(timeout)
+		defer wait.Stop()
+		for {
+			select {
+			case <-acquired:
+				return
+			case <-wait.C:
+			}
+			idle := time.Since(time.Unix(0, s.progress.Load()))
+			if idle >= timeout {
+				s.Close()
+				return
+			}
+			wait.Reset(timeout - idle)
 		}
-	})
+	}()
 	s.connLock.Lock()
-	locked.Store(true)
-	stalled.Stop()
+	close(acquired)
+}
+
+// writeChunk is how much of a write goes to the connection at a time, with the
+// session's progress noted after each: one TLS record's worth.
+const writeChunk = 16 << 10
+
+// writeInChunks writes b to the connection a chunk at a time, noting progress
+// after each one leaves. The caller holds connLock.
+func (s *Session) writeInChunks(b []byte) (n int, err error) {
+	for len(b) > 0 {
+		chunk := b[:min(len(b), writeChunk)]
+		var m int
+		m, err = s.conn.Write(chunk)
+		n += m
+		if err != nil {
+			return n, err
+		}
+		s.progress.Store(time.Now().UnixNano())
+		b = b[len(chunk):]
+	}
+	return n, nil
 }
 
 // writeConnWithin is writeConn for a control frame, bounded by timeout when it
@@ -470,6 +510,7 @@ func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err e
 		s.connLock.Lock()
 	}
 	defer s.connLock.Unlock()
+	s.progress.Store(time.Now().UnixNano())
 
 	if timeout > 0 && !s.buffering {
 		s.conn.SetWriteDeadline(time.Now().Add(timeout))
@@ -537,7 +578,7 @@ func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err e
 			if len(b) == 0 {
 				return
 			} else {
-				n2, err := s.conn.Write(b)
+				n2, err := s.writeInChunks(b)
 				return n + n2, err
 			}
 		} else {
@@ -545,5 +586,5 @@ func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err e
 		}
 	}
 
-	return s.conn.Write(b)
+	return s.writeInChunks(b)
 }

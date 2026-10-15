@@ -5,7 +5,7 @@ They carry small concurrency repairs without requiring a dependency upgrade.
 
 | Local module | Upstream version | Changed source |
 | --- | --- | --- |
-| `sing-anytls` | [`github.com/anytls/sing-anytls@v0.0.11`](https://github.com/anytls/sing-anytls/tree/v0.0.11) | `service.go`: publish an immutable authentication table atomically; acknowledge a new stream (SYNACK) when it opens rather than after the dial; close a stream whose destination cannot be read. `session/session.go`: a control frame's write deadline covers only its own write, and one stuck behind a write that cannot drain closes the session; data larger than one frame is split |
+| `sing-anytls` | [`github.com/anytls/sing-anytls@v0.0.11`](https://github.com/anytls/sing-anytls/tree/v0.0.11) | `service.go`: publish an immutable authentication table atomically; acknowledge a new stream (SYNACK) when it opens rather than after the dial; close a stream whose destination cannot be read. `session/session.go`: a control frame's write deadline covers only its own write, and one stuck behind a write that has stopped moving closes the session; data larger than one frame is split |
 | `sing-shadowsocks` | [`github.com/sagernet/sing-shadowsocks@v0.2.8`](https://github.com/SagerNet/sing-shadowsocks/tree/v0.2.8) | `shadowaead_2022/service_multi.go`: publish PSK, identity and cipher tables as one immutable generation |
 | `sing-quic` | [`github.com/sagernet/sing-quic@v0.6.5`](https://github.com/SagerNet/sing-quic/tree/v0.6.5) | `tuic/service.go`: publish paired user/password tables atomically and admit one authentication stream per session |
 
@@ -33,9 +33,10 @@ lossy links killed healthy sessions (`core/sing/anytls_synack_test.go`). A
 control frame's five-second deadline was set on the whole connection before
 taking the write lock, cutting data writes still draining over a slow link and
 then closing the session. Data writes still carry no deadline, so that a slow
-link is never cut; a control frame that waits 30 seconds behind one - a peer
-that stopped reading, or a dead path - closes the session instead of hanging
-with it. And a write over 65535 bytes went out as one frame with a wrapped
+link is never cut, and go out in 16 KiB chunks that each note progress; a
+control frame waiting behind one that has handed nothing to the connection
+for 30 seconds - a peer that stopped reading, or a dead path - closes the
+session instead of hanging with it, however long a moving write takes. And a write over 65535 bytes went out as one frame with a wrapped
 length (`sing-anytls/session/write_test.go`).
 
 Real protocol regressions live in `core/sing/ss2022_audit_test.go` and

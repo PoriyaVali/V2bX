@@ -124,6 +124,81 @@ func TestControlFrameBehindStalledWriteIsBounded(t *testing.T) {
 	}
 }
 
+// drainingLinkPair is a server-side connection whose peer reads 4 KiB every
+// interval, with minimal socket buffers.
+func drainingLinkPair(t *testing.T, interval time.Duration) net.Conn {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err == nil {
+			accepted <- c
+		}
+	}()
+	client, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := <-accepted
+	_ = server.(*net.TCPConn).SetWriteBuffer(4096)
+	_ = client.(*net.TCPConn).SetReadBuffer(4096)
+	t.Cleanup(func() { server.Close(); client.Close() })
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			if _, err := client.Read(buf); err != nil {
+				return
+			}
+			time.Sleep(interval)
+		}
+	}()
+	return server
+}
+
+// 🔴 A write that takes longer than a control frame's patience, but keeps
+// moving, is a slow link, not a dead one: the session must survive it.
+//
+// The first bound on a control frame's wait counted only elapsed time, so a
+// large write over a weak link that held the connection past it closed the
+// session - every stream on it - although data was still leaving.
+func TestControlFrameWaitsOutASlowButMovingWrite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drains a large write over a deliberately slow link")
+	}
+	var pad atomic.TypedValue[*padding.PaddingFactory]
+	padding.UpdatePaddingScheme(padding.DefaultPaddingScheme, &pad)
+	// About 16 KiB/s: 96 KiB takes some six seconds, twice the patience below.
+	s := NewServerSession(drainingLinkPair(t, 250*time.Millisecond), nil, &pad, logger.NOP())
+	defer s.Close()
+
+	dataErr := make(chan error, 1)
+	go func() {
+		_, err := s.writeDataFrame(1, make([]byte, 96<<10))
+		dataErr <- err
+	}()
+	time.Sleep(300 * time.Millisecond) // the data writer holds the line
+	ctrlErr := make(chan error, 1)
+	go func() {
+		_, err := s.writeConnWithin([]byte{cmdFIN, 0, 0, 0, 2, 0, 0}, 3*time.Second)
+		ctrlErr <- err
+	}()
+
+	if err := <-dataErr; err != nil {
+		t.Fatalf("a slow but moving data write was cut: %v", err)
+	}
+	if err := <-ctrlErr; err != nil {
+		t.Fatalf("the control frame failed behind a slow but moving write: %v", err)
+	}
+	if s.IsClosed() {
+		t.Fatal("the session was closed although its write kept moving")
+	}
+}
+
 // 🔴 A control frame queued behind a long data write must neither cut that
 // write short nor close the session.
 //
