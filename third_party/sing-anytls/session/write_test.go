@@ -12,68 +12,37 @@ import (
 	"github.com/sagernet/sing/common/logger"
 )
 
-// slowLinkPair is a server-side connection whose peer drains about 8 KiB/s,
-// with minimal socket buffers so a large write really waits on the link - a
-// heavily throttled mobile path seen from the node.
-func slowLinkPair(t *testing.T) net.Conn {
+// pacedLink is the node's end of a connection whose peer reads at most 4 KiB
+// every interval: a throttled path, drained at a steady rate. A write on it
+// returns once the peer has read all of it.
+//
+// It is an in-memory pipe, not loopback TCP. With socket buffers small enough
+// to make writes wait, the kernel keeps closing the receive window and
+// recovers through zero-window probes with growing backoff - stalls of
+// seconds, more than these timings can tell apart from a dead peer.
+func pacedLink(t *testing.T, interval time.Duration) net.Conn {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-	accepted := make(chan net.Conn, 1)
-	go func() {
-		c, err := ln.Accept()
-		if err == nil {
-			accepted <- c
-		}
-	}()
-	client, err := net.Dial("tcp", ln.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := <-accepted
-	_ = server.(*net.TCPConn).SetWriteBuffer(4096)
-	_ = client.(*net.TCPConn).SetReadBuffer(4096)
-	t.Cleanup(func() { server.Close(); client.Close() })
+	node, peer := net.Pipe()
+	t.Cleanup(func() { node.Close(); peer.Close() })
 	go func() {
 		buf := make([]byte, 4096)
 		for {
-			if _, err := client.Read(buf); err != nil {
+			if _, err := peer.Read(buf); err != nil {
 				return
 			}
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(interval)
 		}
 	}()
-	return server
+	return node
 }
 
-// stalledLinkPair is a server-side connection whose peer never reads: a client
-// that stopped reading, or a path that died with data in flight.
-func stalledLinkPair(t *testing.T) net.Conn {
+// stalledLink is the node's end of a connection whose peer never reads: a
+// client that stopped reading, or a path that died with data in flight.
+func stalledLink(t *testing.T) net.Conn {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-	accepted := make(chan net.Conn, 1)
-	go func() {
-		c, err := ln.Accept()
-		if err == nil {
-			accepted <- c
-		}
-	}()
-	client, err := net.Dial("tcp", ln.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := <-accepted
-	_ = server.(*net.TCPConn).SetWriteBuffer(4096)
-	_ = client.(*net.TCPConn).SetReadBuffer(4096)
-	t.Cleanup(func() { server.Close(); client.Close() })
-	return server
+	node, peer := net.Pipe()
+	t.Cleanup(func() { node.Close(); peer.Close() })
+	return node
 }
 
 // 🔴 A control frame behind a data write that can never finish must not wait
@@ -87,12 +56,11 @@ func stalledLinkPair(t *testing.T) net.Conn {
 func TestControlFrameBehindStalledWriteIsBounded(t *testing.T) {
 	var pad atomic.TypedValue[*padding.PaddingFactory]
 	padding.UpdatePaddingScheme(padding.DefaultPaddingScheme, &pad)
-	s := NewServerSession(stalledLinkPair(t), nil, &pad, logger.NOP())
+	s := NewServerSession(stalledLink(t), nil, &pad, logger.NOP())
 	defer s.Close()
 
 	dataErr := make(chan error, 1)
 	go func() {
-		// Far more than the socket buffers hold.
 		_, err := s.writeDataFrame(1, make([]byte, 1<<20))
 		dataErr <- err
 	}()
@@ -124,42 +92,6 @@ func TestControlFrameBehindStalledWriteIsBounded(t *testing.T) {
 	}
 }
 
-// drainingLinkPair is a server-side connection whose peer reads 4 KiB every
-// interval, with minimal socket buffers.
-func drainingLinkPair(t *testing.T, interval time.Duration) net.Conn {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-	accepted := make(chan net.Conn, 1)
-	go func() {
-		c, err := ln.Accept()
-		if err == nil {
-			accepted <- c
-		}
-	}()
-	client, err := net.Dial("tcp", ln.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := <-accepted
-	_ = server.(*net.TCPConn).SetWriteBuffer(4096)
-	_ = client.(*net.TCPConn).SetReadBuffer(4096)
-	t.Cleanup(func() { server.Close(); client.Close() })
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			if _, err := client.Read(buf); err != nil {
-				return
-			}
-			time.Sleep(interval)
-		}
-	}()
-	return server
-}
-
 // 🔴 A write that takes longer than a control frame's patience, but keeps
 // moving, is a slow link, not a dead one: the session must survive it.
 //
@@ -172,8 +104,9 @@ func TestControlFrameWaitsOutASlowButMovingWrite(t *testing.T) {
 	}
 	var pad atomic.TypedValue[*padding.PaddingFactory]
 	padding.UpdatePaddingScheme(padding.DefaultPaddingScheme, &pad)
-	// About 16 KiB/s: 96 KiB takes some six seconds, twice the patience below.
-	s := NewServerSession(drainingLinkPair(t, 250*time.Millisecond), nil, &pad, logger.NOP())
+	// 16 KiB/s: 96 KiB takes six seconds, twice the patience below, and each
+	// 16 KiB chunk one.
+	s := NewServerSession(pacedLink(t, 250*time.Millisecond), nil, &pad, logger.NOP())
 	defer s.Close()
 
 	dataErr := make(chan error, 1)
@@ -199,6 +132,47 @@ func TestControlFrameWaitsOutASlowButMovingWrite(t *testing.T) {
 	}
 }
 
+// 🔴 Padded records count as progress too. A client pads its first packets
+// with records sized by the server's scheme, each written on its own, and
+// they left without the session noting it: a slow client whose padded packet
+// took longer than a control frame's patience looked stalled and lost the
+// session.
+func TestControlFrameWaitsOutSlowPaddedRecords(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drains padded records over a deliberately slow link")
+	}
+	var pad atomic.TypedValue[*padding.PaddingFactory]
+	// One padded packet of six 12000-byte records: some 72 KB, four and a half
+	// seconds at this rate, over twice the patience below.
+	if !padding.UpdatePaddingScheme([]byte("stop=2\n1=12000-12000,12000-12000,12000-12000,12000-12000,12000-12000,12000-12000"), &pad) {
+		t.Fatal("padding scheme rejected")
+	}
+	s := NewClientSession(pacedLink(t, 250*time.Millisecond), &pad, logger.NOP())
+	defer s.Close()
+
+	dataErr := make(chan error, 1)
+	go func() {
+		_, err := s.writeConnWithin(make([]byte, 100), 0)
+		dataErr <- err
+	}()
+	time.Sleep(300 * time.Millisecond) // the padded write holds the line
+	ctrlErr := make(chan error, 1)
+	go func() {
+		_, err := s.writeConnWithin([]byte{cmdFIN, 0, 0, 0, 2, 0, 0}, 2*time.Second)
+		ctrlErr <- err
+	}()
+
+	if err := <-dataErr; err != nil {
+		t.Fatalf("a slow but moving padded write was cut: %v", err)
+	}
+	if err := <-ctrlErr; err != nil {
+		t.Fatalf("the control frame failed behind slow padded records: %v", err)
+	}
+	if s.IsClosed() {
+		t.Fatal("the session was closed although its padded records kept leaving")
+	}
+}
+
 // 🔴 A control frame queued behind a long data write must neither cut that
 // write short nor close the session.
 //
@@ -213,10 +187,11 @@ func TestControlFrameBehindSlowDataWrite(t *testing.T) {
 	}
 	var pad atomic.TypedValue[*padding.PaddingFactory]
 	padding.UpdatePaddingScheme(padding.DefaultPaddingScheme, &pad)
-	s := NewServerSession(slowLinkPair(t), nil, &pad, logger.NOP())
+	// 8 KiB/s, a heavily throttled mobile path.
+	s := NewServerSession(pacedLink(t, 500*time.Millisecond), nil, &pad, logger.NOP())
 	defer s.Close()
 
-	// One full data frame: well over five seconds at this rate.
+	// One full data frame: about eight seconds at this rate.
 	data := make([]byte, 64000)
 	dataErr := make(chan error, 1)
 	go func() {

@@ -483,6 +483,16 @@ func (s *Session) lockConnWithin(timeout time.Duration) {
 // session's progress noted after each: one TLS record's worth.
 const writeChunk = 16 << 10
 
+// writeRecord writes one padded record to the connection whole, as the
+// padding scheme sized it, and notes the progress. The caller holds connLock.
+func (s *Session) writeRecord(b []byte) (int, error) {
+	n, err := s.conn.Write(b)
+	if err == nil {
+		s.progress.Store(time.Now().UnixNano())
+	}
+	return n, err
+}
+
 // writeInChunks writes b to the connection a chunk at a time, noting progress
 // after each one leaves. The caller holds connLock.
 func (s *Session) writeInChunks(b []byte) (n int, err error) {
@@ -541,7 +551,7 @@ func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err e
 					}
 				}
 				if remainPayloadLen > l { // this packet is all payload
-					_, err = s.conn.Write(b[:l])
+					_, err = s.writeRecord(b[:l])
 					if err != nil {
 						return 0, err
 					}
@@ -556,7 +566,7 @@ func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err e
 						binary.BigEndian.PutUint16(padding[5:7], uint16(paddingLen))
 						b = slices.Concat(b, padding)
 					}
-					_, err = s.conn.Write(b)
+					_, err = s.writeRecord(b)
 					if err != nil {
 						return 0, err
 					}
@@ -567,7 +577,7 @@ func (s *Session) writeConnWithin(b []byte, timeout time.Duration) (n int, err e
 					padding[0] = cmdWaste
 					binary.BigEndian.PutUint32(padding[1:5], 0)
 					binary.BigEndian.PutUint16(padding[5:7], uint16(l))
-					_, err = s.conn.Write(padding)
+					_, err = s.writeRecord(padding)
 					if err != nil {
 						return 0, err
 					}
