@@ -31,6 +31,7 @@ type configureOptions struct {
 	nodeCores                                                                     map[string]string
 	detectedNode                                                                  *panel.NodeInfo
 	existingCert                                                                  *conf.CertConfig
+	certificateFlags                                                              map[string]bool
 }
 
 func newConfigureCommand() *cobra.Command {
@@ -48,7 +49,7 @@ func newConfigureCommand() *cobra.Command {
 	f.BoolVar(&guided, "guided", false, "Step-by-step wizard: choose mux, node ID and core; detect the remaining settings")
 	f.StringVar(&o.listen, "listen-ip", "::", "Listener IP")
 	f.StringVar(&o.certMode, "cert-mode", "auto", "auto (HTTP, or DNS with --dns-provider), http, dns, file")
-	f.StringVar(&o.certDomain, "cert-domain", "", "Override the TLS domain inferred from the panel")
+	f.StringVar(&o.certDomain, "cert-domain", "", "Certificate domain you control; defaults to the node host, never SNI")
 	f.StringVar(&o.certFile, "cert-file", "", "Existing certificate path for file mode")
 	f.StringVar(&o.keyPath, "key-file", "", "Existing private-key path for file mode")
 	f.StringVar(&o.provider, "dns-provider", "", "Lego DNS provider, e.g. cloudflare")
@@ -59,6 +60,10 @@ func newConfigureCommand() *cobra.Command {
 	f.StringVar(&o.coverTitle, "cover-title", "", "Optional title for the built-in cover site")
 	f.BoolVar(&o.coverTCP, "cover-tcp", true, "Serve HTTPS on the TCP port of supported UDP TLS nodes when available")
 	c.RunE = func(cmd *cobra.Command, _ []string) error {
+		o.certificateFlags = make(map[string]bool)
+		for _, name := range []string{"cert-mode", "cert-file", "key-file", "dns-provider", "dns-env-file", "acme-email", "http-webroot"} {
+			o.certificateFlags[name] = cmd.Flags().Changed(name)
+		}
 		if guided && cmd.Flags().Changed("nodes") {
 			return fmt.Errorf("use --guided for step-by-step input or --nodes for unattended setup")
 		}
@@ -188,6 +193,10 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 		return nil, nil, fmt.Errorf("unsupported core")
 	}
 	mode := o.certMode
+	if o.existingCert != nil {
+		mode = o.existingCert.CertMode
+		o.provider = o.existingCert.Provider
+	}
 	if mode == "auto" {
 		mode = "http"
 		if o.provider != "" {
@@ -277,11 +286,11 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 		certSummary := "certificate not required"
 		if info.Security == panel.Tls && info.Type != "trusttunnel" {
 			domain := o.certDomain
-			if domain == "" {
-				domain = panelCertificateDomain(info)
-			}
 			if domain == "" && o.existingCert != nil {
 				domain = o.existingCert.CertDomain
+			}
+			if domain == "" {
+				domain = panelCertificateDomain(info)
 			}
 			domain, err = setupCertificateDomain(domain, mode)
 			if err != nil && askDomain != nil {
@@ -291,18 +300,16 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 				}
 			}
 			if err != nil {
-				return nil, nil, fmt.Errorf("%s: cannot infer certificate domain; set the node hostname/SNI in Irboard or --cert-domain", label)
+				return nil, nil, fmt.Errorf("%s: no valid certificate domain; set the node host to a domain you control or use --cert-domain (SNI is not a certificate issuance domain)", label)
 			}
 			cert := conf.CertConfig{CertMode: mode, CertDomain: domain, Email: o.email, Provider: o.provider, DNSEnv: dnsEnv,
 				AccountDir: filepath.Join(filepath.Dir(o.output), "certs", "accounts"), HTTPWebRoot: o.webroot,
 				CertFile: filepath.Join(filepath.Dir(o.output), "certs", domain, "fullchain.pem"), KeyFile: filepath.Join(filepath.Dir(o.output), "certs", domain, "private.key")}
 			if o.existingCert != nil {
-				cert = *o.existingCert
-				cert.CertDomain = domain
+				cert = retargetSetupCertificate(*o.existingCert, domain, o.output)
 				if o.dnsEnvFile != "" {
 					cert.DNSEnv = dnsEnv
 				}
-				mode = cert.CertMode
 			}
 			if mode == "file" {
 				if o.existingCert == nil && (o.certFile == "" || o.keyPath == "") {
@@ -328,7 +335,10 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 				}
 			}
 			nodeConfig["CertConfig"] = cert
-			certSummary = "TLS " + domain + " (" + mode + ")"
+			certSummary = "TLS; certificate domain=" + domain + " (" + mode + ")"
+			if sni := panelTLSName(info); sni != "" && !sameSetupDomain(sni, domain) {
+				certSummary += "; panel SNI=" + sni + "; the client's verification name must be covered by the certificate"
+			}
 		} else if info.Type == "trusttunnel" {
 			certSummary = "certificate managed by TrustTunnel using panel settings"
 		}
@@ -342,37 +352,13 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 }
 
 func setupCertificateDomain(value, mode string) (string, error) {
+	value = strings.TrimSpace(value)
 	if mode == "file" {
 		if ip := net.ParseIP(value); ip != nil {
 			return ip.String(), nil
 		}
 	}
 	return tlscert.Domain(value)
-}
-
-func panelCertificateDomain(info *panel.NodeInfo) string {
-	if info.AnyTls != nil {
-		// Match Irboard's AnyTLS subscription SNI precedence. Nested settings
-		// can remain from a previous REALITY configuration after switching TLS.
-		if info.AnyTls.CommonNode.ServerName != "" {
-			return info.AnyTls.CommonNode.ServerName
-		}
-		if info.AnyTls.TlsSettings.ServerName != "" {
-			return info.AnyTls.TlsSettings.ServerName
-		}
-	}
-	if info.VAllss != nil {
-		if info.VAllss.TlsSettings.ServerName != "" {
-			return info.VAllss.TlsSettings.ServerName
-		}
-		if info.VAllss.ServerName != "" {
-			return info.VAllss.ServerName
-		}
-	}
-	if info.Common.ServerName != "" {
-		return info.Common.ServerName
-	}
-	return info.Common.Host
 }
 
 func savePanelConfig(path string, data []byte) error {

@@ -5,8 +5,8 @@
 `database/install.sql` in **in-memory SQLite**. Every credential and hostname
 is fictional. Response bodies are base64 to preserve MessagePack bytes.
 
-The source panel is PoriyaVali/Irboard at `a1e74c4`, plus the hostname/SNI metadata
-and contract test added with this change. Fixtures cover all ten protocol configurations, the `v2ray`
+The source panel is PoriyaVali/Irboard at `a91b8ce`, with node host metadata
+separate from SNI and the HTTP contract test. Fixtures cover all ten protocol configurations, the `v2ray`
 alias, eligible and empty user lists in both formats, ETags, an empty alive
 object and report acknowledgements. V2bX consumes these in ordinary Go tests;
 Irboard independently tests actual device clearing and traffic retry deduplication.

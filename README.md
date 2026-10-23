@@ -30,11 +30,11 @@ v2bx update
 
 Existing configuration and certificate files are preserved. An active service
 is restarted; an inactive service stays inactive. See the
-[v1.9.1 upgrade notes](docs/releases/v1.9.1.md) for automatic changes and optional setup.
+[v1.9.2 upgrade notes](docs/releases/v1.9.2.md) for automatic changes and optional setup.
 
 تنظیمات و گواهی‌های موجود حفظ می‌شوند. سرویس فعال دوباره راه‌اندازی می‌شود؛ سرویس
 خاموش، خاموش می‌ماند. جزئیات تغییرات خودکار و تنظیمات اختیاری در
-[یادداشت ارتقا به v1.9.1](docs/releases/v1.9.1.md) آمده است.
+[یادداشت ارتقا به v1.9.2](docs/releases/v1.9.2.md) آمده است.
 
 Then open the management menu anytime with | سپس هر زمان منوی مدیریت را باز کنید با:
 

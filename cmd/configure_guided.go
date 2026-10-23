@@ -248,27 +248,23 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 		o := defaults
 		o.nodes, o.core, o.nodeCores, o.detectedNode = label, core, nil, selected
 		o.existingCert = existingSetupCertificate(o.output, o.panel, selected)
-		if o.existingCert != nil {
-			o.certMode = o.existingCert.CertMode
-			o.provider = o.existingCert.Provider
+		applySetupCertificateFlags(&o)
+		fmt.Fprintf(p.out, "Node host | آدرس نود: %s\n", firstNonempty(panelCertificateDomain(selected), "(not provided / ارسال نشده)"))
+		if sni := panelTLSName(selected); sni != "" {
+			fmt.Fprintf(p.out, "Panel SNI | SNI پنل: %s\n", sni)
 		}
-		domain := panelCertificateDomain(selected)
-		if o.certDomain != "" {
-			domain = o.certDomain
-		} else if domain == "" && o.existingCert != nil {
-			domain = o.existingCert.CertDomain
-		}
-		if selected.Security == panel.Tls && selected.Type != "trusttunnel" && domain == "" {
-			domain, err = p.ask("Panel has no certificate hostname; TLS domain | دامنه گواهی در پنل خالی است", "")
-			if err != nil {
-				return nil, nil, err
-			}
+		domain, err := chooseSetupCertificateDomain(p, o, selected)
+		if err != nil {
+			return nil, nil, err
 		}
 		o.certDomain = domain
 		var config map[string]any
 		var lines []string
 		for {
 			fmt.Fprintf(p.out, "Detected | شناسایی شد: %s — core=%s — port=%d — %s\n", label, core, selected.Common.ServerPort, setupSecuritySummary(selected, o))
+			if sni := panelTLSName(selected); selected.Security == panel.Tls && selected.Type != "trusttunnel" && sni != "" && !sameSetupDomain(sni, o.certDomain) {
+				fmt.Fprintln(p.out, "SNI differs from the certificate domain. The client's verification name must be covered by the certificate | SNI متفاوت است؛ نام مورد بررسی کلاینت باید در گواهی باشد. تنظیم SNI پنل را بررسی کنید")
+			}
 			answer, err := p.ask("Continue [Enter], edit [e], cancel [n] | ادامه با Enter، ویرایش e، لغو n", "Enter")
 			if err != nil {
 				return nil, nil, err
@@ -353,7 +349,7 @@ func setupSecuritySummary(info *panel.NodeInfo, o configureOptions) string {
 		return "REALITY; no certificate required / بدون نیاز به گواهی"
 	case panel.Tls:
 		if o.existingCert != nil {
-			return "TLS " + o.certDomain + "; existing certificate settings / تنظیمات گواهی موجود"
+			return "TLS; certificate domain=" + o.certDomain + "; saved renewal settings / تنظیمات تمدید ذخیره‌شده"
 		}
 		mode := o.certMode
 		if mode == "auto" {
@@ -364,11 +360,11 @@ func setupSecuritySummary(info *panel.NodeInfo, o configureOptions) string {
 		}
 		switch mode {
 		case "dns":
-			return "TLS " + o.certDomain + "; DNS-01 automatic certificate / گواهی خودکار DNS"
+			return "TLS; certificate domain=" + o.certDomain + "; DNS-01 automatic certificate / گواهی خودکار DNS"
 		case "file":
-			return "TLS " + o.certDomain + "; provided certificate files / فایل گواهی موجود"
+			return "TLS; certificate domain=" + o.certDomain + "; provided certificate files / فایل گواهی موجود"
 		default:
-			return "TLS " + o.certDomain + "; HTTP-01 automatic issuance/renewal (port 80 + DNS required) / صدور و تمدید خودکار"
+			return "TLS; certificate domain=" + o.certDomain + "; HTTP-01 automatic issuance/renewal (port 80 + DNS required) / صدور و تمدید خودکار"
 		}
 	default:
 		return "no TLS certificate required / بدون نیاز به گواهی TLS"
@@ -438,9 +434,12 @@ func editSetupNode(p setupPrompter, o *configureOptions, info *panel.NodeInfo) e
 			return err
 		}
 	}
-	if original != nil && (o.certMode == "file" || strings.EqualFold(strings.TrimSuffix(original.CertDomain, "."), strings.TrimSuffix(o.certDomain, "."))) {
+	if original != nil {
 		copy := *original
-		copy.CertMode, copy.CertDomain, copy.Provider, copy.HTTPWebRoot = o.certMode, o.certDomain, o.provider, o.webroot
+		copy.CertMode, copy.Provider, copy.HTTPWebRoot = o.certMode, o.provider, o.webroot
+		if original.CertMode == "file" && o.certMode != "file" {
+			copy.CertFile, copy.KeyFile = "", ""
+		}
 		if o.certMode == "file" {
 			copy.CertFile, copy.KeyFile = o.certFile, o.keyPath
 		}
@@ -484,9 +483,6 @@ func existingSetupCertificate(path, panelURL string, info *panel.NodeInfo) *conf
 			cert = node.Options.CertConfig
 		}
 		if cert != nil && (cert.CertMode == "http" || cert.CertMode == "dns" || cert.CertMode == "file") && cert.CertFile != "" && cert.KeyFile != "" {
-			if domain := panelCertificateDomain(info); domain != "" && cert.CertDomain != "" && cert.CertMode != "file" && !strings.EqualFold(strings.TrimSuffix(domain, "."), strings.TrimSuffix(cert.CertDomain, ".")) {
-				return nil
-			}
 			cert.ExpandPaths()
 			return cert
 		}

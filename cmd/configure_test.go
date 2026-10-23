@@ -18,14 +18,14 @@ func setupPanel(t *testing.T) *httptest.Server {
 	t.Helper()
 	bodies := map[string]string{
 		"vless:1":       `{"tls":2,"network":"tcp","tls_settings":{"server_name":"borrowed.example.test"}}`,
-		"vless:2":       `{"tls":1,"network":"tcp","tls_settings":{"server_name":"tls.example.test"}}`,
-		"hysteria2:3":   `{"version":2,"host":"node.example.test","server_name":"hy.example.test"}`,
+		"vless:2":       `{"host":"tls.example.test","tls":1,"network":"tcp","tls_settings":{"server_name":"borrowed.example.test"}}`,
+		"hysteria2:3":   `{"version":2,"host":"hy.example.test","server_name":"borrowed.example.test"}`,
 		"mdns:4":        `{"domain":["dns.example.test"]}`,
 		"tuic:5":        `{"host":"tuic.example.test"}`,
 		"vmess:6":       `{"tls":0,"network":"ws"}`,
-		"trojan:7":      `{"server_name":"trojan.example.test"}`,
+		"trojan:7":      `{"host":"trojan.example.test","server_name":"borrowed.example.test"}`,
 		"trusttunnel:8": `{"hostname":"tt.example.test","cert_type":"letsencrypt","acme_email":"admin@example.test"}`,
-		"anytls:9":      `{"tls":1,"padding_scheme":[],"tls_settings":{"server_name":"any.example.test"}}`,
+		"anytls:9":      `{"host":"any.example.test","tls":1,"padding_scheme":[],"tls_settings":{"server_name":"borrowed.example.test"}}`,
 		"anytls:57":     `{"tls":2,"padding_scheme":[],"tls_settings":{"server_name":"borrowed.example.test"}}`,
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

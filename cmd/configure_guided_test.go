@@ -15,13 +15,6 @@ import (
 	"github.com/PoriyaVali/V2bX/conf"
 )
 
-func TestAnyTLSCertificateDomainMatchesSubscriptionSNI(t *testing.T) {
-	n := &panel.AnyTlsNode{CommonNode: panel.CommonNode{ServerName: "owned.example.test"}, TlsSettings: panel.TlsSettings{ServerName: "old-reality-target.example.test"}}
-	if got := panelCertificateDomain(&panel.NodeInfo{AnyTls: n, Common: &n.CommonNode}); got != "owned.example.test" {
-		t.Fatalf("certificate name %s differs from subscription SNI", got)
-	}
-}
-
 func TestVLESSEncryptionRequiresCompatibleCore(t *testing.T) {
 	info := &panel.NodeInfo{Type: "vless", Security: panel.Reality, VAllss: &panel.VAllssNode{Network: "tcp", Encryption: "mlkem768x25519plus"}}
 	if err := validateSetupCore("sing", info); err == nil || !strings.Contains(err.Error(), "Xray") {
@@ -75,7 +68,7 @@ func TestGuidedHonorsBothCoresForHysteriaVLESSAndVMess(t *testing.T) {
 	}
 }
 
-func TestGuidedAnyTLSNestedSNIAndReality(t *testing.T) {
+func TestGuidedAnyTLSHostWithDifferentSNIAndReality(t *testing.T) {
 	srv := setupPanel(t)
 	t.Setenv("V2BX_TEST_API_KEY", "guided-key")
 	for _, id := range []string{"9", "57"} {
@@ -94,7 +87,7 @@ func TestGuidedAnyTLSNestedSNIAndReality(t *testing.T) {
 				t.Fatal("AnyTLS protocol/core/mux was misidentified")
 			}
 			if id == "9" && (n.Options.CertConfig.CertDomain != "any.example.test" || n.Options.CertConfig.CertMode != "http") {
-				t.Fatal("nested AnyTLS certificate domain lost")
+				t.Fatal("AnyTLS host was not used for the certificate")
 			}
 			if id == "57" && (n.Options.CertConfig.CertMode != "none" || !strings.Contains(text, "REALITY; no certificate")) {
 				t.Fatal("AnyTLS REALITY incorrectly requested a certificate")
