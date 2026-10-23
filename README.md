@@ -30,11 +30,11 @@ v2bx update
 
 Existing configuration and certificate files are preserved. An active service
 is restarted; an inactive service stays inactive. See the
-[v1.9.0 upgrade notes](docs/releases/v1.9.0.md) for automatic changes and optional setup.
+[v1.9.1 upgrade notes](docs/releases/v1.9.1.md) for automatic changes and optional setup.
 
 تنظیمات و گواهی‌های موجود حفظ می‌شوند. سرویس فعال دوباره راه‌اندازی می‌شود؛ سرویس
 خاموش، خاموش می‌ماند. جزئیات تغییرات خودکار و تنظیمات اختیاری در
-[یادداشت ارتقا به v1.9.0](docs/releases/v1.9.0.md) آمده است.
+[یادداشت ارتقا به v1.9.1](docs/releases/v1.9.1.md) آمده است.
 
 Then open the management menu anytime with | سپس هر زمان منوی مدیریت را باز کنید با:
 
@@ -105,8 +105,9 @@ Use the built-in config wizard (`v2bx menu` → option 9) or see the [example co
 
 از ویزارد داخلی (`v2bx menu` → گزینه ۹) استفاده کنید یا به پوشه [example](example/) مراجعه کنید.
 
-`V2bX configure` can infer node cores, TLS domains and certificate settings from
-the panel. See [automated setup](docs/automated-setup.md) and
+`V2bX configure` keeps mux, node ID and per-node core selection under the
+administrator's control, then detects protocol/TLS/domain and asks for Enter
+to continue. See [automated setup](docs/automated-setup.md) and
 [cover-site security](docs/cover-site-security.md).
 
 ## Credits | تشکر

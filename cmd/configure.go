@@ -28,6 +28,9 @@ type configureOptions struct {
 	certMode, certDomain, certFile, keyPath, provider, dnsEnvFile, email, webroot string
 	coverRoot, coverTitle                                                         string
 	coverTCP                                                                      bool
+	nodeCores                                                                     map[string]string
+	detectedNode                                                                  *panel.NodeInfo
+	existingCert                                                                  *conf.CertConfig
 }
 
 func newConfigureCommand() *cobra.Command {
@@ -40,6 +43,9 @@ func newConfigureCommand() *cobra.Command {
 	f.StringVar(&o.keyFile, "api-key-file", "", "File holding the panel API key")
 	f.StringVar(&o.output, "output", "/etc/V2bX/config.json", "Configuration path; existing file is backed up with mode 0600")
 	f.StringVar(&o.core, "core", "auto", "Proxy core: auto (protocol/TLS aware), sing, xray, hysteria2")
+	f.StringToStringVar(&o.nodeCores, "node-cores", nil, "Per-node core overrides, e.g. hysteria2:3=hysteria2,vless:2=xray")
+	guided := false
+	f.BoolVar(&guided, "guided", false, "Step-by-step wizard: choose mux, node ID and core; detect the remaining settings")
 	f.StringVar(&o.listen, "listen-ip", "::", "Listener IP")
 	f.StringVar(&o.certMode, "cert-mode", "auto", "auto (HTTP, or DNS with --dns-provider), http, dns, file")
 	f.StringVar(&o.certDomain, "cert-domain", "", "Override the TLS domain inferred from the panel")
@@ -53,7 +59,10 @@ func newConfigureCommand() *cobra.Command {
 	f.StringVar(&o.coverTitle, "cover-title", "", "Optional title for the built-in cover site")
 	f.BoolVar(&o.coverTCP, "cover-tcp", true, "Serve HTTPS on the TCP port of supported UDP TLS nodes when available")
 	c.RunE = func(cmd *cobra.Command, _ []string) error {
-		interactive := o.panel == "" && o.nodes == "" && o.keyEnv == "" && o.keyFile == ""
+		if guided && cmd.Flags().Changed("nodes") {
+			return fmt.Errorf("use --guided for step-by-step input or --nodes for unattended setup")
+		}
+		interactive := guided || (!cmd.Flags().Changed("nodes") && o.nodes == "")
 		reader := bufio.NewReader(cmd.InOrStdin())
 		ask := func(prompt string) (string, error) {
 			fmt.Fprint(cmd.OutOrStdout(), prompt)
@@ -79,22 +88,25 @@ func newConfigureCommand() *cobra.Command {
 			key = strings.TrimSpace(string(data))
 		}
 		if interactive {
-			if o.panel, err = ask("Panel URL | آدرس پنل: "); err != nil {
-				return err
-			}
-			if input, ok := cmd.InOrStdin().(*os.File); ok && term.IsTerminal(int(input.Fd())) {
-				fmt.Fprint(cmd.OutOrStdout(), "API key | کلید API: ")
-				secret, readErr := term.ReadPassword(int(input.Fd()))
-				fmt.Fprintln(cmd.OutOrStdout())
-				if readErr != nil {
-					return readErr
+			fmt.Fprintln(cmd.OutOrStdout(), "V2bX Config Wizard | راهنمای ساخت تنظیمات")
+			fmt.Fprintln(cmd.OutOrStdout(), "Existing configuration is replaced only after all nodes are confirmed; backup: config.json.bak | ذخیره پس از تأیید نودها، همراه نسخه پشتیبان")
+			if o.panel == "" {
+				if o.panel, err = ask("Panel URL | آدرس پنل: "); err != nil {
+					return err
 				}
-				key = string(secret)
-			} else if key, err = ask("API key: "); err != nil {
-				return err
 			}
-			if o.nodes, err = ask("Nodes (type:id,...) | نودها، مثال vless:1,mdns:2: "); err != nil {
-				return err
+			if key == "" {
+				if input, ok := cmd.InOrStdin().(*os.File); ok && term.IsTerminal(int(input.Fd())) {
+					fmt.Fprint(cmd.OutOrStdout(), "API key | کلید API: ")
+					secret, readErr := term.ReadPassword(int(input.Fd()))
+					fmt.Fprintln(cmd.OutOrStdout())
+					if readErr != nil {
+						return readErr
+					}
+					key = string(secret)
+				} else if key, err = ask("API key: "); err != nil {
+					return err
+				}
 			}
 		}
 		if o.output, err = filepath.Abs(o.output); err != nil {
@@ -120,13 +132,13 @@ func newConfigureCommand() *cobra.Command {
 				return err
 			}
 		}
-		var domainPrompt func(string) (string, error)
+		var config map[string]any
+		var summaries []string
 		if interactive {
-			domainPrompt = func(label string) (string, error) {
-				return ask("TLS domain for " + label + " | دامنه گواهی: ")
-			}
+			config, summaries, err = guidedPanelConfig(cmd, o, strings.TrimSpace(key), reader)
+		} else {
+			config, summaries, err = buildPanelConfig(o, strings.TrimSpace(key), nil)
 		}
-		config, summaries, err := buildPanelConfig(o, strings.TrimSpace(key), domainPrompt)
 		if err != nil {
 			return err
 		}
@@ -146,7 +158,7 @@ func newConfigureCommand() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), line)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Saved | ذخیره شد: %s (0600)\n", o.output)
-		fmt.Fprintln(cmd.OutOrStdout(), "HTTP certificates are obtained automatically at startup and renewed when due; DNS must point to this server and port 80 must be reachable. Use DNS mode when HTTP validation is unavailable.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Restart to apply | اعمال تغییرات: v2bx restart")
 		return nil
 	}
 	return c
@@ -154,18 +166,25 @@ func newConfigureCommand() *cobra.Command {
 
 func init() { command.AddCommand(newConfigureCommand()) }
 
-func buildPanelConfig(o configureOptions, key string, askDomain func(string) (string, error)) (map[string]any, []string, error) {
-	u, err := url.Parse(o.panel)
+func validateSetupPanel(panelURL, key string) error {
+	u, err := url.Parse(panelURL)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return nil, nil, fmt.Errorf("provide an http(s) panel URL without credentials or query parameters")
+		return fmt.Errorf("provide an http(s) panel URL without credentials or query parameters")
 	}
 	if key == "" {
-		return nil, nil, fmt.Errorf("panel API key is required")
+		return fmt.Errorf("panel API key is required")
+	}
+	return nil
+}
+
+func buildPanelConfig(o configureOptions, key string, askDomain func(string) (string, error)) (map[string]any, []string, error) {
+	if err := validateSetupPanel(o.panel, key); err != nil {
+		return nil, nil, err
 	}
 	if net.ParseIP(o.listen) == nil {
 		return nil, nil, fmt.Errorf("invalid listen IP")
 	}
-	if o.core != "auto" && o.core != "sing" && o.core != "xray" && o.core != "hysteria2" {
+	if !validSetupCore(o.core) {
 		return nil, nil, fmt.Errorf("unsupported core")
 	}
 	mode := o.certMode
@@ -200,6 +219,10 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 	}
 	var summaries []string
 	seenCores, seenNodes := map[string]bool{}, map[string]bool{}
+	unusedOverrides := make(map[string]bool, len(o.nodeCores))
+	for label := range o.nodeCores {
+		unusedOverrides[label] = true
+	}
 	for _, entry := range strings.Split(o.nodes, ",") {
 		parts := strings.Split(strings.TrimSpace(entry), ":")
 		if len(parts) != 2 {
@@ -210,13 +233,18 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 			return nil, nil, fmt.Errorf("node ID must be positive")
 		}
 		apiConfig := conf.ApiConfig{APIHost: strings.TrimRight(o.panel, "/"), Key: key, NodeType: strings.TrimSpace(parts[0]), NodeID: id, Timeout: 10}
-		client, err := panel.New(&apiConfig)
-		if err != nil {
-			return nil, nil, err
-		}
-		info, err := client.GetNodeInfo()
-		if err != nil {
-			return nil, nil, fmt.Errorf("read node %s: %w", entry, err)
+		info := o.detectedNode
+		if info == nil {
+			client, err := panel.New(&apiConfig)
+			if err != nil {
+				return nil, nil, err
+			}
+			info, err = client.GetNodeInfo()
+			if err != nil {
+				return nil, nil, fmt.Errorf("read node %s: %w", entry, err)
+			}
+		} else if info.Id != id || info.Type != apiConfig.NodeType {
+			return nil, nil, fmt.Errorf("detected node does not match the selected node")
 		}
 		if info == nil || info.Common == nil || info.Common.ServerPort < 1 || info.Common.ServerPort > 65535 {
 			return nil, nil, fmt.Errorf("node %s: panel must return a complete configuration with a valid server port", entry)
@@ -227,21 +255,16 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 		}
 		seenNodes[label] = true
 		core := o.core
-		if core == "auto" {
-			core = "sing"
-			// Raw-TCP TLS needs a core with an unauthenticated HTTP fallback.
-			if info.Security == panel.Tls && ((info.Trojan != nil && (info.Trojan.Network == "" || info.Trojan.Network == "tcp")) || (info.VAllss != nil && info.Type == "vless" && info.VAllss.Network == "tcp" && info.VAllss.Encryption == "")) {
-				core = "xray"
-			}
+		if override, ok := o.nodeCores[label]; ok {
+			core = override
+			delete(unusedOverrides, label)
 		}
-		if info.Type == "mdns" || info.Type == "trusttunnel" {
-			core = info.Type
+		if !validSetupCore(core) {
+			return nil, nil, fmt.Errorf("unsupported core for %s", label)
 		}
-		if core == "xray" && info.Type != "vless" && info.Type != "vmess" && info.Type != "trojan" && info.Type != "shadowsocks" {
-			return nil, nil, fmt.Errorf("xray cannot serve %s", info.Type)
-		}
-		if core == "hysteria2" && info.Type != "hysteria2" {
-			return nil, nil, fmt.Errorf("hysteria2 core cannot serve %s", info.Type)
+		core = resolveSetupCore(core, info)
+		if !setupCoreSupports(core, info.Type) {
+			return nil, nil, fmt.Errorf("%s core cannot serve %s", core, info.Type)
 		}
 		if !seenCores[core] {
 			cores = append(cores, map[string]any{"Type": core})
@@ -257,6 +280,9 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 			if domain == "" {
 				domain = panelCertificateDomain(info)
 			}
+			if domain == "" && o.existingCert != nil {
+				domain = o.existingCert.CertDomain
+			}
 			domain, err = setupCertificateDomain(domain, mode)
 			if err != nil && askDomain != nil {
 				domain, err = askDomain(label)
@@ -270,11 +296,21 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 			cert := conf.CertConfig{CertMode: mode, CertDomain: domain, Email: o.email, Provider: o.provider, DNSEnv: dnsEnv,
 				AccountDir: filepath.Join(filepath.Dir(o.output), "certs", "accounts"), HTTPWebRoot: o.webroot,
 				CertFile: filepath.Join(filepath.Dir(o.output), "certs", domain, "fullchain.pem"), KeyFile: filepath.Join(filepath.Dir(o.output), "certs", domain, "private.key")}
+			if o.existingCert != nil {
+				cert = *o.existingCert
+				cert.CertDomain = domain
+				if o.dnsEnvFile != "" {
+					cert.DNSEnv = dnsEnv
+				}
+				mode = cert.CertMode
+			}
 			if mode == "file" {
-				if o.certFile == "" || o.keyPath == "" {
+				if o.existingCert == nil && (o.certFile == "" || o.keyPath == "") {
 					return nil, nil, fmt.Errorf("file mode requires --cert-file and --key-file")
 				}
-				cert.CertFile, cert.KeyFile = o.certFile, o.keyPath
+				if o.existingCert == nil {
+					cert.CertFile, cert.KeyFile = o.certFile, o.keyPath
+				}
 				loader, err := tlscert.New(cert.CertFile, cert.KeyFile, time.Minute)
 				if err != nil {
 					return nil, nil, fmt.Errorf("%s: invalid certificate files: %w", label, err)
@@ -299,6 +335,9 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 		nodes = append(nodes, nodeConfig)
 		summaries = append(summaries, label+" -> "+core+"; "+certSummary)
 	}
+	if len(unusedOverrides) > 0 {
+		return nil, nil, fmt.Errorf("--node-cores contains a node not selected by --nodes")
+	}
 	return map[string]any{"Log": map[string]string{"Level": "info", "Output": ""}, "Cores": cores, "Nodes": nodes}, summaries, nil
 }
 
@@ -312,6 +351,16 @@ func setupCertificateDomain(value, mode string) (string, error) {
 }
 
 func panelCertificateDomain(info *panel.NodeInfo) string {
+	if info.AnyTls != nil {
+		// Match Irboard's AnyTLS subscription SNI precedence. Nested settings
+		// can remain from a previous REALITY configuration after switching TLS.
+		if info.AnyTls.CommonNode.ServerName != "" {
+			return info.AnyTls.CommonNode.ServerName
+		}
+		if info.AnyTls.TlsSettings.ServerName != "" {
+			return info.AnyTls.TlsSettings.ServerName
+		}
+	}
 	if info.VAllss != nil {
 		if info.VAllss.TlsSettings.ServerName != "" {
 			return info.VAllss.TlsSettings.ServerName

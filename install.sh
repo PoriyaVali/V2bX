@@ -624,8 +624,8 @@ generate_config() {
 	# and validates JSON before replacing the config. Keep the manual wizard for
 	# older binaries and explicit expert setups.
 	if [[ "${V2BX_MANUAL_WIZARD:-0}" != "1" ]] && [[ -x /usr/local/V2bX/V2bX ]] &&
-	   /usr/local/V2bX/V2bX configure --help >/dev/null 2>&1; then
-	    /usr/local/V2bX/V2bX configure --output /etc/V2bX/config.json || return $?
+	   /usr/local/V2bX/V2bX configure --help 2>/dev/null | grep -F -- '--guided' >/dev/null; then
+	    /usr/local/V2bX/V2bX configure --guided --output /etc/V2bX/config.json || return $?
 	    if grep -q '"trusttunnel"' /etc/V2bX/config.json; then
 	        install_trusttunnel_bins || return $?
 	    fi

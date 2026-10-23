@@ -2,6 +2,7 @@ package panel
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -344,9 +345,16 @@ func (c *Client) ResetNodeCache() {
 }
 
 func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
+	return c.GetNodeInfoContext(context.Background())
+}
+
+// GetNodeInfoContext also bounds interactive discovery without changing the
+// runtime poller's timeout or retry policy.
+func (c *Client) GetNodeInfoContext(ctx context.Context) (node *NodeInfo, err error) {
 	const path = "/api/v1/server/UniProxy/config"
 	r, err := c.client.
 		R().
+		SetContext(ctx).
 		SetHeader("If-None-Match", c.nodeEtag).
 		ForceContentType("application/json").
 		Get(path)

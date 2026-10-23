@@ -25,11 +25,16 @@ func setupPanel(t *testing.T) *httptest.Server {
 		"vmess:6":       `{"tls":0,"network":"ws"}`,
 		"trojan:7":      `{"server_name":"trojan.example.test"}`,
 		"trusttunnel:8": `{"hostname":"tt.example.test","cert_type":"letsencrypt","acme_email":"admin@example.test"}`,
-		"anytls:9":      `{"tls":1,"server_name":"any.example.test"}`,
+		"anytls:9":      `{"tls":1,"padding_scheme":[],"tls_settings":{"server_name":"any.example.test"}}`,
+		"anytls:57":     `{"tls":2,"padding_scheme":[],"tls_settings":{"server_name":"borrowed.example.test"}}`,
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		body, ok := bodies[q.Get("node_type")+":"+q.Get("node_id")]
+		protocol := q.Get("node_type")
+		if protocol == "hysteria" {
+			protocol = "hysteria2"
+		}
+		body, ok := bodies[protocol+":"+q.Get("node_id")]
 		if !ok {
 			http.Error(w, "unknown node", 404)
 			return
@@ -93,12 +98,12 @@ func TestConfigureInfersMixedCoresAndCertificatesFromPanel(t *testing.T) {
 	}
 }
 
-func TestInteractiveConfigureNeedsOnlyPanelKeyAndNodeList(t *testing.T) {
+func TestInteractiveConfigureKeepsManualMuxIDAndPerNodeCore(t *testing.T) {
 	srv := setupPanel(t)
 	path := filepath.Join(t.TempDir(), "config.json")
 	c := newConfigureCommand()
 	c.SetArgs([]string{"--output", path})
-	c.SetIn(strings.NewReader(srv.URL + "\nsecret-api-key\nvless:2,hysteria2:3,mdns:4\n"))
+	c.SetIn(strings.NewReader(srv.URL + "\nsecret-api-key\nnone\n\n\nn\n2\n1\n\ny\n3\n3\n\ny\n4\n4\n\nn\n"))
 	var output bytes.Buffer
 	c.SetOut(&output)
 	c.SetErr(&output)
@@ -107,6 +112,19 @@ func TestInteractiveConfigureNeedsOnlyPanelKeyAndNodeList(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "TLS domain for") || strings.Contains(output.String(), "secret-api-key") {
 		t.Fatalf("unnecessary prompt or secret echo: %s", output.String())
+	}
+	parsed := conf.New()
+	if err := parsed.LoadFromPath(path); err != nil {
+		t.Fatal(err)
+	}
+	want := map[int]string{2: "sing", 3: "hysteria2", 4: "mdns"}
+	for _, n := range parsed.NodeConfig {
+		if n.ApiConfig.NodeType != "mdns" && n.Options.Core != want[n.ApiConfig.NodeID] {
+			t.Fatalf("manual core choice lost for %d: %s", n.ApiConfig.NodeID, n.Options.Core)
+		}
+	}
+	if strings.Contains(output.String(), "Nodes (type:id") || strings.Contains(output.String(), "Node type |") || strings.Contains(output.String(), "Certificate domain |") {
+		t.Fatalf("unnecessary manual protocol/domain prompt: %s", output.String())
 	}
 }
 
