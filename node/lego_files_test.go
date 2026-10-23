@@ -27,11 +27,17 @@ func mode(t *testing.T, path string) os.FileMode {
 func TestWriteCert_KeyIsPrivate(t *testing.T) {
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "cert.key")
+	certPath := filepath.Join(dir, "cert.pem")
+	if err := generateSelfSslCertificate("node.example.test", certPath, keyPath); err != nil {
+		t.Fatal(err)
+	}
+	certPEM, _ := os.ReadFile(certPath)
+	keyPEM, _ := os.ReadFile(keyPath)
 	if err := os.WriteFile(keyPath, []byte("old"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	l := &Lego{config: &conf.CertConfig{CertFile: filepath.Join(dir, "cert.pem"), KeyFile: keyPath}}
-	if err := l.writeCert(&certificate.Resource{Certificate: []byte("c"), PrivateKey: []byte("k")}); err != nil {
+	l := &Lego{config: &conf.CertConfig{CertFile: certPath, KeyFile: keyPath}}
+	if err := l.writeCert(&certificate.Resource{Certificate: certPEM, PrivateKey: keyPEM}); err != nil {
 		t.Fatal(err)
 	}
 	if m := mode(t, keyPath); runtime.GOOS != "windows" && m != 0600 {

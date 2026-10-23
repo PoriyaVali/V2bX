@@ -3,9 +3,11 @@ package node
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"strings"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	vCore "github.com/PoriyaVali/V2bX/core"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -62,6 +64,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	// Merge addresses seen at admission with the core's active connections.
 	// Established connections must remain visible without a fresh handshake.
 	var onlineDevice []panel.OnlineUser
+	completeSnapshot := false
 	if fromLimiter, err := lim.GetOnlineDevice(); err != nil {
 		log.Print(err)
 	} else if fromLimiter != nil {
@@ -71,9 +74,11 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		OnlineDevices(tag string) ([]panel.OnlineUser, error)
 	}); ok {
 		if fromCore, err := op.OnlineDevices(tag); err != nil {
-			log.WithFields(log.Fields{"tag": tag, "err": err}).
-				Info("Read online devices from core failed")
-		} else if len(fromCore) > 0 {
+			if !errors.Is(err, vCore.ErrOnlineDevicesUnsupported) {
+				log.WithFields(log.Fields{"tag": tag, "err": err}).Info("Read online devices from core failed")
+			}
+		} else {
+			completeSnapshot = true
 			onlineDevice = append(onlineDevice, fromCore...)
 		}
 	}
@@ -157,7 +162,14 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 			// json structure: { UID1:["ip1","ip2"],UID2:["ip3","ip4"] }
 			data[onlineuser.UID] = append(data[onlineuser.UID], onlineuser.IP)
 		}
-		if err = c.apiClient.ReportNodeOnlineUsers(&data); err != nil {
+		if completeSnapshot {
+			err = c.reportOnlineSnapshot(data)
+		} else {
+			// Admission-only cores cannot tell an idle established connection
+			// from a disconnected one. Preserve the panel's expiry for them.
+			err = c.apiClient.ReportNodeOnlineUsers(&data)
+		}
+		if err != nil {
 			log.WithFields(log.Fields{
 				"tag": tag,
 				"err": err,
@@ -166,9 +178,45 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 			log.WithField("tag", tag).Infof("Total %d online users, %d Reported", len(onlineDevice), len(result))
 			log.WithField("tag", tag).Debugf("Online users: %+v", data)
 		}
+	} else if completeSnapshot {
+		if err = c.reportOnlineSnapshot(nil); err != nil {
+			log.WithField("tag", tag).WithError(err).Info("Clear online users failed; will resend")
+		}
 	}
 
 	userTraffic = nil
+	return nil
+}
+
+// Irboard updates only the UIDs present in /alive. Omitting a user leaves the
+// previous addresses counted until expiry, so explicitly clear departed users.
+// Keep attempted UIDs even after a timeout: the panel may have applied it.
+func (c *Controller) reportOnlineSnapshot(current map[int][]string) error {
+	if len(current) == 0 && len(c.reportedOnline) == 0 {
+		return nil
+	}
+	if current == nil {
+		current = make(map[int][]string, len(c.reportedOnline))
+	}
+	next := make(map[int]struct{}, len(current))
+	if c.reportedOnline == nil {
+		c.reportedOnline = make(map[int]struct{}, len(current))
+	}
+	for uid, ips := range current {
+		if len(ips) > 0 {
+			next[uid] = struct{}{}
+			c.reportedOnline[uid] = struct{}{}
+		}
+	}
+	for uid := range c.reportedOnline {
+		if _, present := next[uid]; !present {
+			current[uid] = []string{} // [] rather than null: Irboard checks is_array.
+		}
+	}
+	if err := c.apiClient.ReportNodeOnlineUsers(&current); err != nil {
+		return err
+	}
+	c.reportedOnline = next
 	return nil
 }
 

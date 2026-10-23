@@ -31,6 +31,7 @@ type Controller struct {
 	aliveMap                  map[int]int
 	reportAccum               map[int][2]int64 // UID -> [up,down] carried over below node_report_min_traffic
 	pendingReports            []pendingReport  // traffic batches not yet accepted by the panel, oldest first
+	reportedOnline            map[int]struct{} // UIDs whose addresses may still be held by the panel; report task owns it
 	retiredTrafficMu          sync.Mutex
 	retiredTraffic            map[int][2]int64 // final samples from reload; report task drains them
 	nodeInfoMonitorPeriodic   *task.Task
@@ -260,6 +261,9 @@ func (c *Controller) Close() error {
 		}
 		if len(c.pendingReports) > 0 {
 			c.flushTrafficReports()
+		}
+		if err := c.reportOnlineSnapshot(nil); err != nil {
+			log.WithField("tag", tag).WithError(err).Warn("Clear retired node's online devices failed")
 		}
 	}
 	// The limiter goes after the node, not before: a connection arriving in

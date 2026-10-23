@@ -10,6 +10,21 @@ Evidence is cited per row. Reports from one person or one ISP are marked as
 such. Conditions differ between ISPs (MCI, MTN Irancell, TCI and others) and
 change over months.
 
+## Cover-site hardening — 23 October 2026
+
+The cover handler now has working linked pages, content-based validators,
+precomputed gzip, bounded public request budgets, and an optional snapshot of
+the operator's own public static assets. Trusted certificate names keep a
+domain's content stable across node identifiers. Supported UDP nodes also try
+to serve HTTPS on the same TCP port without replacing an existing service.
+The automatic setup command selects Xray for plain TCP+TLS VLESS/Trojan
+configurations that support its fallback.
+
+See [the cover-site guide](cover-site-security.md) for exact protocol coverage,
+configuration, listener ownership, tests and limits. These changes do not
+conceal IP addresses or TLS/QUIC fingerprints, and have not been field-tested
+against a censor. The reports and citations below predate this hardening.
+
 ## Techniques and what V2bX does
 
 | # | Technique reported | Evidence | V2bX now | Left to the operator / client |

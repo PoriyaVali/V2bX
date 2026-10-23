@@ -1,41 +1,20 @@
-// Package decoy is a decoy web site, served by V2bX itself, that answers
-// whoever reaches a node's port without being one of its users.
+// Package decoy serves static cover sites for supported inbound fallbacks and
+// HTTP masquerades. Certificate domains select a stable built-in profile;
+// operators can instead supply a dedicated directory of public assets.
+// Content is prepared once, and public requests have bounded concurrency and
+// rate budgets independent of authenticated proxy traffic.
 //
-// A listener that completes the TLS handshake and then closes the moment the
-// password does not match answers nothing like a web server, and that is
-// exactly what an active prober looks for: connect, speak TLS, send an
-// ordinary GET, see what comes back. Nothing did, so the port was a tell.
-// Iranian operators probe suspected proxies this way, and an address judged a
-// proxy is blocked for every user on it.
-//
-// An inbound's fallback (anytls, trojan, VLESS over TLS) or masquerade
-// (Hysteria2) points here instead, and this serves a small, ordinary-looking
-// site. Deliberately in-process: needing an nginx per node would mean ten
-// manual installs, a second service to keep running, and a config that drifts.
-// Everything here ships with the binary.
-//
-// It speaks HTTP/1.1 and prior-knowledge HTTP/2 on the same port, because a
-// fallback hands over the stream the prober's TLS negotiated: when a node
-// offers ALPN h2, a browser-like prober arrives speaking HTTP/2, and an
-// HTTP/1-only server would answer it with garbage.
-//
-// Two rules the design follows:
-//
-//  1. **Never impersonate a real organisation.** A page copying a real
-//     company would be both a legal problem and a weaker disguise - a prober
-//     can diff it against the genuine site. These are plain, unremarkable
-//     pages that claim to be nobody.
-//
-//  2. **Different per node.** Ten nodes serving one identical page just moves
-//     the fingerprint: the repetition itself becomes the signature. The
-//     template and its details are picked deterministically from the node's
-//     own identity, so each node keeps its own site across restarts without
-//     an operator choosing anything.
+// Loopback fallbacks accept HTTP/1.1 and prior-knowledge HTTP/2. UDP nodes may
+// also own a TCP HTTPS listener on their port using the node's certificate.
+// Protocol integration remains the caller's responsibility: a cover page does
+// not conceal an address, certificate, or TLS/QUIC fingerprint.
 package decoy
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -44,22 +23,27 @@ import (
 	"time"
 
 	"github.com/PoriyaVali/V2bX/common/format"
+	"github.com/PoriyaVali/V2bX/common/tlscert"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/netutil"
 )
 
-// Site is one node's decoy site, served on a loopback port.
+// Site owns a loopback cover listener and, optionally, a public TLS companion.
 type Site struct {
-	listener net.Listener
-	server   *http.Server
-	addr     string
-	once     sync.Once
+	listener    net.Listener
+	server      *http.Server
+	addr        string
+	once        sync.Once
+	mu          sync.Mutex
+	closed      bool
+	companion   *Site
+	connections int
 }
 
 // decoyTemplate is one plausible site. Kept intentionally dull: a site with
 // nothing to say attracts no follow-up.
 type decoyTemplate struct {
 	title    string
-	heading  string
 	tagline  string
 	sections []string
 	footer   string
@@ -68,7 +52,6 @@ type decoyTemplate struct {
 var decoyTemplates = []decoyTemplate{
 	{
 		title:   "Aperture Notes",
-		heading: "Aperture Notes",
 		tagline: "Field notes on light, film and slow photography.",
 		sections: []string{
 			"On metering for shadow detail",
@@ -79,7 +62,6 @@ var decoyTemplates = []decoyTemplate{
 	},
 	{
 		title:   "The Proof Kitchen",
-		heading: "The Proof Kitchen",
 		tagline: "Bread, mostly. Occasionally something else.",
 		sections: []string{
 			"A sourdough starter that survives neglect",
@@ -90,7 +72,6 @@ var decoyTemplates = []decoyTemplate{
 	},
 	{
 		title:   "Ledger & Line",
-		heading: "Ledger & Line",
 		tagline: "Small tools for small businesses.",
 		sections: []string{
 			"Invoices that do not need an account",
@@ -101,7 +82,6 @@ var decoyTemplates = []decoyTemplate{
 	},
 	{
 		title:   "Two Rivers Cycling",
-		heading: "Two Rivers Cycling",
 		tagline: "Routes, repairs and weekend rides.",
 		sections: []string{
 			"A loop that avoids every main road",
@@ -112,7 +92,6 @@ var decoyTemplates = []decoyTemplate{
 	},
 	{
 		title:   "Quiet Hours Audio",
-		heading: "Quiet Hours Audio",
 		tagline: "Listening notes and room acoustics.",
 		sections: []string{
 			"Treating a room you are not allowed to drill",
@@ -123,7 +102,6 @@ var decoyTemplates = []decoyTemplate{
 	},
 	{
 		title:   "Marginalia Press",
-		heading: "Marginalia Press",
 		tagline: "A very small publisher of very short books.",
 		sections: []string{
 			"Our next four titles",
@@ -134,7 +112,6 @@ var decoyTemplates = []decoyTemplate{
 	},
 	{
 		title:   "Northwind Allotments",
-		heading: "Northwind Allotments",
 		tagline: "Notes from plot 14.",
 		sections: []string{
 			"Tomatoes that survived a bad August",
@@ -145,7 +122,6 @@ var decoyTemplates = []decoyTemplate{
 	},
 	{
 		title:   "Sable & Co Joinery",
-		heading: "Sable & Co Joinery",
 		tagline: "Hand-cut furniture, made to order.",
 		sections: []string{
 			"A bench that fits through a doorway",
@@ -156,8 +132,7 @@ var decoyTemplates = []decoyTemplate{
 	},
 }
 
-// pick derives a stable template + accent from the node's own identity, so a
-// node keeps the same site across restarts and two nodes rarely share one.
+// pickDecoy derives stable content from a trusted domain or node identity.
 func pickDecoy(seed string) (decoyTemplate, string, time.Time) {
 	sum := sha256.Sum256([]byte(seed))
 	idx := int(binary.BigEndian.Uint32(sum[0:4])) % len(decoyTemplates)
@@ -166,47 +141,10 @@ func pickDecoy(seed string) (decoyTemplate, string, time.Time) {
 	}
 	accents := []string{"#2f4858", "#33658a", "#55606e", "#3d5a54", "#6b4d3b", "#4a4e69"}
 	accent := accents[int(sum[4])%len(accents)]
-	// A plausible "last updated" that is stable per node and comfortably in the
-	// past: a site whose only page changed one second ago reads as generated.
-	days := 30 + int(sum[5])%300
-	built := time.Now().AddDate(0, 0, -days).Truncate(time.Hour)
+	// Keep the built-in profile's date stable across restarts and node tags.
+	days := int(binary.BigEndian.Uint32(sum[8:12]) % 1461)
+	built := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, days)
 	return decoyTemplates[idx], accent, built
-}
-
-func renderDecoy(t decoyTemplate, accent string, built time.Time) string {
-	var items strings.Builder
-	for _, s := range t.sections {
-		fmt.Fprintf(&items, "      <li><a href=\"/posts/%s\">%s</a></li>\n", slugify(s), s)
-	}
-	return fmt.Sprintf(`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>%s</title>
-<style>
-  body { margin: 0; font: 16px/1.6 Georgia, 'Times New Roman', serif; color: #222; background: #fbfbf9; }
-  .wrap { max-width: 42rem; margin: 0 auto; padding: 3rem 1.25rem; }
-  h1 { font-size: 1.9rem; margin: 0 0 .25rem; color: %s; }
-  p.tag { margin: 0 0 2.5rem; color: #666; }
-  ul { list-style: none; padding: 0; }
-  li { padding: .6rem 0; border-bottom: 1px solid #e8e6e0; }
-  a { color: %s; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e8e6e0; color: #888; font-size: .9rem; }
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>%s</h1>
-    <p class="tag">%s</p>
-    <ul>
-%s    </ul>
-    <footer>%s<br>Last updated %s.</footer>
-  </div>
-</body>
-</html>
-`, t.title, accent, accent, t.heading, t.tagline, items.String(), t.footer, built.Format("2 January 2006"))
 }
 
 func slugify(s string) string {
@@ -227,100 +165,50 @@ func slugify(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// nginx404 is nginx's built-in 404 page, CRLF line endings included.
-const nginx404 = "<html>\r\n" +
-	"<head><title>404 Not Found</title></head>\r\n" +
-	"<body>\r\n" +
-	"<center><h1>404 Not Found</h1></center>\r\n" +
-	"<hr><center>nginx</center>\r\n" +
-	"</body>\r\n" +
-	"</html>\r\n"
-
 // Handler is the site for seed as an http.Handler, for a server that answers
 // unauthenticated requests in-process (Hysteria2's masquerade) instead of
 // forwarding a connection to a listener.
 func Handler(seed string) http.Handler {
-	h, _ := newHandler(seed)
-	return h
-}
-
-// newHandler builds the site picked for seed and reports its title.
-func newHandler(seed string) (http.Handler, string) {
-	tpl, accent, built := pickDecoy(seed)
-	page := renderDecoy(tpl, accent, built)
-	// nginx's own ETag for a static file: last-modified time and size, in hex.
-	// This used to be hex(sha256.New().Sum(page)[:8]) - but Sum APPENDS the
-	// hash of nothing to its argument, so it was the page's first 8 bytes,
-	// "<!DOCTYP", on every decoy of every node: one header value that
-	// identified the whole fleet to an active prober.
-	etag := fmt.Sprintf(`"%x-%x"`, built.Unix(), len(page))
-
-	mux := http.NewServeMux()
-	write := func(w http.ResponseWriter, r *http.Request, status int, body, ctype string) {
-		h := w.Header()
-		h.Set("Content-Type", ctype)
-		// Real sites announce a server. Go sends no Server header at all,
-		// which is itself unusual enough to notice.
-		h.Set("Server", "nginx")
-		h.Set("Last-Modified", built.UTC().Format(http.TimeFormat))
-		if status == http.StatusOK {
-			h.Set("ETag", etag)
-			if match := r.Header.Get("If-None-Match"); match == etag {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-		}
-		h.Set("Content-Length", fmt.Sprint(len(body)))
-		w.WriteHeader(status)
-		// HEAD must carry the headers and no body; net/http drops the body for
-		// us, but writing it explicitly keeps Content-Length honest.
-		if r.Method != http.MethodHead {
-			_, _ = w.Write([]byte(body))
-		}
-	}
-
-	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
-		write(w, r, http.StatusOK, "User-agent: *\nDisallow:\n", "text/plain; charset=utf-8")
-	})
-	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		write(w, r, http.StatusNotFound, "", "text/plain; charset=utf-8")
-	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			write(w, r, http.StatusOK, page, "text/html; charset=utf-8")
-			return
-		}
-		// Anything else 404s with an ordinary page. A server that answers 200
-		// for every path is as odd as one that answers nothing.
-		// Byte for byte the page nginx itself serves (server_tokens off), and
-		// its bare Content-Type: this was Apache's wording under an nginx
-		// Server header, which gives the disguise away.
-		write(w, r, http.StatusNotFound, nginx404, "text/html")
-	})
-	return mux, tpl.title
+	handler, _ := HandlerWithConfig(seed, nil)
+	return handler
 }
 
 // Start binds a loopback listener and serves the site. The port is chosen by
-// the OS so nothing has to be reserved or configured, and it is loopback only:
-// a decoy reachable from outside on its own port would be a fresh tell, since
-// the site would then exist twice on one host.
+// the OS and is reachable only through a core's fallback or HTTP masquerade.
 func Start(seed string) (*Site, error) {
+	return StartWithConfig(seed, nil)
+}
+
+func StartWithConfig(seed string, config *Config) (*Site, error) {
+	handler, err := HandlerWithConfig(seed, config)
+	if err != nil {
+		return nil, err
+	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("listen decoy: %w", err)
 	}
-	handler, title := newHandler(seed)
+	connections := 128
+	if config != nil && config.MaxConnections > 0 {
+		connections = config.MaxConnections
+	}
+	ln = netutil.LimitListener(ln, connections)
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	d := &Site{
-		listener: ln,
-		addr:     ln.Addr().String(),
+		listener:    ln,
+		addr:        ln.Addr().String(),
+		connections: connections,
 		server: &http.Server{
 			Handler:           handler,
 			Protocols:         &protocols,
 			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       30 * time.Second,
+			MaxHeaderBytes:    32 << 10,
+			HTTP2:             &http.HTTP2Config{MaxConcurrentStreams: 32, MaxReceiveBufferPerConnection: 64 << 10, MaxReceiveBufferPerStream: 64 << 10},
 		},
 	}
 	go func() {
@@ -329,10 +217,44 @@ func Start(seed string) (*Site, error) {
 		}
 	}()
 	log.WithFields(log.Fields{
-		"site": title,
 		"addr": d.addr,
 	}).Info("decoy site serving unauthenticated connections")
 	return d, nil
+}
+
+// StartTLSCompanion serves the same handler on a UDP node's TCP address. It
+// shares the public request budget and never replaces an existing TCP service.
+func (d *Site) StartTLSCompanion(address, certFile, keyFile string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed || d.companion != nil {
+		return fmt.Errorf("cover site is closed or already has a TLS listener")
+	}
+	loader, err := tlscert.New(certFile, keyFile, time.Second)
+	if err != nil {
+		return err
+	}
+	ln, err := net.Listen("tcp", address)
+	if err != nil {
+		return err
+	}
+	ln = netutil.LimitListener(ln, d.connections)
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetHTTP2(true)
+	server := &http.Server{Handler: d.server.Handler, Protocols: &protocols,
+		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32 << 10,
+		HTTP2:     &http.HTTP2Config{MaxConcurrentStreams: 32, MaxReceiveBufferPerConnection: 64 << 10, MaxReceiveBufferPerStream: 64 << 10},
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: loader.GetCertificate},
+	}
+	child := &Site{listener: ln, server: server, addr: ln.Addr().String()}
+	d.companion = child
+	go func() {
+		if err := server.ServeTLS(ln, "", ""); err != nil && err != http.ErrServerClosed {
+			log.WithError(err).Warn("TCP cover site stopped")
+		}
+	}()
+	return nil
 }
 
 // Close stops the site. Safe on a nil Site and safe to repeat.
@@ -342,7 +264,11 @@ func (d *Site) Close() error {
 	}
 	var err error
 	d.once.Do(func() {
-		err = d.server.Close()
+		d.mu.Lock()
+		d.closed = true
+		child := d.companion
+		d.mu.Unlock()
+		err = errors.Join(d.server.Close(), child.Close())
 	})
 	return err
 }

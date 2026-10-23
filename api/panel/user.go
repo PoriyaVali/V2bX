@@ -68,9 +68,14 @@ func (c *Client) GetUserList() ([]UserInfo, error) {
 	if err = c.checkResponse(r, path, err); err != nil {
 		return nil, err
 	}
+	limit := c.client.ResponseBodyLimit
+	if limit <= 0 {
+		limit = maxPanelResponseBytes
+	}
+	reader := &io.LimitedReader{R: r.RawResponse.Body, N: int64(limit) + 1}
 	userlist := &UserListBody{}
 	if strings.Contains(r.Header().Get("Content-Type"), "application/x-msgpack") {
-		decoder := msgpack.NewDecoder(r.RawResponse.Body)
+		decoder := msgpack.NewDecoder(reader)
 		if err := decodeMsgpackUserList(decoder, userlist); err != nil {
 			return nil, fmt.Errorf("decode user list error: %w", err)
 		}
@@ -79,12 +84,20 @@ func (c *Client) GetUserList() ([]UserInfo, error) {
 		// Scanning tokens for the first "users" also matched nested metadata or
 		// a string value, and accepted truncated/trailing-invalid responses as
 		// an empty list that would revoke every user's access.
-		if err := json.UnmarshalRead(r.RawResponse.Body, userlist); err != nil {
+		if err := json.UnmarshalRead(reader, userlist); err != nil {
 			return nil, fmt.Errorf("decode user list error: %w", err)
 		}
 	}
+	if reader.N == 0 {
+		return nil, fmt.Errorf("user list exceeds %d bytes", limit)
+	}
 	if userlist.Users == nil {
 		return nil, fmt.Errorf(`decode user list error: expected "users" array`)
+	}
+	for i, user := range userlist.Users {
+		if user.Id <= 0 || strings.TrimSpace(user.Uuid) == "" {
+			return nil, fmt.Errorf("decode user list error: invalid identity at index %d", i)
+		}
 	}
 	c.userEtag = r.Header().Get("ETag")
 	return userlist.Users, nil
@@ -109,8 +122,21 @@ func decodeMsgpackUserList(decoder *msgpack.Decoder, userlist *UserListBody) err
 		}
 		seen[name] = struct{}{}
 		if name == "users" {
-			if err := decoder.Decode(&userlist.Users); err != nil {
+			n, err := decoder.DecodeArrayLen()
+			if err != nil {
 				return err
+			}
+			if n < 0 {
+				return fmt.Errorf("expected users array")
+			}
+			// A MessagePack array header alone can claim billions of users.
+			// Grow as records arrive, rather than allocating from that claim.
+			userlist.Users = make([]UserInfo, 0, min(n, 1024))
+			for j := 0; j < n; j++ {
+				userlist.Users = append(userlist.Users, UserInfo{})
+				if err := decoder.Decode(&userlist.Users[j]); err != nil {
+					return err
+				}
 			}
 		} else if err := decoder.Skip(); err != nil {
 			return err
@@ -143,7 +169,12 @@ func (c *Client) GetUserAlive() (map[int]int, error) {
 		return nil, fmt.Errorf("decode alive list: %w", err)
 	}
 	if alive.Alive == nil {
-		alive.Alive = make(map[int]int)
+		return nil, fmt.Errorf(`decode alive list: expected "alive" object`)
+	}
+	for uid, count := range alive.Alive {
+		if uid <= 0 || count < 0 {
+			return nil, fmt.Errorf("decode alive list: invalid user or device count")
+		}
 	}
 	c.AliveMap = alive
 	return alive.Alive, nil
@@ -170,10 +201,7 @@ const ReportIDHeader = "X-Report-Id"
 // ReportUserTrafficWithID reports one batch of user traffic. Send the same id
 // for every attempt at the same batch.
 func (c *Client) ReportUserTrafficWithID(reportID string, userTraffic []UserTraffic) error {
-	data := make(map[int][]int64, len(userTraffic))
-	for i := range userTraffic {
-		data[userTraffic[i].UID] = []int64{userTraffic[i].Upload, userTraffic[i].Download}
-	}
+	data := trafficReportData(userTraffic)
 	const path = "/api/v1/server/UniProxy/push"
 	req := c.client.R().
 		SetBody(data).
@@ -182,7 +210,18 @@ func (c *Client) ReportUserTrafficWithID(reportID string, userTraffic []UserTraf
 		req.SetHeader(ReportIDHeader, reportID)
 	}
 	r, err := req.Post(path)
-	return c.checkResponse(r, path, err)
+	return c.checkAcknowledgement(r, path, err)
+}
+
+func trafficReportData(userTraffic []UserTraffic) map[int][2]int64 {
+	data := make(map[int][2]int64, len(userTraffic))
+	for i := range userTraffic {
+		v := data[userTraffic[i].UID]
+		v[0] += userTraffic[i].Upload
+		v[1] += userTraffic[i].Download
+		data[userTraffic[i].UID] = v
+	}
+	return data
 }
 
 func (c *Client) ReportNodeOnlineUsers(data *map[int][]string) error {
@@ -193,5 +232,5 @@ func (c *Client) ReportNodeOnlineUsers(data *map[int][]string) error {
 		Post(path)
 	// Return the error. It was swallowed, so a failed report was logged as
 	// "Reported" and nobody could tell the panel was not hearing from us.
-	return c.checkResponse(r, path, err)
+	return c.checkAcknowledgement(r, path, err)
 }

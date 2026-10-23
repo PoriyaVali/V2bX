@@ -8,5 +8,5 @@ func (c *Client) ReportNodeStatus(status *serverstatus.SystemStatus) error {
 		SetBody(status).
 		ForceContentType("application/json").
 		Post(path)
-	return c.checkResponse(r, path, err)
+	return c.checkAcknowledgement(r, path, err)
 }

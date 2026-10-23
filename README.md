@@ -20,6 +20,22 @@ Auto-detects your server: **updates** if V2bX is already installed, otherwise do
 bash <(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh) setup
 ```
 
+Already installed? Update to the latest complete release with one command:
+
+برای نصب موجود، به‌روزرسانی به آخرین ریلیز کامل با یک دستور و دسترسی root انجام می‌شود:
+
+```bash
+v2bx update
+```
+
+Existing configuration and certificate files are preserved. An active service
+is restarted; an inactive service stays inactive. See the
+[v1.9.0 upgrade notes](docs/releases/v1.9.0.md) for automatic changes and optional setup.
+
+تنظیمات و گواهی‌های موجود حفظ می‌شوند. سرویس فعال دوباره راه‌اندازی می‌شود؛ سرویس
+خاموش، خاموش می‌ماند. جزئیات تغییرات خودکار و تنظیمات اختیاری در
+[یادداشت ارتقا به v1.9.0](docs/releases/v1.9.0.md) آمده است.
+
 Then open the management menu anytime with | سپس هر زمان منوی مدیریت را باز کنید با:
 
 ```bash
@@ -47,9 +63,10 @@ The menu covers install, update, uninstall, start/stop/restart, logs, config wiz
 
 | Core | Version |
 |------|---------|
-| xray-core | v26.6.22 (wyx2685 fork) |
-| sing-box | v1.13.0-alpha.5 (wyx2685 fork) |
-| hysteria2 | v2.9.3 |
+| xray-core | v26.9.9 (PoriyaVali fork v1.260909.1) |
+| sing-box | v1.13.21-v2bx.2 (PoriyaVali fork) |
+| hysteria2 | v2.11.0 |
+| MasterDnsVPN | android-multiuser-20261023 (`25b103d6a5f4`) |
 
 ## ⌨️ CLI Commands | دستورات
 
@@ -78,7 +95,7 @@ installed service unchanged instead of switching to the latest version.
 ```bash
 git clone https://github.com/PoriyaVali/V2bX.git && cd V2bX
 GOEXPERIMENT=jsonv2 go build -v -o V2bX \
-  -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor" \
+  -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel" \
   -trimpath -ldflags "-s -w -buildid="
 ```
 
@@ -87,6 +104,10 @@ GOEXPERIMENT=jsonv2 go build -v -o V2bX \
 Use the built-in config wizard (`v2bx menu` → option 9) or see the [example configs](example/).
 
 از ویزارد داخلی (`v2bx menu` → گزینه ۹) استفاده کنید یا به پوشه [example](example/) مراجعه کنید.
+
+`V2bX configure` can infer node cores, TLS domains and certificate settings from
+the panel. See [automated setup](docs/automated-setup.md) and
+[cover-site security](docs/cover-site-security.md).
 
 ## Credits | تشکر
 

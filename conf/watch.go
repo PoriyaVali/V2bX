@@ -19,7 +19,8 @@ var reloadMu sync.Mutex
 // once it is complete. A variable so tests can shorten it.
 var reloadDelay = 5 * time.Second
 
-func (p *Conf) Watch(filePath, xDnsPath string, sDnsPath string, reload func()) error {
+// Watch commits a candidate only after reload has validated and applied it.
+func (p *Conf) Watch(filePath, xDnsPath string, sDnsPath string, reload func(*Conf) error) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("new watcher error: %s", err)
@@ -81,8 +82,11 @@ func (p *Conf) Watch(filePath, xDnsPath string, sDnsPath string, reload func()) 
 			log.Printf("reload config error, keeping the running config: %s", err)
 			return
 		}
+		if err := reload(next); err != nil {
+			log.Printf("reload rejected, keeping the running config: %s", err)
+			return
+		}
 		*p = *next
-		reload()
 		log.Println("reload config success")
 	}
 

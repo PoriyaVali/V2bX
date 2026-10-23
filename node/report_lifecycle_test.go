@@ -1,6 +1,7 @@
 package node
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
@@ -146,5 +147,109 @@ func TestReportPerDeviceThresholdUsesCurrentCycleBytes(t *testing.T) {
 	_ = c.reportUserTrafficTask()
 	if len(f.reportedOnline()[1]) != 0 {
 		t.Fatal("empty per-device sample fell back to the user's aggregate traffic")
+	}
+}
+
+func TestReportClearsDepartedDevicesAndStopsResendingAfterAck(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u"}})
+	core := &liveDeviceCore{online: []panel.OnlineUser{{UID: 1, IP: "5.5.5.5"}}}
+	c := newSyncedController(t, f, core)
+	_ = c.reportUserTrafficTask()
+	core.online = nil
+	_ = c.reportUserTrafficTask()
+	ips, present := f.reportedOnline()[1]
+	if !present || ips == nil || len(ips) != 0 {
+		t.Fatalf("departed user needs an explicit JSON array, got %v (present=%v)", ips, present)
+	}
+	_ = c.reportUserTrafficTask()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.aliveReports != 2 {
+		t.Fatalf("acknowledged empty snapshot was resent: %d reports", f.aliveReports)
+	}
+}
+
+func TestReportClearsDevicesAfterAnUncertainAcknowledgement(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u"}})
+	core := &liveDeviceCore{online: []panel.OnlineUser{{UID: 1, IP: "5.5.5.5"}}}
+	c := newSyncedController(t, f, core)
+	f.mu.Lock()
+	f.aliveAckInvalid = true
+	f.mu.Unlock()
+	_ = c.reportUserTrafficTask()
+	core.online = nil
+	// An invalid receipt on the clear must also leave it queued for retry.
+	_ = c.reportUserTrafficTask()
+	if len(c.reportedOnline) != 1 {
+		t.Fatal("uncertain clear discarded the user's pending state")
+	}
+	f.mu.Lock()
+	f.aliveAckInvalid = false
+	f.mu.Unlock()
+	_ = c.reportUserTrafficTask()
+	if ips, ok := f.reportedOnline()[1]; !ok || ips == nil || len(ips) != 0 {
+		t.Fatalf("last attempted user was not cleared after recovery: %v", f.reportedOnline())
+	}
+	if len(c.reportedOnline) != 0 {
+		t.Fatal("accepted clear remains queued")
+	}
+}
+
+func TestCloseClearsOnlineDevices(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u"}})
+	core := &liveDeviceCore{online: []panel.OnlineUser{{UID: 1, IP: "5.5.5.5"}}}
+	c := newSyncedController(t, f, core)
+	_ = c.reportUserTrafficTask()
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if ips, ok := f.reportedOnline()[1]; !ok || ips == nil || len(ips) != 0 {
+		t.Fatalf("retired node still contributes online devices: %v", f.reportedOnline())
+	}
+}
+
+type unavailableDeviceCore struct {
+	liveDeviceCore
+	unavailable bool
+}
+
+func (c *unavailableDeviceCore) OnlineDevices(tag string) ([]panel.OnlineUser, error) {
+	if c.unavailable {
+		return nil, errors.New("snapshot temporarily unavailable")
+	}
+	return c.liveDeviceCore.OnlineDevices(tag)
+}
+
+func TestFailedDeviceSnapshotDoesNotClearLiveUsers(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u"}})
+	core := &unavailableDeviceCore{liveDeviceCore: liveDeviceCore{online: []panel.OnlineUser{{UID: 1, IP: "5.5.5.5"}}}}
+	c := newSyncedController(t, f, core)
+	_ = c.reportUserTrafficTask()
+	core.unavailable = true
+	_ = c.reportUserTrafficTask()
+	if len(f.reportedOnline()[1]) != 1 {
+		t.Fatal("failed snapshot cleared a live user's addresses")
+	}
+	core.unavailable = false
+	core.online = nil
+	_ = c.reportUserTrafficTask()
+	if ips, ok := f.reportedOnline()[1]; !ok || ips == nil || len(ips) != 0 {
+		t.Fatal("authoritative empty snapshot failed to clear the user")
+	}
+}
+
+func TestAdmissionOnlyCoreKeepsPanelExpiryForEstablishedDevices(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u", DeviceLimit: 2}})
+	c := newSyncedController(t, f, &stubCore{})
+	key := format.UserTag(c.tag, "u")
+	if _, reject := c.limiter.CheckLimit(key, "5.5.5.5", true, true); reject {
+		t.Fatal("first device rejected")
+	}
+	_ = c.reportUserTrafficTask()
+	_ = c.reportUserTrafficTask()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.aliveReports != 1 || len(f.capturedAlive[1]) != 1 {
+		t.Fatal("handshake-only view prematurely cleared an established device")
 	}
 }

@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +21,7 @@ func watchRig(t *testing.T) (string, *Conf, chan struct{}) {
 		t.Fatal(err)
 	}
 	reloads := make(chan struct{}, 16)
-	if err := c.Watch(path, "", "", func() { reloads <- struct{}{} }); err != nil {
+	if err := c.Watch(path, "", "", func(*Conf) error { reloads <- struct{}{}; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	return path, c, reloads
@@ -120,4 +121,38 @@ func TestWatch_IgnoresOtherFiles(t *testing.T) {
 	path, _, reloads := watchRig(t)
 	os.WriteFile(filepath.Join(filepath.Dir(path), "cert.pem"), []byte("x"), 0o600)
 	expectNoReload(t, reloads, "writing an unrelated file")
+}
+
+func TestWatch_RejectedCandidateIsNotCommittedAndNextSaveCanRecover(t *testing.T) {
+	old := reloadDelay
+	reloadDelay = 50 * time.Millisecond
+	t.Cleanup(func() { reloadDelay = old })
+	path := filepath.Join(t.TempDir(), "config.json")
+	writeConfig(t, path, "info")
+	c := New()
+	attempts := make(chan struct{}, 4)
+	if err := c.Watch(path, "", "", func(next *Conf) error {
+		defer func() { attempts <- struct{}{} }()
+		if next.LogConfig.Level == "warn" {
+			return errors.New("replacement core rejected")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	writeConfig(t, path, "warn")
+	expectReload(t, attempts, "rejected candidate")
+	reloadMu.Lock()
+	got := c.LogConfig.Level
+	reloadMu.Unlock()
+	if got != "info" {
+		t.Fatalf("rejected settings replaced live config: %s", got)
+	}
+	replaceConfig(t, path, "debug")
+	expectReload(t, attempts, "corrected candidate")
+	reloadMu.Lock()
+	defer reloadMu.Unlock()
+	if c.LogConfig.Level != "debug" {
+		t.Fatalf("corrected settings were not applied: %s", c.LogConfig.Level)
+	}
 }

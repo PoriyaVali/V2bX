@@ -3,15 +3,18 @@ package node
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/PoriyaVali/V2bX/common/file"
+	"github.com/PoriyaVali/V2bX/conf"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -33,17 +36,21 @@ func (c *Controller) renewCertTask() error {
 }
 
 func (c *Controller) requestCert() error {
+	if c.CertConfig == nil {
+		return fmt.Errorf("certificate configuration is missing")
+	}
 	switch c.CertConfig.CertMode {
 	case "none", "":
 	case "file":
 		if c.CertConfig.CertFile == "" || c.CertConfig.KeyFile == "" {
 			return fmt.Errorf("cert file path or key file path not exist")
 		}
+		return validCertificatePair(c.CertConfig)
 	case "dns", "http":
 		if c.CertConfig.CertFile == "" || c.CertConfig.KeyFile == "" {
 			return fmt.Errorf("cert file path or key file path not exist")
 		}
-		if file.IsExist(c.CertConfig.CertFile) && file.IsExist(c.CertConfig.KeyFile) {
+		if validCertificatePair(c.CertConfig) == nil {
 			return nil
 		}
 		l, err := NewLego(c.CertConfig)
@@ -58,7 +65,7 @@ func (c *Controller) requestCert() error {
 		if c.CertConfig.CertFile == "" || c.CertConfig.KeyFile == "" {
 			return fmt.Errorf("cert file path or key file path not exist")
 		}
-		if file.IsExist(c.CertConfig.CertFile) && file.IsExist(c.CertConfig.KeyFile) {
+		if validCertificatePair(c.CertConfig) == nil {
 			return nil
 		}
 		err := generateSelfSslCertificate(
@@ -70,6 +77,29 @@ func (c *Controller) requestCert() error {
 		}
 	default:
 		return fmt.Errorf("unsupported certmode: %s", c.CertConfig.CertMode)
+	}
+	return nil
+}
+
+func validCertificatePair(config *conf.CertConfig) error {
+	pair, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
+	if err != nil {
+		return fmt.Errorf("read certificate/key pair: %w", err)
+	}
+	leaf := pair.Leaf
+	if leaf == nil {
+		leaf, err = x509.ParseCertificate(pair.Certificate[0])
+		if err != nil {
+			return err
+		}
+	}
+	if time.Now().Before(leaf.NotBefore) || !time.Now().Before(leaf.NotAfter) {
+		return fmt.Errorf("certificate is not currently valid")
+	}
+	if config.CertDomain != "" {
+		if err := leaf.VerifyHostname(config.CertDomain); err != nil {
+			return fmt.Errorf("certificate domain mismatch: %w", err)
+		}
 	}
 	return nil
 }
@@ -108,13 +138,8 @@ func generateSelfSslCertificate(domain, certPath, keyPath string) error {
 }
 
 func writePEM(path string, mode os.FileMode, blockType string, der []byte) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	if err := pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
+	return file.WriteAtomic(path, pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der}), mode)
 }

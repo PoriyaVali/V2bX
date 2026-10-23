@@ -26,14 +26,14 @@ func TestConf_Watch(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := New()
-	if err := c.Watch(path, "", "", func() {}); err != nil {
+	if err := c.Watch(path, "", "", func(*Conf) error { return nil }); err != nil {
 		t.Fatalf("watch an existing file: %v", err)
 	}
 }
 
 func TestConf_WatchMissingFileErrors(t *testing.T) {
 	c := New()
-	if err := c.Watch(filepath.Join(t.TempDir(), "does-not-exist.json"), "", "", func() {}); err == nil {
+	if err := c.Watch(filepath.Join(t.TempDir(), "does-not-exist.json"), "", "", func(*Conf) error { return nil }); err == nil {
 		t.Fatal("watching a missing file should error")
 	}
 }

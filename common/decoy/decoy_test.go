@@ -27,16 +27,15 @@ func decoyGet(t *testing.T, seed, path string) *http.Response {
 // Every node's decoy used to send the same ETag: sha256.New().Sum(page)
 // appends the hash of NOTHING to the page, and the first 8 bytes of that are
 // the page's own "<!DOCTYP". One header value then identified the whole fleet
-// to an active prober. It must differ per site and look like nginx's own
-// "<mtime hex>-<size hex>".
-func TestDecoy_ETagIsPerSiteAndNginxShaped(t *testing.T) {
+// to an active prober. Entity tags now identify the actual resource bytes.
+func TestDecoy_ETagIdentifiesResourceContent(t *testing.T) {
 	seen := map[string]string{}
-	nginxETag := regexp.MustCompile(`^"[0-9a-f]+-[0-9a-f]+"$`)
+	entityTag := regexp.MustCompile(`^"[0-9a-f]{32}"$`)
 	for _, seed := range []string{"node-a", "node-b", "node-c", "node-d", "node-e", "node-f"} {
 		resp := decoyGet(t, seed, "/")
 		etag := resp.Header.Get("ETag")
-		if !nginxETag.MatchString(etag) {
-			t.Fatalf("seed %s: ETag %q is not nginx-shaped", seed, etag)
+		if !entityTag.MatchString(etag) {
+			t.Fatalf("seed %s: invalid entity tag %q", seed, etag)
 		}
 		if other, dup := seen[etag]; dup {
 			body, _ := io.ReadAll(resp.Body)
@@ -49,19 +48,18 @@ func TestDecoy_ETagIsPerSiteAndNginxShaped(t *testing.T) {
 	}
 }
 
-// The Server header says nginx, so a 404 must be nginx's own page - it was
-// Apache's wording, which gives the disguise away.
-func TestDecoy_404IsNginxs(t *testing.T) {
+// Error pages belong to the same site and make no software-version claims.
+func TestDecoy_404MatchesSiteAndOmitsSoftwareBanner(t *testing.T) {
 	resp := decoyGet(t, "node-a", "/nope")
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	if !strings.Contains(string(body), "<center>nginx</center>") || strings.Contains(string(body), "requested URL") {
-		t.Fatalf("404 page is not nginx's:\n%s", body)
+	if !strings.Contains(string(body), "404") && !strings.Contains(string(body), "Not Found") {
+		t.Fatalf("404 page is missing: %s", body)
 	}
-	if ct := resp.Header.Get("Content-Type"); ct != "text/html" {
-		t.Fatalf("404 Content-Type %q, nginx sends text/html", ct)
+	if ct := resp.Header.Get("Content-Type"); ct != "text/html; charset=utf-8" || resp.Header.Get("Server") != "" {
+		t.Fatalf("inconsistent 404 headers: %v", resp.Header)
 	}
 }
 
@@ -97,8 +95,7 @@ func TestDecoy_HandlerIsTheSameSite(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	rec := httptest.NewRecorder()
 	Handler("node-a").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-	// The page's "last updated" moves with the clock, so compare the site
-	// itself rather than bytes that two builds a moment apart may not share.
+	// Both serving paths use the same immutable domain profile.
 	got, want := title.FindString(rec.Body.String()), title.FindString(string(body))
 	if rec.Code != http.StatusOK || want == "" || got != want {
 		t.Fatalf("in-process site %q (status %d) differs from the listener's %q", got, rec.Code, want)

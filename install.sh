@@ -620,6 +620,18 @@ uninstall_V2bX() {
 # Config wizard | راهنمای ساخت config
 # ================================================================
 generate_config() {
+	# The current binary obtains node type, TLS mode and hostname from the panel
+	# and validates JSON before replacing the config. Keep the manual wizard for
+	# older binaries and explicit expert setups.
+	if [[ "${V2BX_MANUAL_WIZARD:-0}" != "1" ]] && [[ -x /usr/local/V2bX/V2bX ]] &&
+	   /usr/local/V2bX/V2bX configure --help >/dev/null 2>&1; then
+	    /usr/local/V2bX/V2bX configure --output /etc/V2bX/config.json || return $?
+	    if grep -q '"trusttunnel"' /etc/V2bX/config.json; then
+	        install_trusttunnel_bins || return $?
+	    fi
+	    echo -e "${green}Restart to apply | اعمال تغییرات: v2bx restart${plain}"
+	    return 0
+	fi
     echo -e "${green}V2bX Config Wizard | راهنمای ساخت تنظیمات${plain}"
     echo -e "${yellow}Config will be saved to /etc/V2bX/config.json${plain}"
     echo -e "${yellow}Old config backed up to /etc/V2bX/config.json.bak${plain}"
@@ -631,7 +643,8 @@ generate_config() {
 
     # ── Panel API (shared for all nodes — same panel, different IDs) ──
     read -rp "Panel URL (e.g. https://panel.example.com): " API_HOST
-    read -rp "API Key: " API_KEY
+    read -rsp "API Key: " API_KEY
+    echo ""
 
     # ── Blocked countries (core-level, applies to all nodes) ──────
     read -rp "Block countries (comma separated, e.g. ir,cn) [default: ir, 'none' to disable]: " BLOCKED
@@ -859,7 +872,7 @@ generate_config() {
         fi
 
         # TLS cert — each TLS node type (anytls/vmess/vless/trojan, on sing or
-        # xray) gets its own domain → own cert files. ss/hysteria2/mdns skip
+        # xray) gets its own domain → own cert files. ss/mdns skip
         # it, and so does a REALITY node. trusttunnel skips it too: its
         # endpoint obtains its own certificate from what the panel sends.
         NODE_CERT_BLOCK=""
@@ -878,7 +891,7 @@ generate_config() {
           \"CertFile\": \"\",
           \"KeyFile\": \"\"
         }"
-        elif [[ "${NODE_TYPE}" == "anytls" || "${NODE_TYPE}" == "vmess" || "${NODE_TYPE}" == "vless" || "${NODE_TYPE}" == "trojan" ]]; then
+        elif [[ "${NODE_TYPE}" == "anytls" || "${NODE_TYPE}" == "vmess" || "${NODE_TYPE}" == "vless" || "${NODE_TYPE}" == "trojan" || "${NODE_TYPE}" == "hysteria2" ]]; then
             read -rp "Certificate domain (e.g. ff.example.com): " CERT_DOMAIN
             echo -e "Cert mode | نحوه دریافت سرتیفیکت:"
             echo -e "  ${green}1.${plain} http  (port 80 must be open)"
@@ -891,7 +904,7 @@ generate_config() {
             # nobody can connect. The panel refuses the same combination
             # (V2nodeController rewrites tls=0 to 1 for anytls), so the wizard
             # must not offer it either. A REALITY node took the branch above.
-            if [[ "${NODE_TYPE}" != "anytls" ]]; then
+            if [[ "${NODE_TYPE}" != "anytls" && "${NODE_TYPE}" != "hysteria2" && "${NODE_TYPE}" != "trojan" ]]; then
                 echo -e "  ${green}5.${plain} none  (no TLS)"
                 read -rp "Cert mode [1-5, default=1]: " cert_choice
             else
@@ -902,8 +915,8 @@ generate_config() {
                 2) CERT_MODE="dns" ;;
                 3) CERT_MODE="self" ;;
                 4) CERT_MODE="file" ;;
-                5) if [[ "${NODE_TYPE}" == "anytls" ]]; then
-                       echo -e "${yellow}anytls cannot run without TLS - using http instead${plain}"
+                5) if [[ "${NODE_TYPE}" == "anytls" || "${NODE_TYPE}" == "hysteria2" || "${NODE_TYPE}" == "trojan" ]]; then
+                       echo -e "${yellow}This protocol requires TLS - using http instead${plain}"
                        CERT_MODE="http"
                    else
                        CERT_MODE="none"
@@ -917,7 +930,8 @@ generate_config() {
                 DNS_PROVIDER="${DNS_PROVIDER:-cloudflare}"
                 read -rp "ACME email (e.g. you@example.com): " ACME_EMAIL
                 if [[ "${DNS_PROVIDER}" == "cloudflare" ]]; then
-                    read -rp "Cloudflare API Token (Zone.DNS: Edit): " CF_TOKEN
+                    read -rsp "Cloudflare API Token (Zone.DNS: Edit): " CF_TOKEN
+                    echo ""
                     DNS_ENV_JSON="\"CLOUDFLARE_DNS_API_TOKEN\": \"${CF_TOKEN}\""
                 else
                     echo -e "Enter DNS env vars as KEY=VALUE, comma separated (see go-acme/lego docs)"
@@ -1001,7 +1015,9 @@ generate_config() {
     mkdir -p /etc/V2bX
     [[ -f /etc/V2bX/config.json ]] && cp /etc/V2bX/config.json /etc/V2bX/config.json.bak
 
-    cat > /etc/V2bX/config.json << CFGEOF
+    # This file and its backup contain API/DNS credentials.
+    [[ ! -f /etc/V2bX/config.json.bak ]] || chmod 600 /etc/V2bX/config.json.bak
+    (umask 077; cat > /etc/V2bX/config.json << CFGEOF
 {
   "Log": {
     "Level": "${LOG_LEVEL}",
@@ -1015,6 +1031,8 @@ ${NODES_BLOCK}
   ]
 }
 CFGEOF
+    )
+    chmod 600 /etc/V2bX/config.json
 
     echo ""
     echo -e "${green}Config saved | تنظیمات ذخیره شد: /etc/V2bX/config.json${plain}"

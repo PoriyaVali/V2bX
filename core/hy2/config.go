@@ -13,6 +13,7 @@ import (
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/decoy"
+	"github.com/PoriyaVali/V2bX/common/tlscert"
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/apernet/hysteria/core/v2/server"
 	"github.com/apernet/hysteria/extras/v2/correctnet"
@@ -64,18 +65,12 @@ func (n *Hysteria2node) getTLSConfig(config *conf.Options) (*server.TLSConfig, e
 	case "none", "":
 		return nil, fmt.Errorf("the CertMode cannot be none")
 	default:
-		var certs []tls.Certificate
-		cert, err := tls.LoadX509KeyPair(config.CertConfig.CertFile, config.CertConfig.KeyFile)
+		loader, err := tlscert.New(config.CertConfig.CertFile, config.CertConfig.KeyFile, time.Second)
 		if err != nil {
 			return nil, err
 		}
-		certs = append(certs, cert)
 		return &server.TLSConfig{
-			Certificates: certs,
-			GetCertificate: func(tlsinfo *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				cert, err := tls.LoadX509KeyPair(config.CertConfig.CertFile, config.CertConfig.KeyFile)
-				return &cert, err
-			},
+			GetCertificate: loader.GetCertificate,
 		}, nil
 	}
 }
@@ -297,7 +292,7 @@ func (n *Hysteria2node) getOutboundConfig(c *serverConfig) (server.Outbound, err
 	return Outbound, nil
 }
 
-func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.PacketConn, c *serverConfig, decoySite bool) (http.Handler, error) {
+func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.PacketConn, c *serverConfig, options *conf.Options) (http.Handler, error) {
 	var handler http.Handler
 	switch strings.ToLower(c.Masquerade.Type) {
 	case "":
@@ -306,11 +301,15 @@ func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.Pac
 		// path. It gets the node's decoy site instead, and so does the TCP
 		// masquerade if the config enables one. "404", or the node option
 		// `"DecoySite": false`, keeps the old answer.
-		if !decoySite {
+		if options.DecoySite != nil && !*options.DecoySite {
 			handler = http.NotFoundHandler()
 			break
 		}
-		handler = decoy.Handler(decoy.Seed(n.Tag))
+		var err error
+		handler, err = decoy.HandlerWithConfig(options.DecoyIdentity(n.Tag), options.Decoy)
+		if err != nil {
+			return nil, err
+		}
 	case "404":
 		handler = http.NotFoundHandler()
 	case "file":
@@ -430,7 +429,7 @@ func (n *Hysteria2node) getHyConfig(info *panel.NodeInfo, config *conf.Options, 
 	if err != nil {
 		return fail(err)
 	}
-	Masq, err := n.getMasqHandler(tls, conn, c, config.DecoySite == nil || *config.DecoySite)
+	Masq, err := n.getMasqHandler(tls, conn, c, config)
 	if err != nil {
 		return fail(err)
 	}

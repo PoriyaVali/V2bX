@@ -98,7 +98,7 @@ func probeHTTP(t *testing.T, port int) (*http.Response, string) {
 
 func assertDecoyPage(t *testing.T, resp *http.Response, body string) {
 	t.Helper()
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("Server") != "nginx" || !strings.Contains(body, "<title>") {
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Server") != "" || !strings.Contains(body, "<title>") {
 		t.Fatalf("prober got %s, Server %q, body %.80q - not the decoy site", resp.Status, resp.Header.Get("Server"), body)
 	}
 }

@@ -79,6 +79,33 @@ func TestReport_QueueIsBounded(t *testing.T) {
 	}
 }
 
+func TestReport_InvalidSuccessReceiptDoesNotLoseTraffic(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u"}})
+	core := &stubCore{}
+	c := newSyncedController(t, f, core)
+	f.mu.Lock()
+	f.pushAckInvalid = true
+	f.mu.Unlock()
+	core.setTraffic([]panel.UserTraffic{{UID: 1, Upload: 100, Download: 200}})
+	_ = c.reportUserTrafficTask()
+	if len(c.pendingReports) != 1 {
+		t.Fatal("HTTP 200 without a true receipt discarded traffic")
+	}
+	id := c.pendingReports[0].id
+	core.setTraffic(nil)
+	f.mu.Lock()
+	f.pushAckInvalid = false
+	f.mu.Unlock()
+	_ = c.reportUserTrafficTask()
+	if len(c.pendingReports) != 0 {
+		t.Fatal("accepted report remains pending")
+	}
+	pushes := f.pushLog()
+	if len(pushes) != 2 || pushes[1].id != id || pushes[1].body[1][0] != 100 || pushes[1].body[1][1] != 200 {
+		t.Fatalf("resend lost bytes or its id: %+v", pushes)
+	}
+}
+
 // unreadableCore answers like the Selector for a node it does not hold: between
 // a reload's DelNode and AddNode, or after a reload failed in between.
 type unreadableCore struct {

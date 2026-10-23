@@ -60,7 +60,8 @@ type fakePanel struct {
 	// about "here is the list now" keep getting a plain 200.
 	etag bool
 	// pushFails makes the next N traffic reports answer 500.
-	pushFails int
+	pushFails      int
+	pushAckInvalid bool
 	// pushes records every traffic report attempt, in arrival order.
 	pushes []pushAttempt
 	// aliveFails makes the alive-list endpoint answer 500.
@@ -68,6 +69,8 @@ type fakePanel struct {
 	// userFails makes user polls fail before their cached response is applied.
 	userFails    bool
 	aliveReports int
+	// The panel may have applied a snapshot even if its acknowledgement is lost.
+	aliveAckInvalid bool
 	// port is the server_port the config endpoint serves; changing it is a
 	// node config change. 0 means 1234.
 	port int
@@ -83,7 +86,7 @@ type pushAttempt struct {
 
 func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *fakePanel {
 	t.Helper()
-	f := &fakePanel{users: users}
+	f := &fakePanel{users: users, alive: map[int]int{}}
 	mux := http.NewServeMux()
 
 	// Byte-identical every poll, so GetNodeInfo reports "unchanged" after the
@@ -139,7 +142,12 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 		f.mu.Lock()
 		f.capturedAlive = got
 		f.aliveReports++
+		invalid := f.aliveAckInvalid
 		f.mu.Unlock()
+		if invalid {
+			w.Write([]byte(`{"data":false}`))
+			return
+		}
 		w.Write([]byte(`{"data":true}`))
 	})
 	mux.HandleFunc("/api/v1/server/UniProxy/push", func(w http.ResponseWriter, r *http.Request) {
@@ -152,9 +160,14 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 			status = http.StatusInternalServerError
 		}
 		f.pushes = append(f.pushes, pushAttempt{id: r.Header.Get(panel.ReportIDHeader), body: body, status: status})
+		invalid := f.pushAckInvalid
 		f.mu.Unlock()
 		if status != http.StatusOK {
 			http.Error(w, "boom", status)
+			return
+		}
+		if invalid {
+			w.Write([]byte(`{"data":false}`))
 			return
 		}
 		w.Write([]byte(`{"data":true}`))

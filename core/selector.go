@@ -20,9 +20,18 @@ type Selector struct {
 	nodes sync.Map
 }
 
-func NewSelector(c []conf.CoreConfig) (Core, error) {
+func NewSelector(c []conf.CoreConfig) (selected Core, err error) {
 	cs := make(map[string]Core, len(c))
 	order := make([]string, 0, len(c))
+	defer func() {
+		if err != nil {
+			for i := len(order) - 1; i >= 0; i-- {
+				if closeErr := cs[order[i]].Close(); closeErr != nil {
+					err = errors.Join(err, fmt.Errorf("close core %q after failed construction: %w", order[i], closeErr))
+				}
+			}
+		}
+	}()
 	for _, t := range c {
 		key := t.Type
 		if t.Name != "" {
@@ -38,6 +47,9 @@ func NewSelector(c []conf.CoreConfig) (Core, error) {
 		core1, err := f(&t)
 		if err != nil {
 			return nil, err
+		}
+		if core1 == nil {
+			return nil, fmt.Errorf("core %q returned no instance", key)
 		}
 		order = append(order, key)
 		cs[key] = core1
@@ -232,8 +244,11 @@ func (s *Selector) GetDeviceTrafficSlice(tag string, reset bool) (map[int]map[st
 	return dp.GetDeviceTrafficSlice(tag, reset)
 }
 
-// OnlineDevices forwards to whichever core owns the tag, for the cores that
-// track their own connections instead of going through the limiter.
+// ErrOnlineDevicesUnsupported distinguishes a handshake-only view from a
+// complete, empty connection snapshot. Only the latter can clear panel state.
+var ErrOnlineDevicesUnsupported = errors.New("core does not report active devices")
+
+// OnlineDevices forwards to whichever core owns the tag.
 //
 // Same reason GetDeviceTrafficSlice is forwarded: every node here runs a
 // selector, so the controller holds a *Selector and its type assertion would
@@ -248,7 +263,7 @@ func (s *Selector) OnlineDevices(tag string) ([]panel.OnlineUser, error) {
 		OnlineDevices(tag string) ([]panel.OnlineUser, error)
 	})
 	if !ok {
-		return nil, nil
+		return nil, ErrOnlineDevicesUnsupported
 	}
 	return op.OnlineDevices(tag)
 }

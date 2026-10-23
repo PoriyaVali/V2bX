@@ -5,12 +5,16 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"encoding/json"
@@ -18,6 +22,7 @@ import (
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/providers/dns"
+	"github.com/go-acme/lego/v4/providers/http/webroot"
 	"github.com/go-acme/lego/v4/registration"
 
 	"github.com/PoriyaVali/V2bX/common/file"
@@ -31,30 +36,90 @@ type Lego struct {
 	config *conf.CertConfig
 }
 
+// HTTP-01 owns port 80 and DNS providers consume process environment values.
+// Serialize ACME operations so different nodes cannot mix DNS credentials,
+// overwrite account files or compete for the challenge listener.
+var acmeOperationMu sync.Mutex
+
 func NewLego(config *conf.CertConfig) (*Lego, error) {
-	user, err := NewLegoUser(filepath.Join(filepath.Dir(config.CertFile),
-		"user",
-		fmt.Sprintf("user-%s.json", config.Email)),
-		config.Email)
+	if config == nil || (config.CertMode != "http" && config.CertMode != "dns") {
+		return nil, fmt.Errorf("ACME requires http or dns certificate mode")
+	}
+	if config.CertDomain == "" || config.CertFile == "" || config.KeyFile == "" {
+		return nil, fmt.Errorf("ACME requires a domain and certificate/key paths")
+	}
+	if config.CertMode == "dns" && config.Provider == "" {
+		return nil, fmt.Errorf("DNS certificate mode requires a provider")
+	}
+	if config.HTTPWebRoot != "" {
+		info, err := os.Stat(config.HTTPWebRoot)
+		if err != nil || !info.IsDir() {
+			return nil, fmt.Errorf("HTTPWebRoot must be an existing web server document root")
+		}
+	}
+	for key := range config.DNSEnv {
+		if key == "" || strings.ContainsAny(key, "=\x00") {
+			return nil, fmt.Errorf("invalid DNS environment variable name")
+		}
+	}
+	if config.Email != "" {
+		address, err := mail.ParseAddress(config.Email)
+		if err != nil || address.Address != config.Email || strings.ContainsAny(config.Email, `/\\`) {
+			return nil, fmt.Errorf("invalid ACME account email")
+		}
+	}
+	copy := *config
+	copy.DNSEnv = make(map[string]string, len(config.DNSEnv))
+	for k, v := range config.DNSEnv {
+		copy.DNSEnv[k] = v
+	}
+	copy.ExpandPaths()
+	return &Lego{config: &copy}, nil
+}
+
+func (l *Lego) initClient() error {
+	accountDir := l.config.AccountDir
+	if accountDir == "" {
+		accountDir = filepath.Join(filepath.Dir(l.config.CertFile), "user")
+	}
+	user, err := NewLegoUser(filepath.Join(accountDir, fmt.Sprintf("user-%s.json", l.config.Email)), l.config.Email)
 	if err != nil {
-		return nil, fmt.Errorf("create user error: %s", err)
+		return fmt.Errorf("create user: %w", err)
 	}
 	c := lego.NewConfig(user)
-	//c.CADirURL = "http://192.168.99.100:4000/directory"
 	c.Certificate.KeyType = certcrypto.RSA2048
-	client, err := lego.NewClient(c)
+	l.client, err = lego.NewClient(c)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	l := Lego{
-		client: client,
-		config: config,
+	return l.SetProvider()
+}
+
+func withACMEEnvironment(values map[string]string, operation func() error) error {
+	acmeOperationMu.Lock()
+	defer acmeOperationMu.Unlock()
+	type previous struct {
+		value   string
+		present bool
 	}
-	err = l.SetProvider()
-	if err != nil {
-		return nil, fmt.Errorf("set provider error: %s", err)
+	old := make(map[string]previous, len(values))
+	defer func() {
+		for key, value := range old {
+			if value.present {
+				_ = os.Setenv(key, value.value)
+			} else {
+				_ = os.Unsetenv(key)
+			}
+		}
+	}()
+	for key, value := range values {
+		v, present := os.LookupEnv(key)
+		old[key] = previous{v, present}
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("invalid DNS environment variable %q", key)
+		}
 	}
-	return &l, nil
+	return operation()
 }
 
 func checkPath(p string) error {
@@ -70,14 +135,18 @@ func checkPath(p string) error {
 func (l *Lego) SetProvider() error {
 	switch l.config.CertMode {
 	case "http":
+		if l.config.HTTPWebRoot != "" {
+			provider, err := webroot.NewHTTPProvider(l.config.HTTPWebRoot)
+			if err != nil {
+				return err
+			}
+			return l.client.Challenge.SetHTTP01Provider(provider)
+		}
 		err := l.client.Challenge.SetHTTP01Provider(http01.NewProviderServer("", "80"))
 		if err != nil {
 			return err
 		}
 	case "dns":
-		for k, v := range l.config.DNSEnv {
-			os.Setenv(k, v)
-		}
 		p, err := dns.NewDNSChallengeProviderByName(l.config.Provider)
 		if err != nil {
 			return fmt.Errorf("create dns challenge provider error: %s", err)
@@ -91,45 +160,70 @@ func (l *Lego) SetProvider() error {
 }
 
 func (l *Lego) CreateCert() (err error) {
-	request := certificate.ObtainRequest{
-		Domains: []string{l.config.CertDomain},
-		Bundle:  true,
-	}
-	certificates, err := l.client.Certificate.Obtain(request)
-	if err != nil {
-		return fmt.Errorf("obtain certificate error: %s", err)
-	}
-	err = l.writeCert(certificates)
-	if err != nil {
-		return fmt.Errorf("write certificate error: %s", err)
-	}
-	return nil
+	return withACMEEnvironment(l.config.DNSEnv, func() error {
+		// A different node sharing these paths may have issued while we
+		// waited for the challenge/account lock.
+		if validCertificatePair(l.config) == nil {
+			return nil
+		}
+		if err := l.initClient(); err != nil {
+			return err
+		}
+		request := certificate.ObtainRequest{
+			Domains: []string{l.config.CertDomain},
+			Bundle:  true,
+		}
+		certificates, err := l.client.Certificate.Obtain(request)
+		if err != nil {
+			return fmt.Errorf("obtain certificate error: %s", err)
+		}
+		err = l.writeCert(certificates)
+		if err != nil {
+			return fmt.Errorf("write certificate error: %s", err)
+		}
+		return nil
+	})
 }
 
 func (l *Lego) RenewCert() error {
-	file, err := os.ReadFile(l.config.CertFile)
+	// The common renewal check must be entirely local: no registration,
+	// directory fetch or DNS-provider setup while a certificate is not due.
+	data, err := os.ReadFile(l.config.CertFile)
 	if err != nil {
-		return fmt.Errorf("read cert file error: %s", err)
+		return fmt.Errorf("read cert file: %w", err)
 	}
-	// The error first: a certificate that cannot be parsed used to count as
-	// "not due", so a damaged file was never replaced and nobody was told.
-	if e, err := l.CheckCert(file); err != nil {
-		return fmt.Errorf("check cert error: %s", err)
-	} else if !e {
-		return nil
-	}
-	res, err := l.client.Certificate.Renew(certificate.Resource{
-		Domain:      l.config.CertDomain,
-		Certificate: file,
-	}, true, false, "")
-	if err != nil {
+	due, err := l.CheckCert(data)
+	if err != nil || !due {
 		return err
 	}
-	err = l.writeCert(res)
-	if err != nil {
-		return fmt.Errorf("write certificate error: %s", err)
-	}
-	return nil
+	return withACMEEnvironment(l.config.DNSEnv, func() error {
+		file, err := os.ReadFile(l.config.CertFile)
+		if err != nil {
+			return fmt.Errorf("read cert file error: %s", err)
+		}
+		// The error first: a certificate that cannot be parsed used to count as
+		// "not due", so a damaged file was never replaced and nobody was told.
+		if e, err := l.CheckCert(file); err != nil {
+			return fmt.Errorf("check cert error: %s", err)
+		} else if !e {
+			return nil
+		}
+		if err := l.initClient(); err != nil {
+			return err
+		}
+		res, err := l.client.Certificate.Renew(certificate.Resource{
+			Domain:      l.config.CertDomain,
+			Certificate: file,
+		}, true, false, "")
+		if err != nil {
+			return err
+		}
+		err = l.writeCert(res)
+		if err != nil {
+			return fmt.Errorf("write certificate error: %s", err)
+		}
+		return nil
+	})
 }
 
 func (l *Lego) CheckCert(file []byte) (bool, error) {
@@ -149,13 +243,15 @@ func (l *Lego) parseParams(path string) string {
 	return r.Replace(path)
 }
 func (l *Lego) writeCert(certificates *certificate.Resource) error {
+	if certificates == nil {
+		return fmt.Errorf("ACME returned no certificate")
+	}
+	if _, err := tls.X509KeyPair(certificates.Certificate, certificates.PrivateKey); err != nil {
+		return fmt.Errorf("ACME returned an invalid certificate pair: %w", err)
+	}
 	err := checkPath(l.config.CertFile)
 	if err != nil {
 		return fmt.Errorf("check path error: %s", err)
-	}
-	err = os.WriteFile(l.parseParams(l.config.CertFile), certificates.Certificate, 0644)
-	if err != nil {
-		return err
 	}
 	err = checkPath(l.config.KeyFile)
 	if err != nil {
@@ -165,10 +261,20 @@ func (l *Lego) writeCert(certificates *certificate.Resource) error {
 	// account on the machine. WriteFile keeps the mode of a file that already
 	// exists, so a key written before this is tightened too.
 	keyPath := l.parseParams(l.config.KeyFile)
-	if err = os.WriteFile(keyPath, certificates.PrivateKey, 0600); err != nil {
+	oldKey, oldErr := os.ReadFile(keyPath)
+	if oldErr != nil && !os.IsNotExist(oldErr) {
+		return oldErr
+	}
+	if err = file.WriteAtomic(keyPath, certificates.PrivateKey, 0600); err != nil {
 		return err
 	}
-	return os.Chmod(keyPath, 0600)
+	if err = file.WriteAtomic(l.parseParams(l.config.CertFile), certificates.Certificate, 0644); err != nil {
+		if oldErr == nil {
+			return errors.Join(err, file.WriteAtomic(keyPath, oldKey, 0600))
+		}
+		return errors.Join(err, os.Remove(keyPath))
+	}
+	return nil
 }
 
 type User struct {
@@ -253,18 +359,11 @@ func (u *User) Save(path string) error {
 	defer func() { u.KeyEncoded = "" }()
 	// 0600, and closed: the file holds the ACME account's private key. It was
 	// world-readable and the descriptor was never closed.
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	data, err := json.Marshal(u)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal account: %w", err)
 	}
-	if err = json.NewEncoder(f).Encode(u); err != nil {
-		f.Close()
-		return fmt.Errorf("marshal json error: %s", err)
-	}
-	if err = f.Close(); err != nil {
-		return err
-	}
-	return os.Chmod(path, 0600)
+	return file.WriteAtomic(path, data, 0600)
 }
 
 func (u *User) DecodePrivate(pemEncodedPriv string) (*ecdsa.PrivateKey, error) {

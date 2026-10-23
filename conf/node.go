@@ -10,6 +10,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/common/json5"
 )
 
@@ -132,8 +133,16 @@ type Options struct {
 	// names no masquerade type answers probers with the decoy site
 	// (common/decoy) instead of a bare 404. Unset means yes. The sing and Xray
 	// cores read the same key into SingOptions and XrayOptions.
-	DecoySite  *bool       `json:"DecoySite"`
-	CertConfig *CertConfig `json:"CertConfig"`
+	DecoySite  *bool         `json:"DecoySite"`
+	CertConfig *CertConfig   `json:"CertConfig"`
+	Decoy      *decoy.Config `json:"Decoy,omitempty"`
+}
+
+func (o *Options) DecoyIdentity(tag string) string {
+	if o == nil || o.CertConfig == nil {
+		return decoy.Seed(tag)
+	}
+	return decoy.Identity(o.CertConfig.CertDomain, o.CertConfig.CertFile, tag)
 }
 
 // overlayCoreOptions applies a nested `"<key>": { … }` block on top of options

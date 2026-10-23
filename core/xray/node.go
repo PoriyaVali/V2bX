@@ -41,7 +41,10 @@ func (c *Xray) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	// a site that cannot start is logged and the node comes up without it.
 	var decoyAddr string
 	if wantsDecoy(config, info) {
-		if d, derr := decoy.Start(decoy.Seed(tag)); derr != nil {
+		if d, derr := decoy.StartWithConfig(config.DecoyIdentity(tag), config.Decoy); derr != nil {
+			if config.Decoy != nil {
+				return fmt.Errorf("configure cover site: %w", derr)
+			}
 			log.WithField("err", derr).Warn("decoy site unavailable; unauthenticated connections will be closed")
 		} else {
 			decoyAddr = d.Addr()

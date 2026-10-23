@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"strconv"
@@ -560,10 +561,19 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 	// A failure to start it is deliberately NOT fatal: losing the disguise is
 	// worse than nothing, but refusing to bring the node up would cost every
 	// user their connection over a cosmetic listener.
-	if config.SingOptions.DecoyEnabled() && wantsDecoy(c) {
-		if d, derr := decoy.Start(decoy.Seed(tag)); derr != nil {
+	coverTCP := config.SingOptions.DecoyEnabled() && config.Decoy.TCPEnabled() && config.CertConfig != nil && info.Common != nil && info.Common.ServerPort > 0 && info.Security == panel.Tls && (info.Type == "tuic" || info.Type == "hysteria" || info.Type == "hysteria2")
+	if config.SingOptions.DecoyEnabled() && (wantsDecoy(c) || coverTCP) {
+		if d, derr := decoy.StartWithConfig(config.DecoyIdentity(tag), config.Decoy); derr != nil {
+			if config.Decoy != nil {
+				return fmt.Errorf("configure cover site: %w", derr)
+			}
 			log.WithField("err", derr).Warn("decoy site unavailable; unauthenticated connections will be closed")
 		} else {
+			if coverTCP {
+				if err := d.StartTLSCompanion(net.JoinHostPort(config.ListenIP, strconv.Itoa(info.Common.ServerPort)), config.CertConfig.CertFile, config.CertConfig.KeyFile); err != nil {
+					log.WithField("tag", tag).WithError(err).Warn("TCP cover site unavailable; UDP node continues")
+				}
+			}
 			attachDecoy(c, d)
 			b.decoysMu.Lock()
 			if old := b.decoys[tag]; old != nil {

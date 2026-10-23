@@ -53,8 +53,15 @@ type UserMap struct {
 }
 
 func New(c *conf.CoreConfig) (vCore.Core, error) {
+	if c == nil || c.XrayConfig == nil {
+		return nil, fmt.Errorf("xray configuration is required")
+	}
+	server, err := getCore(c.XrayConfig)
+	if err != nil {
+		return nil, err
+	}
 	return &Xray{
-		Server: getCore(c.XrayConfig),
+		Server: server,
 		users: &UserMap{
 			uidMap: make(map[string]int),
 		},
@@ -95,7 +102,28 @@ func parseConnectionConfig(c *conf.XrayConnectionConfig) (policy *coreConf.Polic
 	return
 }
 
-func getCore(c *conf.XrayConfig) *core.Instance {
+func getCore(c *conf.XrayConfig) (server *core.Instance, err error) {
+	if c.LogConfig == nil || c.ConnectionConfig == nil {
+		return nil, fmt.Errorf("xray Log and XrayConnectionConfig must not be null")
+	}
+	oldAsset, hadAsset := os.LookupEnv("XRAY_LOCATION_ASSET")
+	oldDNS, hadDNS := os.LookupEnv("XRAY_DNS_PATH")
+	defer func() {
+		if err != nil {
+			for key, previous := range map[string]struct {
+				value   string
+				present bool
+			}{
+				"XRAY_LOCATION_ASSET": {oldAsset, hadAsset}, "XRAY_DNS_PATH": {oldDNS, hadDNS},
+			} {
+				if previous.present {
+					_ = os.Setenv(key, previous.value)
+				} else {
+					_ = os.Unsetenv(key)
+				}
+			}
+		}
+	}()
 	os.Setenv("XRAY_LOCATION_ASSET", c.AssetPath)
 	// Log Config
 	coreLogConfig := &coreConf.LogConfig{
@@ -109,45 +137,42 @@ func getCore(c *conf.XrayConfig) *core.Instance {
 	if c.DnsConfigPath != "" {
 		data, err := os.ReadFile(c.DnsConfigPath)
 		if err != nil {
-			log.Error(fmt.Sprintf("Failed to read xray dns config file: %v", err))
-			coreDnsConfig = &coreConf.DNSConfig{}
-		} else {
-			if err := json.Unmarshal(data, coreDnsConfig); err != nil {
-				log.Error(fmt.Sprintf("Failed to unmarshal xray dns config: %v. Using default DNS options.", err))
-				coreDnsConfig = &coreConf.DNSConfig{}
-			}
+			return nil, fmt.Errorf("read xray DNS config: %w", err)
+		}
+		if err := json.Unmarshal(data, coreDnsConfig); err != nil {
+			return nil, fmt.Errorf("decode xray DNS config: %w", err)
 		}
 		os.Setenv("XRAY_DNS_PATH", c.DnsConfigPath)
 	}
 	dnsConfig, err := coreDnsConfig.Build()
 	if err != nil {
-		log.WithField("err", err).Panic("Failed to understand DNS config, Please check: https://xtls.github.io/config/dns.html for help")
+		return nil, fmt.Errorf("build xray DNS config: %w", err)
 	}
 	// Routing config
 	coreRouterConfig := &coreConf.RouterConfig{}
 	if c.RouteConfigPath != "" {
 		data, err := os.ReadFile(c.RouteConfigPath)
 		if err != nil {
-			log.WithField("err", err).Panic("Failed to read Routing config file")
+			return nil, fmt.Errorf("read xray routing config: %w", err)
 		} else {
 			if err = json.Unmarshal(data, coreRouterConfig); err != nil {
-				log.WithField("err", err).Panic("Failed to unmarshal Routing config")
+				return nil, fmt.Errorf("decode xray routing config: %w", err)
 			}
 		}
 	}
 	routeConfig, err := coreRouterConfig.Build()
 	if err != nil {
-		log.WithField("err", err).Panic("Failed to understand Routing config. Please check: https://xtls.github.io/config/routing.html for help")
+		return nil, fmt.Errorf("build xray routing config: %w", err)
 	}
 	// Custom Inbound config
 	var coreCustomInboundConfig []coreConf.InboundDetourConfig
 	if c.InboundConfigPath != "" {
 		data, err := os.ReadFile(c.InboundConfigPath)
 		if err != nil {
-			log.WithField("err", err).Panic("Failed to read Custom Inbound config file")
+			return nil, fmt.Errorf("read xray inbound config: %w", err)
 		} else {
 			if err = json.Unmarshal(data, &coreCustomInboundConfig); err != nil {
-				log.WithField("err", err).Panic("Failed to unmarshal Custom Inbound config")
+				return nil, fmt.Errorf("decode xray inbound config: %w", err)
 			}
 		}
 	}
@@ -155,7 +180,7 @@ func getCore(c *conf.XrayConfig) *core.Instance {
 	for _, config := range coreCustomInboundConfig {
 		oc, err := config.Build()
 		if err != nil {
-			log.WithField("err", err).Panic("Failed to understand Inbound config. Please check: https://xtls.github.io/config/inbound.html for help")
+			return nil, fmt.Errorf("build xray inbound config: %w", err)
 		}
 		inBoundConfig = append(inBoundConfig, oc)
 	}
@@ -164,10 +189,10 @@ func getCore(c *conf.XrayConfig) *core.Instance {
 	if c.OutboundConfigPath != "" {
 		data, err := os.ReadFile(c.OutboundConfigPath)
 		if err != nil {
-			log.WithField("err", err).Panic("Failed to read Custom Outbound config file")
+			return nil, fmt.Errorf("read xray outbound config: %w", err)
 		} else {
 			if err = json.Unmarshal(data, &coreCustomOutboundConfig); err != nil {
-				log.WithField("err", err).Panic("Failed to unmarshal Custom Outbound config")
+				return nil, fmt.Errorf("decode xray outbound config: %w", err)
 			}
 		}
 	}
@@ -175,7 +200,7 @@ func getCore(c *conf.XrayConfig) *core.Instance {
 	for _, config := range coreCustomOutboundConfig {
 		oc, err := config.Build()
 		if err != nil {
-			log.WithField("err", err).Panic("Failed to understand Outbound config, Please check: https://xtls.github.io/config/outbound.html for help")
+			return nil, fmt.Errorf("build xray outbound config: %w", err)
 		}
 		outBoundConfig = append(outBoundConfig, oc)
 	}
@@ -183,7 +208,10 @@ func getCore(c *conf.XrayConfig) *core.Instance {
 	levelPolicyConfig := parseConnectionConfig(c.ConnectionConfig)
 	corePolicyConfig := &coreConf.PolicyConfig{}
 	corePolicyConfig.Levels = map[uint32]*coreConf.Policy{0: levelPolicyConfig}
-	policyConfig, _ := corePolicyConfig.Build()
+	policyConfig, err := corePolicyConfig.Build()
+	if err != nil {
+		return nil, fmt.Errorf("build xray policy config: %w", err)
+	}
 	// Build Xray conf
 	config := &core.Config{
 		App: []*serial.TypedMessage{
@@ -199,12 +227,12 @@ func getCore(c *conf.XrayConfig) *core.Instance {
 		Inbound:  inBoundConfig,
 		Outbound: outBoundConfig,
 	}
-	server, err := core.New(config)
+	server, err = core.New(config)
 	if err != nil {
-		log.WithField("err", err).Panic("failed to create instance")
+		return nil, fmt.Errorf("create xray instance: %w", err)
 	}
 	log.Info("Xray Core Version: ", core.Version())
-	return server
+	return server, nil
 }
 
 // Start the Xray

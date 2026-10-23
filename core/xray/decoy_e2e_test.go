@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	"github.com/PoriyaVali/V2bX/limiter"
@@ -79,6 +80,11 @@ func certFiles(t *testing.T) *conf.CertConfig {
 // tlsXrayNode runs a real xray core with one TLS node of the given panel type.
 func tlsXrayNode(t *testing.T, info *panel.NodeInfo, xo *conf.XrayOptions, users ...panel.UserInfo) (*Xray, string) {
 	t.Helper()
+	return tlsXrayNodeWithCover(t, info, xo, nil, users...)
+}
+
+func tlsXrayNodeWithCover(t *testing.T, info *panel.NodeInfo, xo *conf.XrayOptions, cover *decoy.Config, users ...panel.UserInfo) (*Xray, string) {
+	t.Helper()
 	limiter.Init()
 	tag := "decoy-" + info.Type
 	limiter.AddLimiter(tag, &conf.LimitConfig{}, users, map[int]int{})
@@ -92,7 +98,7 @@ func tlsXrayNode(t *testing.T, info *panel.NodeInfo, xo *conf.XrayOptions, users
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = x.Close() })
-	if err := x.AddNode(tag, info, &conf.Options{ListenIP: "127.0.0.1", XrayOptions: xo, CertConfig: certFiles(t)}); err != nil {
+	if err := x.AddNode(tag, info, &conf.Options{ListenIP: "127.0.0.1", XrayOptions: xo, CertConfig: certFiles(t), Decoy: cover}); err != nil {
 		t.Fatal(err)
 	}
 	return x, tag
@@ -141,7 +147,7 @@ func probeHTTP2(t *testing.T, port int) (*http.Response, string) {
 }
 
 func isDecoyPage(resp *http.Response, body string) bool {
-	return resp.StatusCode == http.StatusOK && resp.Header.Get("Server") == "nginx" && strings.Contains(body, "<title>")
+	return resp.StatusCode == http.StatusOK && resp.Header.Get("Server") == "" && strings.Contains(body, "<title>")
 }
 
 // A prober that completes the TLS handshake of a VLESS or Trojan node and then
@@ -228,7 +234,7 @@ func TestXray_DecoyNodeStillCarriesUsers(t *testing.T) {
 	xo := conf.NewXrayOptions()
 	xo.DisableSniffing = true
 	users := []panel.UserInfo{{Id: 1, Uuid: e2eUUID}}
-	x, tag := tlsXrayNode(t, info, xo, users...)
+	x, tag := tlsXrayNodeWithCover(t, info, xo, &decoy.Config{RequestsPerSecond: 1}, users...)
 	if _, err := x.AddUsers(&vCore.AddUsersParams{Tag: tag, Users: users, NodeInfo: info}); err != nil {
 		t.Fatal(err)
 	}
@@ -242,6 +248,27 @@ func TestXray_DecoyNodeStillCarriesUsers(t *testing.T) {
 	}
 	if err := x.addOutbound(ob); err != nil {
 		t.Fatal(err)
+	}
+	// Exhaust the cover site's budget. A valid subscriber on the same port
+	// must still pass protocol authentication and reach the destination.
+	x.decoysMu.Lock()
+	site := x.decoys[tag]
+	x.decoysMu.Unlock()
+	overloaded := false
+	for i := 0; i < 1024; i++ {
+		r, err := http.Get(site.URL())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		r.Body.Close()
+		if r.StatusCode == http.StatusServiceUnavailable {
+			overloaded = true
+			break
+		}
+	}
+	if !overloaded {
+		t.Fatal("could not exercise the public request budget")
 	}
 
 	echo := echoServer(t)

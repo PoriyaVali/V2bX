@@ -83,6 +83,7 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("new core: %w", err)
 	}
 	if err = vc.Start(); err != nil {
+		_ = vc.Close()
 		return fmt.Errorf("start core: %w", err)
 	}
 	// lifecycle keeps a config reload and the shutdown from overlapping: the
@@ -114,13 +115,20 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 	xdns := os.Getenv("XRAY_DNS_PATH")
 	sdns := os.Getenv("SING_DNS_PATH")
 	if watch {
-		err = c.Watch(config, xdns, sdns, func() {
+		err = c.Watch(config, xdns, sdns, func(next *conf.Conf) error {
 			lifecycle.Lock()
 			defer lifecycle.Unlock()
 			if stopping {
-				return
+				return nil
 			}
-			if err := metrics.Start(c.MetricsConfig.Listen); err != nil {
+			// Decode/build the replacement before retiring healthy nodes. A bad
+			// DNS, route or inbound file must not tear down the active service.
+			newCore, err := vCore.NewCore(next.CoresConfig)
+			if err != nil {
+				return fmt.Errorf("new core config rejected; keeping the running nodes: %w", err)
+			}
+			if err := metrics.Start(next.MetricsConfig.Listen); err != nil {
+				_ = newCore.Close()
 				log.WithField("err", err).Error("Reconfigure metrics failed; exiting so the service restarts")
 				os.Exit(1)
 			}
@@ -132,23 +140,20 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 			if err := vc.Close(); err != nil {
 				log.WithField("err", err).Error("Close core before reload failed")
 			}
-			newCore, err := vCore.NewCore(c.CoresConfig)
-			if err != nil {
-				log.WithField("err", err).Error("New core failed during reload; exiting so the service restarts")
-				os.Exit(1)
-			}
 			if err = newCore.Start(); err != nil {
+				_ = newCore.Close()
 				log.WithField("err", err).Error("Start core failed during reload; exiting so the service restarts")
 				os.Exit(1)
 			}
 			vc = newCore
 			log.Info("Core ", vc.Type(), " restarted")
-			if err = nodes.Start(c.NodeConfig, vc); err != nil {
+			if err = nodes.Start(next.NodeConfig, vc); err != nil {
 				log.WithField("err", err).Error("Run nodes failed during reload; exiting so the service restarts")
 				os.Exit(1)
 			}
 			log.Info("Nodes restarted")
 			runtime.GC()
+			return nil
 		})
 		if err != nil {
 			return fmt.Errorf("start watch: %w", err)

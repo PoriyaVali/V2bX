@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
@@ -87,8 +88,8 @@ func TestSelectorIsSilentForCoresThatDoNotImplementThem(t *testing.T) {
 	s.nodes.Store("tag-xray", &plainCore{})
 
 	got, err := s.OnlineDevices("tag-xray")
-	if err != nil || got != nil {
-		t.Errorf("expected nothing for a core without the method, got %v / %v", got, err)
+	if !errors.Is(err, ErrOnlineDevicesUnsupported) || got != nil {
+		t.Errorf("expected an unsupported snapshot for a core without the method, got %v / %v", got, err)
 	}
 	s.UpdateUserLimits("tag-xray", []panel.UserInfo{{Id: 1}}) // must not panic
 }

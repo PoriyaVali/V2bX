@@ -3,9 +3,12 @@ package hy2
 import (
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/apernet/hysteria/core/v2/server"
 	"github.com/spf13/viper"
@@ -24,11 +27,15 @@ type Hysteria2node struct {
 	// removing them from one node locked them out of all of them.
 	Auth *V2bX
 	// masq is the node's TCP masquerade server, if it runs one.
-	masq *masqTCP
+	masq  *masqTCP
+	cover *decoy.Site
 }
 
 func (n *Hysteria2node) close() error {
 	var errs []error
+	if n.cover != nil {
+		errs = append(errs, n.cover.Close())
+	}
 	if n.masq != nil {
 		if err := n.masq.Close(); err != nil {
 			errs = append(errs, err)
@@ -96,6 +103,20 @@ func (h *Hysteria2) AddNode(tag string, info *panel.NodeInfo, config *conf.Optio
 		return err
 	}
 	n.Hy2server = s
+	if n.masq == nil && c.Masquerade.Type == "" && info.Common != nil && info.Common.ServerPort > 0 && (config.DecoySite == nil || *config.DecoySite) && config.Decoy.TCPEnabled() {
+		d, err := decoy.StartWithConfig(config.DecoyIdentity(tag), config.Decoy)
+		if err == nil {
+			err = d.StartTLSCompanion(net.JoinHostPort(config.ListenIP, strconv.Itoa(info.Common.ServerPort)), config.CertConfig.CertFile, config.CertConfig.KeyFile)
+		}
+		if err != nil {
+			if d != nil {
+				_ = d.Close()
+			}
+			h.Logger.Warn("TCP cover site unavailable; UDP node continues", zap.Error(err))
+		} else {
+			n.cover = d
+		}
+	}
 	hook.reportMin.Store(config.ReportMinTraffic * 1024)
 	hook.auth.Store(n.Auth)
 

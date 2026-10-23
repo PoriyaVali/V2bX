@@ -268,7 +268,7 @@ func TestHy2_UnconfiguredMasqueradeServesDecoySite(t *testing.T) {
 		if resp.StatusCode != tc.wantStatus {
 			t.Fatalf("type %q: status %d, want %d", tc.typ, resp.StatusCode, tc.wantStatus)
 		}
-		if tc.wantStatus == http.StatusOK && (resp.Header.Get("Server") != "nginx" || !strings.Contains(string(body), "<title>")) {
+		if tc.wantStatus == http.StatusOK && (resp.Header.Get("Server") != "" || !strings.Contains(string(body), "<title>")) {
 			t.Fatalf("unconfigured masquerade is not the decoy site: Server %q, body %.80q", resp.Header.Get("Server"), body)
 		}
 		if err := r.h.DelNode("A"); err != nil {

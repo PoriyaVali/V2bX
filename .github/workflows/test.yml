@@ -36,9 +36,10 @@ jobs:
 
       - name: Installer regression tests
         run: |
-          bash -n install.sh scripts/test-install-update.sh scripts/test-release-version.sh
+          bash -n install.sh scripts/test-install-update.sh scripts/test-release-version.sh scripts/test-config-wizard.sh
           bash scripts/test-release-version.sh
           bash scripts/test-install-update.sh
+          bash scripts/test-config-wizard.sh
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -80,10 +81,18 @@ jobs:
             fi
           done
 
+      - name: Setup command and invalid core reload
+        env:
+          GOEXPERIMENT: jsonv2
+          V2BX_TEST_BINARY: /tmp/V2bX_tagged
+        run: |
+          /tmp/V2bX_tagged configure --help >/dev/null
+          go test -race -count=1 -timeout 1m ./cmd -run '^TestServerRejectedCoreReloadKeepsDNSNode$'
+
       - name: Vet
         env:
           GOEXPERIMENT: jsonv2
-        run: go vet ./limiter/... ./node/... ./conf/... ./api/... ./common/... ./core/...
+        run: go vet ./limiter/... ./node/... ./conf/... ./api/... ./common/... ./core/... ./cmd/...
 
       - name: Update CLI regression tests
         env:
@@ -127,7 +136,14 @@ jobs:
       - name: Test (race detector)
         env:
           GOEXPERIMENT: jsonv2
-        run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/... ./api/... ./core/...
+        run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/... ./api/... ./core/... ./cmd/...
+
+      - name: Cover sites over HTTP2 and HTTP3
+        env:
+          GOEXPERIMENT: jsonv2
+        run: |
+          go test -race -tags with_quic -count=1 -timeout 2m ./common/decoy ./core/sing ./core/hy2 -run 'TestCover|TestPublicRoot|TestInvalidPublicRoot|TestTCPCompanion|TestSing_Hysteria2ProberSeesDecoySite|TestSing_TUICHasOwnedHTTPSCompanion|TestHy2_DefaultCoverOwnsTCPAndRetiresWithUDP|TestHy2_CoverTCP'
+          go test -count=1 -timeout 1m ./core/xray -run '^TestXray_(TLSProberSeesDecoySite|DecoyNodeStillCarriesUsers)$'
 
       - name: Go formatting (changed files)
         if: always()

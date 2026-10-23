@@ -22,6 +22,10 @@ import (
 // rolled out. Set once at startup by SetVersion, before any client exists.
 var userAgent = "V2bX"
 
+// Bound uncompressed panel responses, including error pages. User lists use
+// the same budget through their streaming reader below.
+const maxPanelResponseBytes = 64 << 20
+
 // SetVersion makes every panel client created afterwards identify itself as
 // "V2bX/<version>". Call it before New; clients already built keep their header.
 func SetVersion(version string) {
@@ -56,6 +60,8 @@ func New(c *conf.ApiConfig) (*Client, error) {
 		client = resty.New()
 	}
 	client.SetHeader("User-Agent", userAgent)
+	client.SetLogger(panelLogger{token: c.Key})
+	client.SetResponseBodyLimit(maxPanelResponseBytes)
 	client.SetRetryCount(3)
 	if c.Timeout > 0 {
 		client.SetTimeout(time.Duration(c.Timeout) * time.Second)
@@ -67,7 +73,9 @@ func New(c *conf.ApiConfig) (*Client, error) {
 		if errors.As(err, &v) {
 			// v.Response contains the last response from the server
 			// v.Err contains the original error
-			logrus.Error(v.Err)
+			if v.Err != nil {
+				logrus.Error(redactToken(v.Err.Error(), c.Key))
+			}
 		}
 	})
 	client.SetBaseURL(c.APIHost)
