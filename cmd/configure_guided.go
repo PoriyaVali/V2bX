@@ -43,12 +43,25 @@ func setupCoreSupports(core, protocol string) bool {
 	return false
 }
 
+func validateSetupCore(core string, info *panel.NodeInfo) error {
+	if !setupCoreSupports(core, info.Type) {
+		return fmt.Errorf("%s core cannot serve %s", core, info.Type)
+	}
+	if core == "sing" && info.Type == "vless" && info.VAllss != nil && info.VAllss.Encryption != "" {
+		return fmt.Errorf("VLESS encryption requires Xray; select Xray or change the node settings in the panel")
+	}
+	return nil
+}
+
 func resolveSetupCore(core string, info *panel.NodeInfo) string {
 	if core != "auto" {
 		return core
 	}
 	if info.Type == "mdns" || info.Type == "trusttunnel" {
 		return info.Type
+	}
+	if info.Type == "vless" && info.VAllss != nil && info.VAllss.Encryption != "" {
+		return "xray"
 	}
 	if info.Security == panel.Tls && ((info.Trojan != nil && (info.Trojan.Network == "" || info.Trojan.Network == "tcp")) || (info.VAllss != nil && info.Type == "vless" && info.VAllss.Network == "tcp" && info.VAllss.Encryption == "")) {
 		return "xray"
@@ -220,8 +233,7 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 			}
 			selected = found[index]
 		}
-		if !setupCoreSupports(core, selected.Type) {
-			err := fmt.Errorf("%s cannot serve %s; select sing-box for Hysteria version 1", core, selected.Type)
+		if err := validateSetupCore(core, selected); err != nil {
 			if retry, inputErr := retrySetupNode(p, err); inputErr != nil {
 				return nil, nil, inputErr
 			} else if !retry {

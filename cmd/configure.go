@@ -263,8 +263,8 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 			return nil, nil, fmt.Errorf("unsupported core for %s", label)
 		}
 		core = resolveSetupCore(core, info)
-		if !setupCoreSupports(core, info.Type) {
-			return nil, nil, fmt.Errorf("%s core cannot serve %s", core, info.Type)
+		if err := validateSetupCore(core, info); err != nil {
+			return nil, nil, err
 		}
 		if !seenCores[core] {
 			cores = append(cores, map[string]any{"Type": core})

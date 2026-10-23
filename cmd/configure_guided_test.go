@@ -22,6 +22,16 @@ func TestAnyTLSCertificateDomainMatchesSubscriptionSNI(t *testing.T) {
 	}
 }
 
+func TestVLESSEncryptionRequiresCompatibleCore(t *testing.T) {
+	info := &panel.NodeInfo{Type: "vless", Security: panel.Reality, VAllss: &panel.VAllssNode{Network: "tcp", Encryption: "mlkem768x25519plus"}}
+	if err := validateSetupCore("sing", info); err == nil || !strings.Contains(err.Error(), "Xray") {
+		t.Fatal("wizard accepted encrypted VLESS on a core that cannot serve it")
+	}
+	if err := validateSetupCore("xray", info); err != nil || resolveSetupCore("auto", info) != "xray" {
+		t.Fatal("automatic setup did not use the compatible encryption core")
+	}
+}
+
 func executeGuidedTest(panelURL, output, input string) (string, error) {
 	c := newConfigureCommand()
 	c.SetArgs([]string{"--guided", "--panel", panelURL, "--api-key-env", "V2BX_TEST_API_KEY", "--output", output})
