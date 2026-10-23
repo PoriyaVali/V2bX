@@ -409,7 +409,7 @@ replace github.com/xtls/xray-core => github.com/PoriyaVali/Xray-core v1.260909.1
 // clients send the share by default. Guarded by core/xray/reality_compat_test.go.
 replace github.com/xtls/reality => github.com/xtls/reality v0.0.0-20260908045812-e1986a4d31ca
 
-replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261022174336-58baa26611be
+replace masterdnsvpn-go => github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261023030011-25b103d6a5f4
 
 // Keep the pinned protocol versions with atomic user-table publication fixes.
 replace github.com/anytls/sing-anytls => ./third_party/sing-anytls
