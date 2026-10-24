@@ -107,22 +107,45 @@ func TestServerRejectedCoreReloadKeepsDNSNode(t *testing.T) {
 		body, _ := os.ReadFile(logPath)
 		t.Fatalf("server did not reach %q: %s", marker, body)
 	}
-	probe := func() {
-		t.Helper()
+	query := func() error {
 		q := new(dns.Msg)
 		q.SetQuestion("t.example.test.", dns.TypeA)
 		answer, _, err := (&dns.Client{Timeout: time.Second}).Exchange(q, net.JoinHostPort("127.0.0.1", fmt.Sprint(port)))
 		if err != nil || answer == nil || !answer.Response || answer.Id != q.Id {
-			t.Fatalf("live DNS node stopped responding: %v / %v", answer, err)
+			return fmt.Errorf("live DNS node stopped responding: %v / %v", answer, err)
+		}
+		return nil
+	}
+	probe := func() {
+		t.Helper()
+		if err := query(); err != nil {
+			body, _ := os.ReadFile(logPath)
+			t.Fatalf("%v\nserver log:\n%s", err, body)
 		}
 	}
+	awaitDNS := func() {
+		t.Helper()
+		// MDNS Start returns before its background goroutine binds UDP. A
+		// startup/restart log is not a listener-readiness signal. Wait only
+		// for actual starts; rejecting bad config must keep answering at once.
+		deadline := time.Now().Add(5 * time.Second)
+		var last error
+		for time.Now().Before(deadline) {
+			if last = query(); last == nil {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		body, _ := os.ReadFile(logPath)
+		t.Fatalf("DNS listener did not become ready: %v\nserver log:\n%s", last, body)
+	}
 	awaitLog("Nodes started")
-	probe()
+	awaitDNS()
 	writeConfig([]map[string]any{{"Type": "mdns"}, {"Type": "xray", "RouteConfigPath": badRoute}})
 	awaitLog("new core config rejected; keeping the running nodes")
 	probe()
 	// A corrected save must still be picked up after rejecting the first one.
 	writeConfig([]map[string]any{{"Type": "mdns"}, {"Type": "xray"}})
 	awaitLog("Nodes restarted")
-	probe()
+	awaitDNS()
 }

@@ -1,5 +1,27 @@
 # AI work log and handoff
 
+## Active handoff - 2026-10-24 - Codex - CLI restart readiness fixture repair; v1.9.3 still unpublished
+
+Port fixture repair committed/pushed cb223d8. Run40075536034 FAILED at CLI
+TestServerRejectedCoreReloadKeepsDNSNode line127, final probe AFTER valid
+restart. Startup and rejected-config immediate probe passed. Source of pinned
+MasterDnsVPN server/server.go107 explicitly documents Start returns at once,
+starts inner.Run in goroutine; node/server logs can precede UDP bind. This
+test already passed prior7246735 Linux run; evidence now demonstrates missing
+readiness synchronization, not certificate reload failure. Full failed job log
+saved in shared ignored .dart_tool/v2bx-release-1.9.3/failed-test-run-
+40075536034.log. Gate skipped draft/build/publish again; no version shipped.
+
+Material paths: cmd/server_reload_integration_test.go awaits actual DNS reply
+within5s ONLY after initial start and valid restart, keeps immediate probe
+after rejected config, dumps server log on DNS failure. .github/workflows/
+test.yml repeats this actual binary test3times under Race (2m bound).
+AI_HANDOFF.md records rationale/status. No production-code change. Local
+cmd Race checks PASS1.982s (actual-binary integration skipped locally; host
+binary unset), workflow YAML parse/gofmt/diffcheckPASS. Hosted Linux actual-
+binary repeated validation pending; do not claim skipped local integration
+passed. These3paths UNCOMMITTED at entry.
+
 ## Active handoff - 2026-10-24 - Codex - Linux CI caught shared-port fixture collision; release still blocked
 
 Run40074451673 at committed/pushed72467355d7a1bbc3a47740042e1beaaf731d2bb4
