@@ -189,17 +189,16 @@ trusttunnel_cert_prereqs() {
     # grep+sed rather than jq, to keep the installer dependency-free - the same
     # approach the REALITY probe uses.
     cert_type="$(printf '%s' "${body}" | grep -oE '"cert_type"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
-    [[ -z "${cert_type}" ]] && cert_type="self-signed"
-
     case "${cert_type}" in
         letsencrypt)
             acme_email="$(printf '%s' "${body}" | grep -oE '"acme_email"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
             echo -e "${green}Panel says: Let's Encrypt certificate | پنل می‌گوید: گواهی Let's Encrypt${plain}"
-            if [[ -z "${acme_email}" ]]; then
+            if [[ -z "${acme_email//[[:space:]]/}" ]]; then
                 # ACME refuses an account without one, and the failure surfaces
                 # as the endpoint not starting rather than as a missing field.
                 echo -e "${red}No ACME email set for this node in the panel — issuance will fail.${plain}"
                 echo -e "${red}ایمیل ACME برای این نود در پنل تنظیم نشده — دریافت گواهی شکست می‌خورد.${plain}"
+                return 1
             fi
             # Port 80 is not optional for the http-01 challenge, and a host
             # firewall closing it is the common cause of a node that configures
@@ -222,25 +221,34 @@ trusttunnel_cert_prereqs() {
             ;;
         provided)
             echo -e "${green}Panel says: certificate files provided | پنل می‌گوید: فایل گواهی از قبل موجود است${plain}"
-            local chain key
+            local chain key f
             chain="$(printf '%s' "${body}" | grep -oE '"cert_chain_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
             key="$(printf '%s' "${body}" | grep -oE '"cert_key_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)"
+            if [[ -z "${chain//[[:space:]]/}" || -z "${key//[[:space:]]/}" ]]; then
+                echo -e "${red}A certificate path is empty in the panel.${plain}" >&2
+                return 1
+            fi
             # Checked here because the endpoint reads them at startup, and a
             # missing file there is a node that dies immediately.
             for f in "${chain}" "${key}"; do
-                if [[ -z "${f}" ]]; then
-                    echo -e "${red}A certificate path is empty in the panel.${plain}"
-                elif [[ ! -r "${f}" ]]; then
+                if [[ ! -r "${f}" ]]; then
                     echo -e "${red}Not readable on this host: ${f}${plain}"
                     echo -e "${red}روی این سرور قابل خواندن نیست: ${f}${plain}"
                 fi
             done
             ;;
-        *)
+        self-signed)
             echo -e "${green}Panel says: self-signed certificate | پنل می‌گوید: گواهی self-signed${plain}"
             # Worth saying plainly: this only works because the subscription
             # link carries skip_verification for such a node.
             echo -e "${yellow}Clients accept it only because the panel marks the node self-signed.${plain}"
+            ;;
+        *)
+            # A missing or new mode must not silently become self-signed: the
+            # panel's subscribers may require a publicly trusted certificate.
+            # Do not echo the untrusted value or response (it may hold secrets).
+            echo -e "${red}Invalid TrustTunnel certificate mode in the panel; choose self-signed, letsencrypt or provided.${plain}" >&2
+            return 1
             ;;
     esac
 }
@@ -772,7 +780,7 @@ generate_config() {
             install_trusttunnel_bins || {
                 echo -e "${red}The node will not start without these binaries | نود بدون این باینری‌ها بالا نمی‌آید${plain}"
             }
-            trusttunnel_cert_prereqs "${NODE_ID}"
+            trusttunnel_cert_prereqs "${NODE_ID}" || return $?
         elif [[ "${CORE_TYPE}" == "hysteria2" ]]; then
             NODE_TYPE="hysteria2"
             echo -e "Node type | نوع نود: ${yellow}hysteria2${plain}"

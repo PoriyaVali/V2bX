@@ -35,6 +35,9 @@ func nodeDesc(c *conf.NodeConfig) string {
 }
 
 func (n *Node) Start(nodes []conf.NodeConfig, core vCore.Core) error {
+	if err := conf.ValidateCertificatePaths(nodes); err != nil {
+		return err
+	}
 	n.mu.Lock()
 	n.controllers = make([]*Controller, len(nodes))
 	n.stop = make(chan struct{})

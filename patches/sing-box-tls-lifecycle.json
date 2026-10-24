@@ -1,0 +1,17 @@
+{
+  "module": "github.com/PoriyaVali/sing-box",
+  "module_path": "github.com/sagernet/sing-box",
+  "version": "v1.13.21-v2bx.2",
+  "upstream_commit": null,
+  "module_sum": "h1:9fqgzsOwlTtDQ83kSbtcdSNHkctXqOjBpzgWUHOxEiM=",
+  "go_mod_sum": "h1:3QuzuhcfVrYNDkKPuPsMd/goaOGSTEUyDBbFlBaGx48=",
+  "patch": "sing-box-tls-lifecycle.patch",
+  "patch_sha256": "b879362161593150187e3c42fbe7845a25304aaba204d1e50baa09d65127e561",
+  "files": [
+    {
+      "path": "common/tls/std_server.go",
+      "base_sha256": "118f825967e102c1394bd7fe7959e61aa9c967659d96ad2a8a84567d05d19697",
+      "patched_sha256": "a04ba69ac1d88a00d7a82a485c83ab0fe235f706eade58e570902e0bcc05a10c"
+    }
+  ]
+}

@@ -59,5 +59,5 @@ func (p *Conf) LoadFromPath(filePath string) error {
 		return fmt.Errorf("unmarshal config error: %s", err)
 	}
 
-	return nil
+	return ValidateCertificatePaths(p.NodeConfig)
 }

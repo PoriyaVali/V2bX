@@ -1,4 +1,4 @@
-package node
+package certmanager
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/go-acme/lego/v4/certificate"
@@ -16,7 +17,9 @@ func existingCertConfig(t *testing.T) *conf.CertConfig {
 	t.Helper()
 	dir := t.TempDir()
 	c := &conf.CertConfig{CertMode: "http", CertDomain: "node.example.test", CertFile: filepath.Join(dir, "c.pem"), KeyFile: filepath.Join(dir, "k.pem")}
-	if err := generateSelfSslCertificate(c.CertDomain, c.CertFile, c.KeyFile); err != nil {
+	ca := newLifecycleCA(t)
+	issued := ca.issue(t, 1, []string{c.CertDomain}, time.Now().Add(-time.Hour), time.Now().AddDate(0, 3, 0))
+	if err := (&Lego{config: c}).writeCert(issued); err != nil {
 		t.Fatal(err)
 	}
 	return c
@@ -43,13 +46,13 @@ func TestRenewalNotDueDoesNotRegisterOrInitializeACME(t *testing.T) {
 
 func TestExistingPairMustMatchDomainKeyAndValidity(t *testing.T) {
 	c := existingCertConfig(t)
-	controller := &Controller{Options: &conf.Options{CertConfig: c}}
-	if err := controller.requestCert(); err != nil {
+
+	if err := Ensure(c); err != nil {
 		t.Fatal(err)
 	}
 	c.CertMode = "file"
 	c.CertDomain = "other.example.test"
-	if err := controller.requestCert(); err == nil {
+	if err := Ensure(c); err == nil {
 		t.Fatal("wrong domain was accepted")
 	}
 	c.CertDomain = "node.example.test"
@@ -58,7 +61,7 @@ func TestExistingPairMustMatchDomainKeyAndValidity(t *testing.T) {
 	if err := os.WriteFile(c.KeyFile, key, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := controller.requestCert(); err == nil {
+	if err := Ensure(c); err == nil {
 		t.Fatal("mismatched certificate key was accepted")
 	}
 }
@@ -99,7 +102,7 @@ func TestCertificateInstallFailureRestoresPreviousPrivateKey(t *testing.T) {
 		t.Fatal("failed certificate install accepted")
 	}
 	after, _ := os.ReadFile(current.KeyFile)
-	if !bytes.Equal(before, after) || validCertificatePair(current) != nil {
+	if !bytes.Equal(before, after) || ValidCertificatePair(current) != nil {
 		t.Fatal("failed install left active certificate without its private key")
 	}
 }

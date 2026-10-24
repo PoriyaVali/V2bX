@@ -1,6 +1,8 @@
 package trusttunnel
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +25,12 @@ import (
 func credentialsFor(u panel.UserInfo) (string, string) { return u.Uuid, u.Uuid }
 
 func (t *TrustTunnel) AddUsers(p *vCore.AddUsersParams) (added int, err error) {
+	for _, u := range p.Users {
+		name, pass := credentialsFor(u)
+		if !validCredential(name) || !validCredential(pass) {
+			return 0, fmt.Errorf("trusttunnel: invalid user credential")
+		}
+	}
 	t.mu.Lock()
 	n := t.nodes[p.Tag]
 	if t.usersMap[p.Tag] == nil {
@@ -86,32 +94,53 @@ func (t *TrustTunnel) DelUsers(users []panel.UserInfo, tag string, _ *panel.Node
 // shorter user list. The endpoint keeps its previous list when a reload fails,
 // so the worst case is a stale list rather than everyone locked out.
 func (n *node) applyUsers() error {
-	if err := n.writeCredentials(); err != nil {
+	n.credentialsMu.Lock()
+	defer n.credentialsMu.Unlock()
+	if err := n.writeCredentialsLocked(); err != nil {
 		return err
 	}
 
 	n.mu.Lock()
+	defer n.mu.Unlock()
 	cmd := n.cmd
-	ready := n.ready
-	n.mu.Unlock()
+	n.pendingReload = true
 	if cmd == nil || cmd.Process == nil {
 		return nil // not running; the file is in place for when it starts
 	}
-	if !ready {
+	if !n.ready || n.closing {
 		// The endpoint has not answered yet, so it may not have installed its
 		// SIGHUP handler - and the default disposition for that signal kills
-		// the process. The list is already on disk and is read at startup, so
-		// staying quiet here costs nothing and losing the endpoint costs a
-		// node. This is not hypothetical: it killed the first live node on
-		// every start, because a panel syncs users the moment a node appears.
+		// the process. It might already have read the old file, so readiness
+		// will replay the pending reload instead of silently losing it.
 		return nil
 	}
-	return cmd.Process.Signal(syscall.SIGHUP)
+	if err := cmd.Process.Signal(syscall.SIGHUP); err != nil {
+		return err
+	}
+	n.pendingReload = false
+	return nil
 }
 
 func (n *node) writeCredentials() error {
 	n.credentialsMu.Lock()
 	defer n.credentialsMu.Unlock()
+	return n.writeCredentialsLocked()
+}
+
+// bootstrapCredential is deliberately not a panel user. The native endpoint
+// requires at least one credential to install authentication at startup, and
+// rejects an empty credentials file on reload. Use an unadvertised 256-bit
+// random password instead of a known placeholder or an invalid empty file.
+func bootstrapCredential() (string, error) {
+	var secret [32]byte
+	if _, err := rand.Read(secret[:]); err != nil {
+		return "", fmt.Errorf("generate bootstrap credential: %w", err)
+	}
+	return "v2bx-bootstrap:" + hex.EncodeToString(secret[:]), nil
+}
+
+// Caller holds credentialsMu across replacement and any corresponding signal.
+func (n *node) writeCredentialsLocked() error {
 	n.mu.Lock()
 	users := make(map[string]string, len(n.users))
 	for k, v := range n.users {
@@ -119,27 +148,58 @@ func (n *node) writeCredentials() error {
 	}
 	dir := n.dir
 	n.mu.Unlock()
+	if len(users) == 0 {
+		credential, err := bootstrapCredential()
+		if err != nil {
+			return err
+		}
+		name, pass, _ := strings.Cut(credential, ":")
+		users[name] = pass
+	}
 
 	var b strings.Builder
 	for name, pass := range users {
 		// A uuid contains nothing that needs escaping, and anything that did
 		// would be a sign the panel sent something unexpected - so reject
 		// rather than emit TOML that means something else.
-		if strings.ContainsAny(name, "\"\\\n") || strings.ContainsAny(pass, "\"\\\n") {
-			return fmt.Errorf("refusing to write credential containing quotes or newlines")
+		if !validCredential(name) || !validCredential(pass) {
+			return fmt.Errorf("refusing to write invalid credential")
 		}
 		fmt.Fprintf(&b, "[[client]]\nusername = %q\npassword = %q\n\n", name, pass)
 	}
 
 	final := filepath.Join(dir, "credentials.toml")
-	tmp := final + ".tmp"
-	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
+	f, err := os.CreateTemp(dir, ".credentials-*.toml")
+	if err != nil {
 		return fmt.Errorf("write credentials: %w", err)
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if _, err := io.WriteString(f, b.String()); err != nil {
+		f.Close()
+		return fmt.Errorf("write credentials: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close credentials: %w", err)
 	}
 	if err := os.Rename(tmp, final); err != nil {
 		return fmt.Errorf("replace credentials: %w", err)
 	}
 	return nil
+}
+
+func validCredential(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, c := range value {
+		// Panel UUIDs are ASCII. Avoid TOML escapes and the native parser's
+		// trimming/quote removal changing the authenticated identity.
+		if c < 0x21 || c > 0x7e || c == '"' || c == '\\' {
+			return false
+		}
+	}
+	return true
 }
 
 // usage is what the endpoint's drain returns: username -> bytes each way.

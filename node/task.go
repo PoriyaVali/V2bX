@@ -29,22 +29,7 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 	_ = c.nodeInfoMonitorPeriodic.Start(false)
 	log.WithField("tag", c.tag).Info("Start report node status")
 	_ = c.userReportPeriodic.Start(false)
-	if node.Security == panel.Tls {
-		switch c.CertConfig.CertMode {
-		case "none", "", "file", "self":
-		default:
-			c.renewCertPeriodic = &task.Task{
-				// Check every 6h (cheap: only reads/parses the cert; hits
-				// ACME only when <30 days remain). Gives up to 4 renewal
-				// retries/day if one fails near expiry.
-				Interval: time.Hour * 6,
-				Execute:  c.renewCertTask,
-			}
-			log.WithField("tag", c.tag).Info("Start renew cert")
-			// delay to start renewCert
-			_ = c.renewCertPeriodic.Start(true)
-		}
-	}
+	c.configureCertificateRenewal(node)
 	// report server status every 60s
 	c.statusReportPeriodic = &task.Task{
 		Interval: time.Second * 60,
@@ -61,6 +46,33 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 		// Created but never started, so EnableDynamicSpeedLimit did nothing.
 		_ = c.dynamicSpeedLimitPeriodic.Start(false)
 		log.Printf("[%s: %d] Start dynamic speed limit", c.apiClient.NodeType, c.apiClient.NodeId)
+	}
+}
+
+// A TLS mode can change in a panel reload. Reconcile this loop there as well
+// as at initial startup so newly enabled TLS also gets certificate renewal.
+// TrustTunnel owns its manager and lifecycle inside its separate core.
+func (c *Controller) configureCertificateRenewal(node *panel.NodeInfo) {
+	required := node != nil && node.Security == panel.Tls && node.Type != "trusttunnel" && c.Options != nil && c.CertConfig != nil
+	if required {
+		switch c.CertConfig.CertMode {
+		case "http", "dns", "self":
+		default:
+			required = false
+		}
+	}
+	if !required {
+		if c.renewCertPeriodic != nil {
+			c.renewCertPeriodic.Close()
+			c.renewCertPeriodic.Wait()
+			c.renewCertPeriodic = nil
+		}
+		return
+	}
+	if c.renewCertPeriodic == nil {
+		c.renewCertPeriodic = &task.Task{Interval: 6 * time.Hour, Execute: c.renewCertTask}
+		log.WithField("tag", c.tag).Info("Start renew cert")
+		_ = c.renewCertPeriodic.Start(true)
 	}
 }
 
@@ -219,7 +231,6 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 // that never made it into the core.
 func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, userListFresh bool, newA map[int]int) {
 	c.needsReload = true
-	c.setInfo(newN)
 	tag, l := c.tag, c.limiter
 	if l == nil {
 		// Never went through Start (only tests drive the monitor like this).
@@ -265,6 +276,19 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 		return
 	}
 
+	// Prepare the certificate before retiring a working listener. A transient
+	// authority failure must leave the old node available for the next retry.
+	if newN.Security == panel.Tls && newN.Type != "trusttunnel" {
+		if err := c.requestCert(); err != nil {
+			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Request cert failed")
+			c.apiClient.ResetNodeCache()
+			return
+		}
+	}
+	// Until preparation succeeds, report/status readers must still see the
+	// configuration of the listener that remains live. Membership changes
+	// above deliberately still revoke removed users through that limiter.
+	c.setInfo(newN)
 	// Remove old node
 	if c.nodeUp {
 		if err := c.retireCoreNode(tag); err != nil {
@@ -275,14 +299,6 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 			return
 		}
 		c.nodeUp = false
-	}
-	// check cert
-	if newN.Security == panel.Tls {
-		if err := c.requestCert(); err != nil {
-			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Request cert failed")
-			c.apiClient.ResetNodeCache()
-			return
-		}
 	}
 	logFilteringAdvice(tag, newN, c.Options)
 	// add new node
@@ -306,6 +322,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 		return
 	}
 	c.needsReload = false
+	c.configureCertificateRenewal(newN)
 	c.applyIntervals(newN)
 	log.WithField("tag", tag).Infof("Added %d new users", len(c.userList))
 }

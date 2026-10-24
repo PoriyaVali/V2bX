@@ -8,6 +8,8 @@ on:
     paths:
       - "**/*.go"
       - "**/*.sh"
+      - "scripts/*.py"
+      - "patches/**"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/test.yml"
@@ -16,6 +18,8 @@ on:
     paths:
       - "**/*.go"
       - "**/*.sh"
+      - "scripts/*.py"
+      - "patches/**"
       - "go.mod"
       - "go.sum"
   workflow_dispatch:
@@ -36,16 +40,24 @@ jobs:
 
       - name: Installer regression tests
         run: |
-          bash -n install.sh scripts/test-install-update.sh scripts/test-release-version.sh scripts/test-config-wizard.sh
+          bash -n install.sh scripts/test-install-update.sh scripts/test-release-version.sh scripts/test-config-wizard.sh scripts/test-trusttunnel-cert-prereqs.sh
           bash scripts/test-release-version.sh
           bash scripts/test-install-update.sh
           bash scripts/test-config-wizard.sh
+          bash scripts/test-trusttunnel-cert-prereqs.sh
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           check-latest: true
+
+      - name: Prepare verified TLS dependency repairs
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_prepare_tls_dependencies.py'
+          mkdir -p .dart_tool
+          python3 scripts/prepare_tls_dependencies.py --allow-download > .dart_tool/tls-preparation.json
+          python3 -c 'import json; r=json.load(open(".dart_tool/tls-preparation.json")); print("GOFLAGS=-mod=readonly -modfile="+r["audit_mod"])' >> "$GITHUB_ENV"
 
       # Vet below covers a chosen subset of packages, so a package outside that
       # list can stop compiling without this workflow noticing - core/ among

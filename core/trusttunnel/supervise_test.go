@@ -11,6 +11,9 @@ import (
 // The test binary doubles as a fake endpoint: with TT_FAKE_ENDPOINT=crash it
 // records that it started (one line in ./starts) and exits at once.
 func TestMain(m *testing.M) {
+	if runConfigWizardHelper() {
+		return
+	}
 	if os.Getenv("TT_FAKE_ENDPOINT") == "crash" {
 		f, _ := os.OpenFile("starts", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		f.WriteString("x\n")

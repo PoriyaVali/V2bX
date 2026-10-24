@@ -38,6 +38,9 @@ type TrustTunnel struct {
 	workDir string
 	// Path to the endpoint and wizard binaries.
 	binDir string
+	// Per-core operations let lifecycle tests substitute a local issuer while
+	// production uses the shared ACME/certificate manager.
+	certificateOps certificateOperations
 }
 
 func init() {

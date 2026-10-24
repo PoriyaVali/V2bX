@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/certmanager"
 	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
 	C "github.com/sagernet/sing-box/constant"
@@ -122,10 +123,13 @@ func getInboundOptions(tag string, info *panel.NodeInfo, c *conf.Options) (optio
 		switch c.CertConfig.CertMode {
 		case "none", "":
 			break // disable
-		default:
+		case "file", "http", "dns", "self":
 			tls.Enabled = true
 			tls.CertificatePath = c.CertConfig.CertFile
 			tls.KeyPath = c.CertConfig.KeyFile
+			tls.ServerName = c.CertConfig.CertDomain
+		default:
+			return option.Inbound{}, fmt.Errorf("unsupported TLS certificate mode")
 		}
 		// ECH encrypts the SNI of the certificate we just loaded, so it only
 		// makes sense on this branch - under REALITY the name on the wire is
@@ -539,6 +543,21 @@ func attachDecoy(in option.Inbound, d *decoy.Site) {
 }
 
 func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) error {
+	if config == nil {
+		return fmt.Errorf("node options are missing")
+	}
+	localOptions := *config
+	if config.CertConfig != nil {
+		certificate := *config.CertConfig
+		certificate.ExpandPaths()
+		localOptions.CertConfig = &certificate
+		if info.Security == panel.Tls && certificate.CertMode != "none" && certificate.CertMode != "" {
+			if err := certmanager.ValidCertificatePair(&certificate); err != nil {
+				return fmt.Errorf("invalid TLS certificate: %w", err)
+			}
+		}
+	}
+	config = &localOptions
 	b.users.updateLock.Lock()
 	defer b.users.updateLock.Unlock()
 	b.users.mapLock.RLock()
@@ -570,7 +589,7 @@ func (b *Sing) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 			log.WithField("err", derr).Warn("decoy site unavailable; unauthenticated connections will be closed")
 		} else {
 			if coverTCP {
-				if err := d.StartTLSCompanion(net.JoinHostPort(config.ListenIP, strconv.Itoa(info.Common.ServerPort)), config.CertConfig.CertFile, config.CertConfig.KeyFile); err != nil {
+				if err := d.StartTLSCompanionForDomain(net.JoinHostPort(config.ListenIP, strconv.Itoa(info.Common.ServerPort)), config.CertConfig.CertFile, config.CertConfig.KeyFile, config.CertConfig.CertDomain); err != nil {
 					log.WithField("tag", tag).WithError(err).Warn("TCP cover site unavailable; UDP node continues")
 				}
 			}

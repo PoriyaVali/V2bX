@@ -2,6 +2,7 @@ package tlscert
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"sync"
@@ -14,6 +15,7 @@ import (
 // the last valid pair available until a complete replacement can be loaded.
 type Loader struct {
 	certPath, keyPath string
+	domain            string
 	interval          time.Duration
 	current           atomic.Pointer[tls.Certificate]
 	nextCheck         atomic.Int64
@@ -22,7 +24,13 @@ type Loader struct {
 }
 
 func New(certPath, keyPath string, interval time.Duration) (*Loader, error) {
-	l := &Loader{certPath: certPath, keyPath: keyPath, interval: interval}
+	return NewForDomain(certPath, keyPath, "", interval)
+}
+
+// NewForDomain also prevents a valid but unrelated replacement from taking
+// over a listener whose configured certificate identity has not changed.
+func NewForDomain(certPath, keyPath, domain string, interval time.Duration) (*Loader, error) {
+	l := &Loader{certPath: certPath, keyPath: keyPath, domain: domain, interval: interval}
 	if err := l.refresh(); err != nil {
 		return nil, err
 	}
@@ -64,8 +72,30 @@ func (l *Loader) refresh() error {
 	if err != nil {
 		return fmt.Errorf("load TLS certificate pair: %w", err)
 	}
-	if cert.Leaf != nil && (time.Now().Before(cert.Leaf.NotBefore) || !time.Now().Before(cert.Leaf.NotAfter)) {
+	if cert.Leaf == nil {
+		cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			return err
+		}
+	}
+	if time.Now().Before(cert.Leaf.NotBefore) || !time.Now().Before(cert.Leaf.NotAfter) {
 		return fmt.Errorf("replacement TLS certificate is not currently valid")
+	}
+	if len(cert.Leaf.ExtKeyUsage) > 0 || len(cert.Leaf.UnknownExtKeyUsage) > 0 {
+		serverAuth := false
+		for _, usage := range cert.Leaf.ExtKeyUsage {
+			if usage == x509.ExtKeyUsageServerAuth || usage == x509.ExtKeyUsageAny {
+				serverAuth = true
+			}
+		}
+		if !serverAuth {
+			return fmt.Errorf("replacement TLS certificate does not permit server authentication")
+		}
+	}
+	if l.domain != "" {
+		if err := cert.Leaf.VerifyHostname(l.domain); err != nil {
+			return fmt.Errorf("replacement TLS certificate hostname mismatch: %w", err)
+		}
 	}
 	l.certInfo, l.keyInfo = certInfo, keyInfo
 	l.current.Store(&cert)

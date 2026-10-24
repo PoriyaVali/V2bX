@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/certmanager"
 	"github.com/PoriyaVali/V2bX/common/sockopt"
 	"github.com/PoriyaVali/V2bX/conf"
 	log "github.com/sirupsen/logrus"
@@ -156,18 +157,26 @@ func buildInboundWithDecoy(option *conf.Options, nodeInfo *panel.NodeInfo, tag, 
 		switch option.CertConfig.CertMode {
 		case "none", "":
 			break // disable
-		default:
+		case "file", "http", "dns", "self":
+			certificate := *option.CertConfig
+			certificate.ExpandPaths()
+			if err := certmanager.ValidCertificatePair(&certificate); err != nil {
+				return nil, fmt.Errorf("invalid TLS certificate: %w", err)
+			}
 			in.StreamSetting.Security = "tls"
 			in.StreamSetting.TLSSettings = &coreConf.TLSConfig{
+				ServerName: certificate.CertDomain,
 				Certs: []*coreConf.TLSCertConfig{
 					{
-						CertFile:     option.CertConfig.CertFile,
-						KeyFile:      option.CertConfig.KeyFile,
+						CertFile:     certificate.CertFile,
+						KeyFile:      certificate.KeyFile,
 						OcspStapling: 3600,
 					},
 				},
 				RejectUnknownSNI: option.CertConfig.RejectUnknownSni,
 			}
+		default:
+			return nil, fmt.Errorf("unsupported TLS certificate mode")
 		}
 	case panel.Reality:
 		// Reality

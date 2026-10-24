@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -68,6 +67,9 @@ type node struct {
 	// that signal is to terminate - so a reload sent too early kills the
 	// process we just started.
 	ready bool
+	// A user sync can arrive after startup read the credentials but before
+	// SIGHUP is safe. Keep it pending until this exact process is ready.
+	pendingReload bool
 	// exec.Cmd's own docs: it is incorrect to call Wait before the reads from
 	// StdoutPipe/StderrPipe have finished, because Wait closes them. Without
 	// this the tail of a dying endpoint's output - the part explaining why -
@@ -86,7 +88,7 @@ func (t *TrustTunnel) binPath(name string) string {
 	return filepath.Join(t.binDir, name)
 }
 
-func (t *TrustTunnel) AddNode(tag string, info *panel.NodeInfo, _ *conf.Options) error {
+func (t *TrustTunnel) AddNode(tag string, info *panel.NodeInfo, opts *conf.Options) error {
 	if info.TrustTunnel == nil {
 		return fmt.Errorf("trusttunnel: node %s has no trusttunnel params", tag)
 	}
@@ -104,8 +106,12 @@ func (t *TrustTunnel) AddNode(tag string, info *panel.NodeInfo, _ *conf.Options)
 		return fmt.Errorf("trusttunnel: pick metrics port for %s: %w", tag, err)
 	}
 
-	if err := t.generateConfig(dir, p, metricsPort); err != nil {
+	if err := t.generateConfig(dir, p, metricsPort, opts); err != nil {
 		return fmt.Errorf("trusttunnel: configure %s: %w", tag, err)
+	}
+	certificates, err := t.newCertificateLifecycle(dir, p)
+	if err != nil {
+		return fmt.Errorf("trusttunnel: certificate lifecycle %s: %w", tag, err)
 	}
 
 	n := &node{
@@ -120,6 +126,7 @@ func (t *TrustTunnel) AddNode(tag string, info *panel.NodeInfo, _ *conf.Options)
 		return fmt.Errorf("trusttunnel: start %s: %w", tag, err)
 	}
 	go n.supervise(t.binPath(endpointBin))
+	go certificates.run(n.stop, n.applyCertificateUpdate)
 
 	t.mu.Lock()
 	t.nodes[tag] = n
@@ -137,47 +144,6 @@ func (t *TrustTunnel) DelNode(tag string) error {
 	if ok {
 		n.shutdown()
 		log.WithField("tag", tag).Info("trusttunnel: node removed")
-	}
-	return nil
-}
-
-// generateConfig runs the wizard that ships with the endpoint instead of
-// writing TOML here, so the files always match the binary's own expectations.
-//
-// The wizard needs at least one credential to write a credentials file at all;
-// it is replaced wholesale by the first user sync, so the placeholder never
-// authenticates anyone.
-func (t *TrustTunnel) generateConfig(dir string, p *panel.TrustTunnelNode, metricsPort int) error {
-	args := []string{
-		"-m", "non-interactive",
-		"-n", p.Hostname,
-		"-a", fmt.Sprintf("0.0.0.0:%d", p.ServerPort),
-		"-c", "placeholder:placeholder",
-		"--lib-settings", "./vpn.toml",
-		"--hosts-settings", "./hosts.toml",
-	}
-	switch p.CertType {
-	case "letsencrypt":
-		args = append(args, "--cert-type", "letsencrypt", "--acme-email", p.AcmeEmail)
-	case "provided":
-		args = append(args, "--cert-type", "provided",
-			"--cert-chain-path", p.CertChainPath, "--cert-key-path", p.CertKeyPath)
-	default:
-		args = append(args, "--cert-type", "self-signed")
-	}
-
-	cmd := exec.Command(t.binPath(wizardBin), args...)
-	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("wizard failed: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-
-	vpn := filepath.Join(dir, "vpn.toml")
-	if err := enableMetrics(vpn, metricsPort); err != nil {
-		return err
-	}
-	if p.HasIPv6 != nil {
-		return setTopLevel(vpn, "ipv6_available", strconv.FormatBool(*p.HasIPv6))
 	}
 	return nil
 }
@@ -299,6 +265,13 @@ func pipeToLog(r io.Reader, tag string, isErr bool) {
 }
 
 func (n *node) start(bin string) error {
+	// Keep credential replacement and launch ordered with user syncs. This
+	// also discards stale users from a previous process before restart.
+	n.credentialsMu.Lock()
+	defer n.credentialsMu.Unlock()
+	if err := n.writeCredentialsLocked(); err != nil {
+		return err
+	}
 	cmd := exec.Command(bin, "./vpn.toml", "./hosts.toml", "-l", endpointLogLevel())
 	cmd.Dir = n.dir
 
@@ -326,6 +299,7 @@ func (n *node) start(bin string) error {
 	}
 	n.cmd = cmd
 	n.ready = false
+	n.pendingReload = false // the startup file already holds the latest snapshot
 	n.started = time.Now()
 	n.mu.Unlock()
 	// Both pipes are drained until the process closes them, so a restart does
@@ -333,7 +307,7 @@ func (n *node) start(bin string) error {
 	n.logs.Add(2)
 	go func() { defer n.logs.Done(); pipeToLog(stdout, n.tag, false) }()
 	go func() { defer n.logs.Done(); pipeToLog(stderr, n.tag, true) }()
-	go n.waitReady()
+	go n.waitReady(cmd)
 
 	log.WithField("tag", n.tag).Infof("trusttunnel: endpoint started (pid %d)", cmd.Process.Pid)
 	return nil
@@ -341,27 +315,71 @@ func (n *node) start(bin string) error {
 
 // waitReady marks the endpoint reloadable once its metrics port answers.
 //
-// Nothing is lost by waiting: the credentials file is written before the signal
-// and is read at startup anyway, so a user change that arrives during this
-// window is already in the file the endpoint is about to read.
-func (n *node) waitReady() {
+// Readiness belongs to one process. A previous process's slow HTTP response
+// must never make its replacement reloadable before it installs SIGHUP.
+func (n *node) waitReady(cmd *exec.Cmd) {
 	deadline := time.Now().Add(readyTimeout)
 	for time.Now().Before(deadline) {
 		n.mu.Lock()
-		closing := n.closing
+		closing := n.closing || n.cmd != cmd
 		n.mu.Unlock()
 		if closing {
 			return
 		}
 		if _, err := n.drain(false); err == nil {
-			n.mu.Lock()
-			n.ready = true
-			n.mu.Unlock()
+			if err := n.finishReadiness(cmd, func() error { return cmd.Process.Signal(syscall.SIGHUP) }); err != nil {
+				log.WithField("tag", n.tag).Errorf("trusttunnel: replay startup user sync: %v", err)
+			}
 			return
 		}
 		time.Sleep(readyPollInterval)
 	}
 	log.WithField("tag", n.tag).Warn("trusttunnel: endpoint did not answer on its metrics port; user changes will apply on its next start")
+}
+
+// finishReadiness serializes the deferred signal with file replacement. A
+// callback keeps the state transition testable on hosts without POSIX signals.
+func (n *node) finishReadiness(cmd *exec.Cmd, signal func() error) error {
+	n.credentialsMu.Lock()
+	defer n.credentialsMu.Unlock()
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closing || n.cmd != cmd {
+		return nil
+	}
+	n.ready = true
+	if n.pendingReload {
+		if err := signal(); err != nil {
+			return err // leave the pending state intact on signal failure
+		}
+		n.pendingReload = false
+	}
+	return nil
+}
+
+// applyCertificateUpdate commits only a prepared local snapshot. Network and
+// ACME work happen outside these locks, so shutdown and user sync remain fast.
+// An obsolete lifecycle can never publish into a replacement node's files.
+func (n *node) applyCertificateUpdate(commit func() error) error {
+	n.credentialsMu.Lock()
+	defer n.credentialsMu.Unlock()
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closing {
+		return errClosing
+	}
+	if err := commit(); err != nil {
+		return err
+	}
+	n.pendingReload = true
+	if n.cmd == nil || n.cmd.Process == nil || !n.ready {
+		return nil
+	}
+	if err := n.cmd.Process.Signal(syscall.SIGHUP); err != nil {
+		return err
+	}
+	n.pendingReload = false
+	return nil
 }
 
 // supervise restarts the endpoint if it exits on its own.
@@ -389,6 +407,10 @@ func (n *node) supervise(bin string) {
 		n.mu.Lock()
 		closing := n.closing
 		ranFor := time.Since(n.started)
+		if n.cmd == cmd {
+			n.cmd = nil
+			n.ready = false
+		}
 		n.mu.Unlock()
 		if closing {
 			return
@@ -423,9 +445,6 @@ func (n *node) supervise(bin string) {
 				return
 			}
 			log.WithField("tag", n.tag).Errorf("trusttunnel: restart failed, next try in %s: %v", delay, err)
-		}
-		if err := n.writeCredentials(); err != nil {
-			log.WithField("tag", n.tag).Errorf("trusttunnel: restore users after restart: %v", err)
 		}
 	}
 }

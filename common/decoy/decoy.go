@@ -225,12 +225,16 @@ func StartWithConfig(seed string, config *Config) (*Site, error) {
 // StartTLSCompanion serves the same handler on a UDP node's TCP address. It
 // shares the public request budget and never replaces an existing TCP service.
 func (d *Site) StartTLSCompanion(address, certFile, keyFile string) error {
+	return d.StartTLSCompanionForDomain(address, certFile, keyFile, "")
+}
+
+func (d *Site) StartTLSCompanionForDomain(address, certFile, keyFile, domain string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.closed || d.companion != nil {
 		return fmt.Errorf("cover site is closed or already has a TLS listener")
 	}
-	loader, err := tlscert.New(certFile, keyFile, time.Second)
+	loader, err := tlscert.NewForDomain(certFile, keyFile, domain, time.Second)
 	if err != nil {
 		return err
 	}

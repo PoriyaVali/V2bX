@@ -1,0 +1,32 @@
+{
+  "module": "github.com/PoriyaVali/Xray-core",
+  "module_path": "github.com/xtls/xray-core",
+  "version": "v1.260909.1",
+  "upstream_commit": "2d862f10203e86890ff035fc25516ca3193edb6f",
+  "module_sum": "h1:Nf3LbPxI8F7SXIR93DuZfvn5pUz1fjF8R31bEN4t3xU=",
+  "go_mod_sum": "h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=",
+  "patch": "xray-tls-lifecycle.patch",
+  "patch_sha256": "9340d5f0d4e80b3a05290dbd7e1d4cc64b10db0fc72628412a90f9a5d3c0fe8d",
+  "files": [
+    {
+      "path": "transport/internet/tls/config.go",
+      "base_sha256": "6738cd5d16b750d5f0c697486b866bb28c5f3754c1a649968100da59bf778809",
+      "patched_sha256": "8d9d8264a4baa83d2b7c7c65e19dd25a9d6c89c07490eeb76a0076709bcfb2bb"
+    },
+    {
+      "path": "common/ocsp/ocsp.go",
+      "base_sha256": "3c3a0bdcc3c12b26a0eb5279843e6e8c3baa926c4c187d8cb1ab7e66f5f23f6e",
+      "patched_sha256": "ebf4ed20d6694559a671713e895607b34e2ef511851b134a1ad847ff237bef41"
+    },
+    {
+      "path": "transport/internet/tls/certificate_lifecycle.go",
+      "base_sha256": null,
+      "patched_sha256": "a65df2a2f6df35ba1e708913c0c58d0b8917c07b03286e2b5cfe9659397b15cd"
+    },
+    {
+      "path": "transport/internet/tls/certificate_lifecycle_test.go",
+      "base_sha256": null,
+      "patched_sha256": "52ccad8a3f9ae648b1c1efa9ebce87a3ff315e10b758042f00f9e24791163a03"
+    }
+  ]
+}

@@ -25,3 +25,7 @@ node/*.key
 node/*.pem
 # Knowledge-graph output, regenerated on demand.
 graphify-out/
+
+# Reproducible prepared dependency sources and local certificate audit builds.
+/.dart_tool/
+__pycache__/

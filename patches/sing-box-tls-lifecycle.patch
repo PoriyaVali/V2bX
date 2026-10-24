@@ -1,0 +1,208 @@
+diff --git a/common/tls/std_server.go b/common/tls/std_server.go
+--- a/common/tls/std_server.go
++++ b/common/tls/std_server.go
+@@ -1,13 +1,16 @@
+ package tls
+ 
+ import (
++	"bytes"
+ 	"context"
+ 	"crypto/tls"
+ 	"crypto/x509"
+ 	"net"
+ 	"os"
++	"path/filepath"
+ 	"strings"
+ 	"sync"
++	"sync/atomic"
+ 	"time"
+ 
+ 	"github.com/sagernet/fswatch"
+@@ -34,6 +37,8 @@
+ 	clientCertificatePath []string
+ 	echKeyPath            string
+ 	watcher               *fswatch.Watcher
++	reloadAccess          sync.Mutex
++	nextCertificateCheck  atomic.Int64
+ }
+ 
+ func (c *STDServerConfig) ServerName() string {
+@@ -73,18 +78,26 @@
+ }
+ 
+ func (c *STDServerConfig) STDConfig() (*STDConfig, error) {
++	c.access.RLock()
++	defer c.access.RUnlock()
+ 	return c.config, nil
+ }
+ 
+ func (c *STDServerConfig) Client(conn net.Conn) (Conn, error) {
++	c.access.RLock()
++	defer c.access.RUnlock()
+ 	return tls.Client(conn, c.config), nil
+ }
+ 
+ func (c *STDServerConfig) Server(conn net.Conn) (Conn, error) {
++	c.access.RLock()
++	defer c.access.RUnlock()
+ 	return tls.Server(conn, c.config), nil
+ }
+ 
+ func (c *STDServerConfig) Clone() Config {
++	c.access.RLock()
++	defer c.access.RUnlock()
+ 	return &STDServerConfig{
+ 		config: c.config.Clone(),
+ 	}
+@@ -103,6 +116,21 @@
+ }
+ 
+ func (c *STDServerConfig) startWatcher() error {
++	// fsnotify emits absolute paths. Relative certificate settings must still
++	// match callback paths, and remain anchored if the working directory moves.
++	paths := []*string{&c.certificatePath, &c.keyPath, &c.echKeyPath}
++	for i := range c.clientCertificatePath {
++		paths = append(paths, &c.clientCertificatePath[i])
++	}
++	for _, path := range paths {
++		if *path != "" {
++			absolute, err := filepath.Abs(*path)
++			if err != nil {
++				return err
++			}
++			*path = absolute
++		}
++	}
+ 	var watchPath []string
+ 	if c.certificatePath != "" {
+ 		watchPath = append(watchPath, c.certificatePath)
+@@ -140,30 +168,45 @@
+ }
+ 
+ func (c *STDServerConfig) certificateUpdated(path string) error {
++	c.reloadAccess.Lock()
++	defer c.reloadAccess.Unlock()
+ 	if path == c.certificatePath || path == c.keyPath {
+-		switch path {
+-		case c.certificatePath:
+-			certificate, err := os.ReadFile(c.certificatePath)
++		// Read both sides on either event. Separate debounced key/cert
++		// callbacks may arrive in either order or overlap during renewal.
++		certificate, key := c.certificate, c.key
++		if c.certificatePath != "" {
++			content, err := os.ReadFile(c.certificatePath)
+ 			if err != nil {
+ 				return E.Cause(err, "reload certificate from ", c.certificatePath)
+ 			}
+-			c.certificate = certificate
+-		case c.keyPath:
+-			key, err := os.ReadFile(c.keyPath)
++			certificate = content
++		}
++		if c.keyPath != "" {
++			content, err := os.ReadFile(c.keyPath)
+ 			if err != nil {
+ 				return E.Cause(err, "reload key from ", c.keyPath)
+ 			}
+-			c.key = key
+-		}
+-		keyPair, err := tls.X509KeyPair(c.certificate, c.key)
++			key = content
++		}
++		if bytes.Equal(certificate, c.certificate) && bytes.Equal(key, c.key) {
++			return nil
++		}
++		keyPair, err := tls.X509KeyPair(certificate, key)
+ 		if err != nil {
+ 			return E.Cause(err, "reload key pair")
++		}
++		c.access.RLock()
++		serverName := c.config.ServerName
++		c.access.RUnlock()
++		if err := validServerPair(&keyPair, serverName); err != nil {
++			return err
+ 		}
+ 		c.access.Lock()
+ 		config := c.config.Clone()
+ 		config.Certificates = []tls.Certificate{keyPair}
+ 		c.config = config
+ 		c.access.Unlock()
++		c.certificate, c.key = certificate, key
+ 		c.logger.Info("reloaded TLS certificate")
+ 	} else if common.Contains(c.clientCertificatePath, path) {
+ 		clientCertificateCA := x509.NewCertPool()
+@@ -199,6 +242,56 @@
+ 			return err
+ 		}
+ 		c.logger.Info("reloaded ECH keys")
++	}
++	return nil
++}
++
++// A bounded local fallback also covers lost filesystem notifications and
++// external symlink rotation. It never replaces a working pair on a bad read.
++func (c *STDServerConfig) pollCertificate() {
++	if c.certificatePath == "" && c.keyPath == "" {
++		return
++	}
++	now := time.Now().UnixNano()
++	next := c.nextCertificateCheck.Load()
++	if now < next || !c.nextCertificateCheck.CompareAndSwap(next, now+int64(time.Second)) {
++		return
++	}
++	path := c.certificatePath
++	if path == "" {
++		path = c.keyPath
++	}
++	_ = c.certificateUpdated(path)
++}
++
++func validServerPair(pair *tls.Certificate, serverName string) error {
++	leaf := pair.Leaf
++	if leaf == nil {
++		var err error
++		leaf, err = x509.ParseCertificate(pair.Certificate[0])
++		if err != nil {
++			return err
++		}
++	}
++	now := time.Now()
++	if now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
++		return E.New("TLS certificate is not currently valid")
++	}
++	if len(leaf.ExtKeyUsage) > 0 || len(leaf.UnknownExtKeyUsage) > 0 {
++		serverAuth := false
++		for _, usage := range leaf.ExtKeyUsage {
++			if usage == x509.ExtKeyUsageServerAuth || usage == x509.ExtKeyUsageAny {
++				serverAuth = true
++			}
++		}
++		if !serverAuth {
++			return E.New("TLS certificate does not permit server authentication")
++		}
++	}
++	if serverName != "" {
++		if err := leaf.VerifyHostname(serverName); err != nil {
++			return E.Cause(err, "TLS certificate hostname mismatch")
++		}
+ 	}
+ 	return nil
+ }
+@@ -310,6 +403,9 @@
+ 			keyPair, err := tls.X509KeyPair(certificate, key)
+ 			if err != nil {
+ 				return nil, E.Cause(err, "parse x509 key pair")
++			}
++			if err := validServerPair(&keyPair, options.ServerName); err != nil {
++				return nil, err
+ 			}
+ 			tlsConfig.Certificates = []tls.Certificate{keyPair}
+ 		}
+@@ -371,6 +467,7 @@
+ 		echKeyPath:            echKeyPath,
+ 	}
+ 	serverConfig.config.GetConfigForClient = func(info *tls.ClientHelloInfo) (*tls.Config, error) {
++		serverConfig.pollCertificate()
+ 		serverConfig.access.Lock()
+ 		defer serverConfig.access.Unlock()
+ 		return serverConfig.config, nil

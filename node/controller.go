@@ -181,7 +181,7 @@ func (c *Controller) Start() (err error) {
 	if err = l.UpdateRule(&node.Rules); err != nil {
 		return fmt.Errorf("update rule error: %s", err)
 	}
-	if node.Security == panel.Tls {
+	if node.Security == panel.Tls && node.Type != "trusttunnel" {
 		err = c.requestCert()
 		if err != nil {
 			return fmt.Errorf("request cert error: %s", err)

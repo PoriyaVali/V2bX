@@ -50,9 +50,21 @@ func (n *Hysteria2node) close() error {
 }
 
 func (h *Hysteria2) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) error {
-	if info.Hysteria2 == nil {
+	if config == nil {
+		return fmt.Errorf("hysteria2: node %s has no options", tag)
+	}
+	if info == nil || info.Hysteria2 == nil {
 		return fmt.Errorf("hysteria2: node %s has no hysteria2 params", tag)
 	}
+	// QUIC and its TCP companion must consume the same resolved certificate
+	// paths. Keep shared caller-owned options unchanged across node reloads.
+	localOptions := *config
+	if config.CertConfig != nil {
+		cert := *config.CertConfig
+		cert.ExpandPaths()
+		localOptions.CertConfig = &cert
+	}
+	config = &localOptions
 	var c serverConfig
 	if len(config.Hysteria2ConfigPath) != 0 {
 		// An error, not Fatal: a bad file for one node used to end the process
@@ -106,7 +118,7 @@ func (h *Hysteria2) AddNode(tag string, info *panel.NodeInfo, config *conf.Optio
 	if n.masq == nil && c.Masquerade.Type == "" && info.Common != nil && info.Common.ServerPort > 0 && (config.DecoySite == nil || *config.DecoySite) && config.Decoy.TCPEnabled() {
 		d, err := decoy.StartWithConfig(config.DecoyIdentity(tag), config.Decoy)
 		if err == nil {
-			err = d.StartTLSCompanion(net.JoinHostPort(config.ListenIP, strconv.Itoa(info.Common.ServerPort)), config.CertConfig.CertFile, config.CertConfig.KeyFile)
+			err = d.StartTLSCompanionForDomain(net.JoinHostPort(config.ListenIP, strconv.Itoa(info.Common.ServerPort)), config.CertConfig.CertFile, config.CertConfig.KeyFile, config.CertConfig.CertDomain)
 		}
 		if err != nil {
 			if d != nil {

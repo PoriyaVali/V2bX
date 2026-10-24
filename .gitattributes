@@ -1,0 +1,5 @@
+# Dependency patches are SHA256-verified as raw bytes on every platform.
+patches/*-tls-lifecycle.patch text eol=lf
+# Unified patches contain intentional context-line spaces; validate the
+# repaired sources with gofmt and the preparation script's exact hashes.
+patches/*-tls-lifecycle.patch -whitespace

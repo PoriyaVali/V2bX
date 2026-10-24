@@ -34,19 +34,6 @@ import (
 	"github.com/xtls/xray-core/proxy/vless/encoding"
 )
 
-// skipUnderXrayCertReloadRace skips a test that serves TLS from certificate
-// files when the race detector is on. xray-core's hot reload of those files
-// (transport/internet/tls/config.go, setupOcspTicker) rewrites the served
-// certificate without a lock - once at start, then hourly - while handshakes
-// read it. That is xray's own race, present on every xray TLS node; it is not
-// in the code these tests are about.
-func skipUnderXrayCertReloadRace(t *testing.T) {
-	t.Helper()
-	if raceDetector {
-		t.Skip("xray-core's certificate hot reload races the first TLS handshakes; see skipUnderXrayCertReloadRace")
-	}
-}
-
 // certFiles writes a throwaway certificate for a TLS node under test.
 func certFiles(t *testing.T) *conf.CertConfig {
 	t.Helper()
@@ -154,7 +141,6 @@ func isDecoyPage(resp *http.Response, body string) bool {
 // sends an ordinary request got the connection closed - the tell of a proxy.
 // Over HTTP/1.1 and HTTP/2 alike it now gets the node's decoy site.
 func TestXray_TLSProberSeesDecoySite(t *testing.T) {
-	skipUnderXrayCertReloadRace(t)
 	trojan := &panel.TrojanNode{Network: "tcp"}
 	vless := &panel.VAllssNode{Network: "tcp"}
 	for _, info := range []*panel.NodeInfo{
@@ -227,7 +213,6 @@ func TestWantsDecoy(t *testing.T) {
 // The decoy only meets strangers: a subscriber on the same VLESS TLS node is
 // carried as before.
 func TestXray_DecoyNodeStillCarriesUsers(t *testing.T) {
-	skipUnderXrayCertReloadRace(t)
 	v := &panel.VAllssNode{Network: "tcp"}
 	v.ServerPort = freePort(t)
 	info := &panel.NodeInfo{Type: "vless", Security: panel.Tls, VAllss: v, Common: &v.CommonNode}

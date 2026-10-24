@@ -58,20 +58,24 @@ const (
 )
 
 func (n *Hysteria2node) getTLSConfig(config *conf.Options) (*server.TLSConfig, error) {
-	if config.CertConfig == nil {
-		return nil, fmt.Errorf("the CertConfig is not vail")
+	if config == nil || config.CertConfig == nil {
+		return nil, fmt.Errorf("hysteria2 requires CertConfig")
 	}
-	switch config.CertConfig.CertMode {
+	cert := *config.CertConfig
+	cert.ExpandPaths()
+	switch cert.CertMode {
 	case "none", "":
-		return nil, fmt.Errorf("the CertMode cannot be none")
-	default:
-		loader, err := tlscert.New(config.CertConfig.CertFile, config.CertConfig.KeyFile, time.Second)
+		return nil, fmt.Errorf("hysteria2 CertMode cannot be none")
+	case "file", "http", "dns", "self":
+		loader, err := tlscert.NewForDomain(cert.CertFile, cert.KeyFile, cert.CertDomain, time.Second)
 		if err != nil {
 			return nil, err
 		}
 		return &server.TLSConfig{
 			GetCertificate: loader.GetCertificate,
 		}, nil
+	default:
+		return nil, fmt.Errorf("hysteria2 unsupported CertMode %q", cert.CertMode)
 	}
 }
 

@@ -1,0 +1,531 @@
+diff --git a/transport/internet/tls/config.go b/transport/internet/tls/config.go
+--- a/transport/internet/tls/config.go
++++ b/transport/internet/tls/config.go
+@@ -411,7 +411,7 @@
+ 	if len(caCerts) > 0 {
+ 		config.GetCertificate = getGetCertificateFunc(config, caCerts)
+ 	} else {
+-		config.GetCertificate = getNewGetCertificateFunc(c.BuildCertificates(), c.RejectUnknownSni)
++		config.GetCertificate = getReloadingCertificateFunc(c.Certificate, c.RejectUnknownSni, c.ServerName)
+ 	}
+ 
+ 	if sn := c.parseServerName(); len(sn) > 0 {
+diff --git a/common/ocsp/ocsp.go b/common/ocsp/ocsp.go
+--- a/common/ocsp/ocsp.go
++++ b/common/ocsp/ocsp.go
+@@ -49,6 +49,11 @@
+ }
+ 
+ func GetOCSPForCert(cert [][]byte) ([]byte, error) {
++	return GetOCSPForCertWithClient(cert, http.DefaultClient)
++}
++
++// GetOCSPForCertWithClient permits callers to bound OCSP network requests.
++func GetOCSPForCertWithClient(cert [][]byte, client *http.Client) ([]byte, error) {
+ 	bundle := new(bytes.Buffer)
+ 	for _, derBytes := range cert {
+ 		err := pem.Encode(bundle, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+@@ -70,7 +75,7 @@
+ 		if len(issuedCert.IssuingCertificateURL) == 0 {
+ 			return nil, errors.New("no issuing certificate URL")
+ 		}
+-		resp, errC := http.Get(issuedCert.IssuingCertificateURL[0])
++		resp, errC := client.Get(issuedCert.IssuingCertificateURL[0])
+ 		if errC != nil {
+ 			return nil, errors.New("no issuing certificate URL")
+ 		}
+@@ -95,7 +100,7 @@
+ 		return nil, err
+ 	}
+ 	reader := bytes.NewReader(ocspReq)
+-	req, err := http.Post(issuedCert.OCSPServer[0], "application/ocsp-request", reader)
++	req, err := client.Post(issuedCert.OCSPServer[0], "application/ocsp-request", reader)
+ 	if err != nil {
+ 		return nil, errors.New(err)
+ 	}
+diff --git a/transport/internet/tls/certificate_lifecycle.go b/transport/internet/tls/certificate_lifecycle.go
+new file mode 100644
+--- /dev/null
++++ b/transport/internet/tls/certificate_lifecycle.go
+@@ -0,0 +1,238 @@
++package tls
++
++import (
++	"bytes"
++	"context"
++	"crypto/tls"
++	"crypto/x509"
++	"fmt"
++	"net/http"
++	"os"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"time"
++
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/ocsp"
++)
++
++const certificateReloadInterval = 5 * time.Second
++
++var certificateOCSPClient = &http.Client{Timeout: 10 * time.Second}
++
++// certificateSource publishes complete immutable key pairs. File checks happen
++// on demand, so a retired TLS config owns neither a ticker nor a goroutine.
++// An incomplete, expired, or unrelated replacement leaves its last valid pair
++// available and is retried on the next check.
++type certificateSource struct {
++	current                atomic.Pointer[tls.Certificate]
++	nextCheck              atomic.Int64
++	mu                     sync.Mutex
++	certPath, keyPath      string
++	certPEM, keyPEM        []byte
++	identity               *x509.Certificate
++	expectedIdentity       string
++	interval, ocspInterval time.Duration
++	nextOCSP               time.Time
++	ocspRunning            bool
++}
++
++func newCertificateSource(entry *Certificate, expectedIdentity ...string) *certificateSource {
++	s := &certificateSource{
++		certPEM: bytes.Clone(entry.Certificate), keyPEM: bytes.Clone(entry.Key),
++		ocspInterval: time.Duration(entry.OcspStapling) * time.Second,
++	}
++	if len(expectedIdentity) > 0 {
++		s.expectedIdentity = expectedIdentity[0]
++	}
++	if entry.OneTimeLoading {
++		s.ocspInterval = 0
++	}
++	if !entry.OneTimeLoading && entry.CertificatePath != "" && entry.KeyPath != "" {
++		s.certPath, s.keyPath = entry.CertificatePath, entry.KeyPath
++		s.interval = certificateReloadInterval
++		if s.ocspInterval > 0 && s.ocspInterval < s.interval {
++			s.interval = s.ocspInterval
++		}
++	}
++	pair, err := parseServingCertificate(s.certPEM, s.keyPEM)
++	if err == nil && s.expectedIdentity != "" {
++		err = pair.Leaf.VerifyHostname(s.expectedIdentity)
++	}
++	if err == nil {
++		s.identity = pair.Leaf
++		s.current.Store(pair)
++	} else {
++		errors.LogWarning(context.Background(), "ignoring invalid serving certificate")
++	}
++	s.nextCheck.Store(time.Now().Add(s.interval).UnixNano())
++	return s
++}
++
++func parseServingCertificate(certPEM, keyPEM []byte) (*tls.Certificate, error) {
++	pair, err := tls.X509KeyPair(certPEM, keyPEM)
++	if err != nil {
++		return nil, err
++	}
++	pair.Leaf, err = x509.ParseCertificate(pair.Certificate[0])
++	if err != nil {
++		return nil, err
++	}
++	if !servingCertificateValid(&pair, time.Now()) {
++		return nil, fmt.Errorf("serving certificate is not currently valid")
++	}
++	if len(pair.Leaf.ExtKeyUsage) > 0 || len(pair.Leaf.UnknownExtKeyUsage) > 0 {
++		serverAuth := false
++		for _, usage := range pair.Leaf.ExtKeyUsage {
++			if usage == x509.ExtKeyUsageServerAuth || usage == x509.ExtKeyUsageAny {
++				serverAuth = true
++			}
++		}
++		if !serverAuth {
++			return nil, fmt.Errorf("serving certificate does not permit server authentication")
++		}
++	}
++	if len(pair.Leaf.DNSNames) == 0 && len(pair.Leaf.IPAddresses) == 0 {
++		return nil, fmt.Errorf("serving certificate must contain a DNS or IP subject alternative name")
++	}
++	return &pair, nil
++}
++
++func servingCertificateValid(pair *tls.Certificate, now time.Time) bool {
++	return pair != nil && pair.Leaf != nil && !now.Before(pair.Leaf.NotBefore) && now.Before(pair.Leaf.NotAfter)
++}
++
++// Retain all identities originally served by this source. In particular, a
++// certificate for a different node must not replace a shared multi-SAN or
++// wildcard certificate simply because its key parses correctly.
++func servingIdentityCovered(candidate, original *x509.Certificate) bool {
++	if original == nil {
++		return true
++	}
++	for _, name := range original.DNSNames {
++		if strings.HasPrefix(name, "*.") {
++			found := false
++			for _, replacement := range candidate.DNSNames {
++				if strings.EqualFold(name, replacement) {
++					found = true
++					break
++				}
++			}
++			if !found {
++				return false
++			}
++		} else if candidate.VerifyHostname(name) != nil {
++			return false
++		}
++	}
++	for _, addr := range original.IPAddresses {
++		if candidate.VerifyHostname(addr.String()) != nil {
++			return false
++		}
++	}
++	return true
++}
++
++func (s *certificateSource) get() *tls.Certificate {
++	now := time.Now()
++	if s.certPath != "" && now.UnixNano() >= s.nextCheck.Load() {
++		s.mu.Lock()
++		if now.UnixNano() >= s.nextCheck.Load() {
++			s.refresh()
++			s.nextCheck.Store(time.Now().Add(s.interval).UnixNano())
++		}
++		s.mu.Unlock()
++	}
++	pair := s.current.Load()
++	if !servingCertificateValid(pair, time.Now()) {
++		return nil
++	}
++	if s.ocspInterval > 0 && len(pair.Leaf.OCSPServer) > 0 {
++		s.mu.Lock()
++		if !s.ocspRunning && !now.Before(s.nextOCSP) && s.current.Load() == pair {
++			s.ocspRunning = true
++			s.nextOCSP = now.Add(s.ocspInterval)
++			go s.refreshOCSP(pair)
++		}
++		s.mu.Unlock()
++	}
++	return pair
++}
++
++// Caller holds mu. Never modify the protobuf config or a published key pair.
++func (s *certificateSource) refresh() {
++	certPEM, err := os.ReadFile(s.certPath)
++	if err != nil {
++		errors.LogWarning(context.Background(), "cannot read replacement serving certificate; keeping the last valid pair")
++		return
++	}
++	keyPEM, err := os.ReadFile(s.keyPath)
++	if err != nil {
++		errors.LogWarning(context.Background(), "cannot read replacement serving key; keeping the last valid pair")
++		return
++	}
++	if bytes.Equal(certPEM, s.certPEM) && bytes.Equal(keyPEM, s.keyPEM) && s.current.Load() != nil {
++		return
++	}
++	pair, err := parseServingCertificate(certPEM, keyPEM)
++	if err != nil {
++		errors.LogWarning(context.Background(), "ignoring invalid replacement serving certificate; keeping the last valid pair")
++		return
++	}
++	identityOK := servingIdentityCovered(pair.Leaf, s.identity)
++	if s.expectedIdentity != "" {
++		identityOK = pair.Leaf.VerifyHostname(s.expectedIdentity) == nil
++	}
++	if !identityOK {
++		errors.LogWarning(context.Background(), "ignoring invalid replacement serving certificate; keeping the last valid pair")
++		return
++	}
++	if s.identity == nil {
++		s.identity = pair.Leaf
++	}
++	s.certPEM, s.keyPEM = certPEM, keyPEM
++	s.nextOCSP = time.Time{}
++	s.current.Store(pair)
++}
++
++func (s *certificateSource) refreshOCSP(pair *tls.Certificate) {
++	staple, err := ocsp.GetOCSPForCertWithClient(pair.Certificate, certificateOCSPClient)
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.ocspRunning = false
++	if err != nil || s.current.Load() != pair {
++		return
++	}
++	updated := *pair
++	updated.OCSPStaple = bytes.Clone(staple)
++	s.current.Store(&updated)
++}
++
++func getReloadingCertificateFunc(entries []*Certificate, rejectUnknownSNI bool, expectedIdentity ...string) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
++	sources := make([]*certificateSource, 0, len(entries))
++	for _, entry := range entries {
++		if entry.Usage == Certificate_ENCIPHERMENT {
++			sources = append(sources, newCertificateSource(entry, expectedIdentity...))
++		}
++	}
++	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
++		var fallback *tls.Certificate
++		for _, source := range sources {
++			pair := source.get()
++			if pair == nil {
++				continue
++			}
++			if fallback == nil {
++				fallback = pair
++			}
++			if hello.ServerName != "" && pair.Leaf.VerifyHostname(hello.ServerName) == nil {
++				return pair, nil
++			}
++		}
++		if !rejectUnknownSNI && fallback != nil {
++			return fallback, nil
++		}
++		return nil, errNoCertificates
++	}
++}
+diff --git a/transport/internet/tls/certificate_lifecycle_test.go b/transport/internet/tls/certificate_lifecycle_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/internet/tls/certificate_lifecycle_test.go
+@@ -0,0 +1,238 @@
++package tls
++
++import (
++	"crypto/ecdsa"
++	"crypto/elliptic"
++	"crypto/rand"
++	gotls "crypto/tls"
++	"crypto/x509"
++	"crypto/x509/pkix"
++	"encoding/pem"
++	"math/big"
++	"net"
++	"os"
++	"path/filepath"
++	"sync"
++	"testing"
++	"time"
++)
++
++func lifecyclePair(t *testing.T, serial int64, names []string, before, after time.Time) ([]byte, []byte) {
++	t.Helper()
++	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
++	if err != nil {
++		t.Fatal(err)
++	}
++	leaf := &x509.Certificate{
++		SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: "deliberately-wrong-cn.example.test"},
++		DNSNames: names, NotBefore: before, NotAfter: after,
++		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
++	}
++	der, err := x509.CreateCertificate(rand.Reader, leaf, leaf, key.Public(), key)
++	if err != nil {
++		t.Fatal(err)
++	}
++	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
++}
++
++func lifecycleWrite(t *testing.T, path string, data []byte) {
++	t.Helper()
++	if err := os.WriteFile(path, data, 0o600); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func lifecycleServer(t *testing.T, cfg *gotls.Config) string {
++	t.Helper()
++	ln, err := gotls.Listen("tcp", "127.0.0.1:0", cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var workers sync.WaitGroup
++	workers.Add(1)
++	go func() {
++		defer workers.Done()
++		for {
++			conn, err := ln.Accept()
++			if err != nil {
++				return
++			}
++			workers.Add(1)
++			go func() {
++				defer workers.Done()
++				defer conn.Close()
++				_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
++				_ = conn.(*gotls.Conn).Handshake()
++			}()
++		}
++	}()
++	t.Cleanup(func() { _ = ln.Close(); workers.Wait() })
++	return ln.Addr().String()
++}
++
++func lifecycleProbe(addr, name string, roots *x509.CertPool) (int64, error) {
++	conn, err := gotls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", addr, &gotls.Config{ServerName: name, RootCAs: roots, MinVersion: gotls.VersionTLS12})
++	if err != nil {
++		return 0, err
++	}
++	defer conn.Close()
++	return conn.ConnectionState().PeerCertificates[0].SerialNumber.Int64(), nil
++}
++
++func TestServingCertificateLiveRotationRetriesAndRetainsIdentity(t *testing.T) {
++	now := time.Now()
++	first, firstKey := lifecyclePair(t, 1, []string{"node.example.test", "*.shared.example.test"}, now.Add(-time.Hour), now.Add(time.Hour))
++	second, secondKey := lifecyclePair(t, 2, []string{"node.example.test", "*.shared.example.test", "added.example.test"}, now.Add(-time.Hour), now.Add(time.Hour))
++	wrong, wrongKey := lifecyclePair(t, 3, []string{"other.example.test"}, now.Add(-time.Hour), now.Add(time.Hour))
++	expired, expiredKey := lifecyclePair(t, 4, []string{"node.example.test", "*.shared.example.test"}, now.Add(-2*time.Hour), now.Add(-time.Hour))
++	dir := t.TempDir()
++	cp, kp := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
++	lifecycleWrite(t, cp, first)
++	lifecycleWrite(t, kp, firstKey)
++	cfg := (&Config{RejectUnknownSni: true, Certificate: []*Certificate{{Certificate: first, Key: firstKey, CertificatePath: cp, KeyPath: kp, OcspStapling: 1}}}).GetTLSConfig()
++	addr := lifecycleServer(t, cfg)
++	roots := x509.NewCertPool()
++	roots.AppendCertsFromPEM(first)
++	roots.AppendCertsFromPEM(second)
++	probe := func(name string, want int64) {
++		t.Helper()
++		serial, err := lifecycleProbe(addr, name, roots)
++		if err != nil || serial != want {
++			t.Fatalf("verified TLS %q serial=%d, want=%d: %v", name, serial, want, err)
++		}
++	}
++	probe("node.example.test", 1)
++	probe("one.shared.example.test", 1)
++	if _, err := lifecycleProbe(addr, "deliberately-wrong-cn.example.test", roots); err == nil {
++		t.Fatal("CN bypassed SAN-only SNI matching")
++	}
++	if _, err := lifecycleProbe(addr, "nested.one.shared.example.test", roots); err == nil {
++		t.Fatal("wildcard matched more than one DNS label")
++	}
++	// A missing cert used to permanently terminate the native reload ticker.
++	if err := os.Remove(cp); err != nil {
++		t.Fatal(err)
++	}
++	time.Sleep(1100 * time.Millisecond)
++	probe("node.example.test", 1)
++	lifecycleWrite(t, cp, second) // Deliberately mismatched with the old key.
++	time.Sleep(1100 * time.Millisecond)
++	probe("node.example.test", 1)
++	lifecycleWrite(t, kp, secondKey)
++	time.Sleep(1100 * time.Millisecond)
++	probe("node.example.test", 2)
++	lifecycleWrite(t, cp, expired)
++	lifecycleWrite(t, kp, expiredKey)
++	time.Sleep(1100 * time.Millisecond)
++	probe("node.example.test", 2)
++	lifecycleWrite(t, cp, wrong)
++	lifecycleWrite(t, kp, wrongKey)
++	time.Sleep(1100 * time.Millisecond)
++	probe("node.example.test", 2)
++	probe("one.shared.example.test", 2)
++	lifecycleWrite(t, cp, first)
++	lifecycleWrite(t, kp, firstKey)
++	time.Sleep(1100 * time.Millisecond)
++	probe("node.example.test", 1)
++}
++
++func TestServingCertificateRejectsInvalidInitialPairs(t *testing.T) {
++	now := time.Now()
++	valid, validKey := lifecyclePair(t, 1, []string{"node.example.test"}, now.Add(-time.Hour), now.Add(time.Hour))
++	expired, expiredKey := lifecyclePair(t, 2, []string{"node.example.test"}, now.Add(-2*time.Hour), now.Add(-time.Hour))
++	future, futureKey := lifecyclePair(t, 3, []string{"node.example.test"}, now.Add(time.Hour), now.Add(2*time.Hour))
++	noSAN, noSANKey := lifecyclePair(t, 4, nil, now.Add(-time.Hour), now.Add(time.Hour))
++	for _, tc := range []struct {
++		name      string
++		cert, key []byte
++	}{
++		{"expired", expired, expiredKey}, {"not yet valid", future, futureKey},
++		{"mismatched", valid, expiredKey}, {"missing", nil, nil}, {"invalid", []byte("incomplete PEM"), validKey}, {"CN without SAN", noSAN, noSANKey},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			cfg := (&Config{Certificate: []*Certificate{{Certificate: tc.cert, Key: tc.key, OneTimeLoading: true}}}).GetTLSConfig()
++			if cert, err := cfg.GetCertificate(&gotls.ClientHelloInfo{ServerName: "node.example.test"}); err == nil || cert != nil {
++				t.Fatal("unusable initial certificate was served")
++			}
++			addr := lifecycleServer(t, cfg)
++			roots := x509.NewCertPool()
++			roots.AppendCertsFromPEM(valid)
++			if _, err := lifecycleProbe(addr, "node.example.test", roots); err == nil {
++				t.Fatal("unusable initial pair completed TLS handshake")
++			}
++		})
++	}
++}
++
++func TestServingCertificateHonorsOptionalSNIAndOneTimeLoading(t *testing.T) {
++	now := time.Now()
++	cert, key := lifecyclePair(t, 1, []string{"node.example.test"}, now.Add(-time.Hour), now.Add(time.Hour))
++	dir := t.TempDir()
++	cp, kp := filepath.Join(dir, "cert"), filepath.Join(dir, "key")
++	lifecycleWrite(t, cp, cert)
++	lifecycleWrite(t, kp, key)
++	cfg := (&Config{Certificate: []*Certificate{{Certificate: cert, Key: key, CertificatePath: cp, KeyPath: kp, OneTimeLoading: true}}}).GetTLSConfig()
++	if _, err := cfg.GetCertificate(&gotls.ClientHelloInfo{}); err != nil {
++		t.Fatal("default server policy rejected absent SNI", err)
++	}
++	if _, err := cfg.GetCertificate(&gotls.ClientHelloInfo{ServerName: "unknown.test"}); err != nil {
++		t.Fatal("RejectUnknownSni=false rejected unknown SNI", err)
++	}
++	if err := os.Remove(cp); err != nil {
++		t.Fatal(err)
++	}
++	if pair, err := cfg.GetCertificate(&gotls.ClientHelloInfo{ServerName: "node.example.test"}); err != nil || pair.Leaf.SerialNumber.Int64() != 1 {
++		t.Fatal("one-time loading unexpectedly accessed removed file", err)
++	}
++}
++
++func TestServingCertificateConcurrentLiveHandshakesAndRotation(t *testing.T) {
++	now := time.Now()
++	one, oneKey := lifecyclePair(t, 1, []string{"node.example.test"}, now.Add(-time.Hour), now.Add(time.Hour))
++	two, twoKey := lifecyclePair(t, 2, []string{"node.example.test"}, now.Add(-time.Hour), now.Add(time.Hour))
++	dir := t.TempDir()
++	cp, kp := filepath.Join(dir, "cert"), filepath.Join(dir, "key")
++	lifecycleWrite(t, cp, one)
++	lifecycleWrite(t, kp, oneKey)
++	source := newCertificateSource(&Certificate{Certificate: one, Key: oneKey, CertificatePath: cp, KeyPath: kp})
++	source.interval = 0 // Exercise every concurrent refresh, without a mutable global.
++	source.nextCheck.Store(0)
++	cfg := &gotls.Config{GetCertificate: func(*gotls.ClientHelloInfo) (*gotls.Certificate, error) { return source.get(), nil }}
++	addr := lifecycleServer(t, cfg)
++	roots := x509.NewCertPool()
++	roots.AppendCertsFromPEM(one)
++	roots.AppendCertsFromPEM(two)
++	var workers sync.WaitGroup
++	for i := 0; i < 6; i++ {
++		workers.Add(1)
++		go func() {
++			defer workers.Done()
++			for j := 0; j < 12; j++ {
++				serial, err := lifecycleProbe(addr, "node.example.test", roots)
++				if err != nil || serial != 1 && serial != 2 {
++					t.Errorf("concurrent verified TLS lost a valid immutable pair: serial=%d err=%v", serial, err)
++					return
++				}
++			}
++		}()
++	}
++	for i := 0; i < 8; i++ {
++		if i%2 == 0 {
++			lifecycleWrite(t, cp, two)
++			lifecycleWrite(t, kp, twoKey)
++		} else {
++			lifecycleWrite(t, cp, one)
++			lifecycleWrite(t, kp, oneKey)
++		}
++	}
++	workers.Wait()
++	lifecycleWrite(t, cp, two)
++	lifecycleWrite(t, kp, twoKey)
++	if serial, err := lifecycleProbe(addr, "node.example.test", roots); err != nil || serial != 2 {
++		t.Fatalf("final rotated serial=%d, err=%v", serial, err)
++	}
++}

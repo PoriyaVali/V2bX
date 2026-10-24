@@ -17,6 +17,8 @@ on:
       - dev_new
     paths:
       - "**/*.go"
+      - "scripts/*.py"
+      - "patches/**"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/release.yml"
@@ -24,6 +26,8 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "**/*.go"
+      - "scripts/*.py"
+      - "patches/**"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/release.yml"
@@ -165,6 +169,11 @@ jobs:
       - name: Get project dependencies
         run: |
           go mod download
+      - name: Prepare verified TLS dependency repairs
+        run: |
+          mkdir -p .dart_tool
+          python3 scripts/prepare_tls_dependencies.py --allow-download > .dart_tool/tls-preparation.json
+          python3 -c 'import json; r=json.load(open(".dart_tool/tls-preparation.json")); print("GOFLAGS=-mod=readonly -modfile="+r["audit_mod"])' >> "$GITHUB_ENV"
       - name: Get version
         env:
           # The release's tag, else empty (then the commit).
