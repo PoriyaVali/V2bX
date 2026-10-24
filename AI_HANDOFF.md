@@ -1,5 +1,40 @@
 # AI work log and handoff
 
+## Active handoff - 2026-10-24 - Codex - v1.9.3 cancelled; repair Linux preparation and require tests
+
+Owner cancelled run and explicitly replaced no-test preference with WITH TESTS.
+Earlier commit441cb14052f1bbdf0845ea02604039dcc49f9f94 remains published on
+dev_new; run40073960927 CANCELLED with multiple preparation failures. Draft
+v1.9.3 has zero assets and is NOT published. Attempted cancellation after
+status changed returned already completed; no extra mutation. Logs of Windows
+amd64 and LinuxMIPS targets show identical Linuxrunner Permission denied at
+git apply, before Go build. Root cause: shutil.copytree retains read-only Go
+cache DIRECTORY modes; script only made files writable. Earlier Windows-only
+preparation tests missed actual POSIX directory permissions.
+
+Material repair paths:
+- scripts/prepare_tls_dependencies.py: make_staging_writable changes owner
+  write/search bits on copied directories and files only, rejects links;
+  original cache remains untouched and hash checks remain enforced.
+- scripts/test_prepare_tls_dependencies.py: real Git patch of nested read-only
+  copied tree, including empty directory, checks original cache bytes/modes.
+- .github/workflows/test.yml: callable workflow; explicit all12certificate
+  packages with Race+QUIC, in addition to full existing checks.
+- .github/workflows/release.yml: publishing invokes Test first; draft and all
+  builds depend on validation. Resume existing draft without replacing any
+  published release; do not build after cancelled/failed prerequisites.
+- docs/releases/v1.9.3.md: owner now requires tests; document gate/permissions.
+- AI_HANDOFF.md: this record. Root shared handoff also updated.
+
+Validation update before commit: all10script safety tests PASS, including new
+readonly-directory regression on Windows; fresh independent full dependency
+preparation/hash/modfile checks PASS; all3workflow YAML parse PASS; diffcheck
+PASS. Twelve-package local Race+QUIC running, not yet claimed passed. These
+six paths are UNCOMMITTED at this entry; hosted Linux Test gate will precede
+any release builds. No claim that earlier local checks
+proved Linux permission correctness. NativeTT/publicACME/DNS/OCSP limits
+still apply. Prior audit deliveries/source checkout preserved. No server work.
+
 ## Active handoff - 2026-10-24 - Codex - v1.9.3 publication authorized; no repeated tests
 
 Owner explicitly requested push to GitHub and quick v1.9.3 build/release,

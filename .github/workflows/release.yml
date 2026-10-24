@@ -36,18 +36,23 @@ on:
 
 jobs:
 
+  validate:
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    uses: ./.github/workflows/test.yml
+
   # Running this workflow by hand with a tag publishes a release in one go.
   # The release starts as a draft and is published only once every binary is
   # attached, so `v2bx update` never finds a latest release without them. It
   # cannot lean on the `release` trigger below: GitHub starts no workflow for
   # a release made with GITHUB_TOKEN.
   release:
+    needs: validate
     if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Create draft release
+      - name: Create or resume draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
@@ -58,13 +63,23 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$NOTES" > notes.md
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
-            --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          if state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [[ "$state" != true ]]; then
+              echo "Release $TAG is already published; refusing to replace it"
+              exit 1
+            fi
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
+              --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
+              --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          fi
 
   build:
-    needs: release
-    # Runs on every event; waits for the draft only when there is one.
-    if: ${{ !cancelled() && needs.release.result != 'failure' }}
+    needs: [validate, release]
+    # Publishing paths require passing tests and a ready draft. Push/PR builds
+    # have no draft; their regular Test workflow runs separately.
+    if: ${{ !cancelled() && (needs.validate.result == 'success' || needs.validate.result == 'skipped') && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     strategy:
       matrix:
         # Include amd64 on all platforms.

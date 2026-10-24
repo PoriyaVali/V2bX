@@ -111,6 +111,23 @@ def git_apply(git: str, source: Path, patch: Path, env: dict[str, str], *flags: 
     run([git, "-c", "core.autocrlf=false", "-c", "core.eol=lf", "-c", f"core.attributesFile={os.devnull}", "apply", "--whitespace=nowarn", *flags, str(patch)], source, isolated)
 
 
+def make_staging_writable(source: Path) -> None:
+    # Go's module cache has read-only directories as well as files. Git replaces
+    # files while patching, which also requires write access to their parent.
+    # Only touch the verified private copy; never chmod the module cache.
+    if is_link(source) or not source.is_dir():
+        raise PreparationError(f"Staging must be a real directory: {source}")
+    for current, directories, files in os.walk(source, followlinks=False):
+        directory = Path(current)
+        directory.chmod(directory.stat().st_mode | stat.S_IWUSR | stat.S_IXUSR)
+        for name in directories + files:
+            if is_link(directory / name):
+                raise PreparationError(f"Links are not allowed in staging: {directory / name}")
+        for name in files:
+            path = directory / name
+            path.chmod(path.stat().st_mode | stat.S_IWUSR)
+
+
 def verify_files(metadata: dict[str, Any], hashes: dict[str, str], field: str) -> None:
     for item in metadata["files"]:
         actual = hashes.get(item["path"])
@@ -205,9 +222,7 @@ def prepare_module(metadata_path: Path, metadata: dict[str, Any], patch: Path, o
     copied = tree_hashes(source)
     if copied != original:
         raise PreparationError(f"Module cache changed while copying: {cache}")
-    for relative in copied:
-        path = source / relative
-        path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    make_staging_writable(source)
     git_apply(git, source, patch, env, "--check")
     git_apply(git, source, patch, env)
     patched = tree_hashes(source)

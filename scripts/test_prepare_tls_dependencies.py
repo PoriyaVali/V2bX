@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import sys
 import tempfile
 import unittest
@@ -54,6 +55,38 @@ class PreparationSafetyTest(unittest.TestCase):
         hashes = {"z": prep.digest(b"z"), "a": prep.digest(b"a")}
         self.assertEqual(prep.go_h1(hashes), prep.go_h1(dict(reversed(list(hashes.items())))))
         self.assertNotEqual(prep.go_h1(hashes), prep.go_h1(hashes, "example.com/core@v1/"))
+
+    @unittest.skipUnless(shutil.which("git"), "git is required for patch verification")
+    def test_readonly_module_directories_are_patchable_without_touching_cache(self):
+        cache = self.root / "module-cache"
+        nested = cache / "transport" / "tls"
+        nested.mkdir(parents=True)
+        (cache / "empty").mkdir()
+        original = nested / "config.go"
+        original.write_bytes(b"old\n")
+        cache_paths = [cache, *cache.rglob("*")]
+        try:
+            for path in reversed(cache_paths):
+                path.chmod(0o555 if path.is_dir() else 0o444)
+            original_modes = {path: stat.S_IMODE(path.stat().st_mode) for path in cache_paths}
+            source = self.root / "staging"
+            shutil.copytree(cache, source)
+            prep.make_staging_writable(source)
+            for path in [source, *source.rglob("*")]:
+                self.assertTrue(path.stat().st_mode & stat.S_IWUSR, str(path))
+                if path.is_dir():
+                    self.assertTrue(path.stat().st_mode & stat.S_IXUSR, str(path))
+            patch = self.root / "readonly.patch"
+            patch.write_bytes(b"diff --git a/transport/tls/config.go b/transport/tls/config.go\n--- a/transport/tls/config.go\n+++ b/transport/tls/config.go\n@@ -1 +1 @@\n-old\n+new\n")
+            prep.git_apply(self.git, source, patch, self.env, "--check")
+            prep.git_apply(self.git, source, patch, self.env)
+            self.assertEqual((source / "transport/tls/config.go").read_bytes(), b"new\n")
+            self.assertEqual(original.read_bytes(), b"old\n")
+            self.assertEqual({path: stat.S_IMODE(path.stat().st_mode) for path in cache_paths}, original_modes)
+        finally:
+            # Restore only this test's own fixture for Windows temporary cleanup.
+            for path in cache_paths:
+                path.chmod(0o755 if path.is_dir() else 0o644)
 
     @unittest.skipUnless(shutil.which("git"), "git is required for patch verification")
     def test_valid_prepared_tree_reverse_patch_and_full_checksum(self):

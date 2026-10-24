@@ -1,6 +1,7 @@
 name: Test
 
 on:
+  workflow_call:
   push:
     branches:
       - master
@@ -149,6 +150,14 @@ jobs:
         env:
           GOEXPERIMENT: jsonv2
         run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/... ./api/... ./core/... ./cmd/...
+
+      - name: Certificate lifecycle over TLS and QUIC
+        env:
+          GOEXPERIMENT: jsonv2
+        run: |
+          go test -race -tags with_quic -count=1 -timeout 5m \
+            ./common/certmanager ./common/file ./common/tlscert ./common/decoy \
+            ./conf ./api/panel ./node ./core/sing ./core/xray ./core/hy2 ./core/trusttunnel ./cmd
 
       - name: Cover sites over HTTP2 and HTTP3
         env:
