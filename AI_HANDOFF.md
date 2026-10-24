@@ -1,5 +1,25 @@
 # AI work log and handoff
 
+## Active handoff - 2026-10-24 - Codex - Linux CI caught shared-port fixture collision; release still blocked
+
+Run40074451673 at committed/pushed72467355d7a1bbc3a47740042e1beaaf731d2bb4
+proved Linux preparation repair (10Python tests + real patch application),
+installer tests, whole/release-tag builds, command reload, vet, update, AnyTLS/
+QUIC authentication/retirement, cached-connection and whole Race suite PASS.
+Explicit12packageRace+QUIC step FAILED only core/sing's existing
+TestSing_Hysteria2ProberSeesDecoySite: freeUDPPort selected a TCP-busy port;
+cover bind EADDRINUSE followed by TCP connect refused. Other11packages PASS.
+No data race/certificate-rotation failure reported. Native/public limits still
+apply. Release gate correctly skipped draft/build/publish; v1.9.3 unpublished.
+Raw failed Linux job log saved in shared ignored release evidence directory.
+
+Material edit core/sing/decoy_hy2_test.go: cover tests now select shared TCP/UDP
+port, reserving TCP while checking UDP. Keep actual HTTPS/HTTP3/retirement
+assertions. UDP-only certificate probe helper unchanged. No production-code
+edit. Both cover tests repeated30times with Race+QUIC PASS2.921s; whole Sing
+Race+QUIC PASS18.271s; gofmt/diffcheckPASS. Hosted full retry pending. This
+test repair UNCOMMITTED at entry; prior7246735 remains remote head.
+
 ## Active handoff - 2026-10-24 - Codex - v1.9.3 cancelled; repair Linux preparation and require tests
 
 Owner cancelled run and explicitly replaced no-test preference with WITH TESTS.

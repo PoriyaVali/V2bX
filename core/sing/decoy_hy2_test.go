@@ -27,13 +27,37 @@ func freeUDPPort(t *testing.T) int {
 	return c.LocalAddr().(*net.UDPAddr).Port
 }
 
+func freeTCPUDPPort(t *testing.T) int {
+	t.Helper()
+	// A free UDP port can already have an unrelated TCP listener/connection.
+	// These cover tests need both transports on the same port. Let TCP choose
+	// an available port, then check UDP while TCP is still reserved.
+	for attempt := 0; attempt < 100; attempt++ {
+		tcp, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := tcp.Addr().(*net.TCPAddr).Port
+		udp, err := net.ListenPacket("udp", tcp.Addr().String())
+		if err != nil {
+			tcp.Close()
+			continue
+		}
+		udp.Close()
+		tcp.Close()
+		return port
+	}
+	t.Fatal("could not find a shared TCP/UDP test port")
+	return 0
+}
+
 // An HTTP/3 request that does not authenticate is how a prober tells a
 // Hysteria2 server apart: sing-box answered it with a bare 404 on every path.
 // With no masquerade configured, the node's decoy site answers instead.
 func TestSing_Hysteria2ProberSeesDecoySite(t *testing.T) {
 	b, _ := startSing(t)
 	hy := &panel.Hysteria2Node{}
-	hy.ServerPort = freeUDPPort(t)
+	hy.ServerPort = freeTCPUDPPort(t)
 	info := &panel.NodeInfo{Type: "hysteria2", Security: panel.Tls, Hysteria2: hy, Common: &hy.CommonNode}
 	options := tlsNodeOptions(t)
 	if err := b.AddNode("hy2-decoy", info, options); err != nil {
@@ -81,7 +105,7 @@ func TestSing_Hysteria2ProberSeesDecoySite(t *testing.T) {
 func TestSing_TUICHasOwnedHTTPSCompanion(t *testing.T) {
 	b, _ := startSing(t)
 	tuic := &panel.TuicNode{}
-	tuic.ServerPort = freeUDPPort(t)
+	tuic.ServerPort = freeTCPUDPPort(t)
 	info := &panel.NodeInfo{Type: "tuic", Security: panel.Tls, Tuic: tuic, Common: &tuic.CommonNode}
 	options := tlsNodeOptions(t)
 	if err := b.AddNode("tuic-cover", info, options); err != nil {
