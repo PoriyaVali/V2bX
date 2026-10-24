@@ -17,6 +17,7 @@ import (
 	"unicode"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/file"
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/pelletier/go-toml/v2"
 )
@@ -80,9 +81,20 @@ func (t *TrustTunnel) generateConfig(dir string, p *panel.TrustTunnelNode, metri
 	if err != nil {
 		return err
 	}
-	// Issuance and renewal belong to the shared V2bX certificate manager.
-	// The native wizard receives only immutable, already validated files.
-	certArgs := []string{"--cert-type", "provided", "--cert-chain-path", snapshot.certPath, "--cert-key-path", snapshot.keyPath}
+	// Issuance and renewal belong to the shared V2bX certificate manager; the
+	// endpoint is pointed at its validated snapshot below, after the wizard.
+	//
+	// 🔴 The wizard itself only ever runs its self-signed branch. Its other two
+	// non-interactive branches deadlock in the shipped setup_wizard (TrustTunnel
+	// v1.0.41-dm.3): build_with_runtime holds the guard of its parameters'
+	// std::sync::Mutex across `if let ... = get_predefined_params().cert_type`,
+	// and the provided and letsencrypt helpers lock it again - one thread
+	// waiting on itself in futex. 1.9.3 passed `--cert-type provided` on every
+	// node, so the wizard sat out wizardTimeout and the endpoint never started
+	// (measured on the UK3 node and in the native test, 2026-10-24). The
+	// self-signed branch runs after that guard is dropped; the throwaway pair
+	// it writes is replaced in hosts.toml before the endpoint reads the file.
+	certArgs := []string{"--cert-type", "self-signed"}
 
 	// The native wizard requires at least one client. Its temporary credential
 	// must be unpredictable even if generation fails before start replaces it.
@@ -111,9 +123,12 @@ func (t *TrustTunnel) generateConfig(dir string, p *panel.TrustTunnelNode, metri
 		}
 		return fmt.Errorf("wizard failed: %w", err)
 	}
-	if err := setProvidedHostname(filepath.Join(dir, "hosts.toml"), p.Hostname); err != nil {
+	if err := setHostCertificate(filepath.Join(dir, "hosts.toml"), p.Hostname, snapshot.certPath, snapshot.keyPath); err != nil {
 		return err
 	}
+	// The wizard's own self-signed pair (its DEFAULT_CERTIFICATE_FOLDER, relative
+	// to the working directory) is no longer referenced by anything.
+	_ = os.RemoveAll(filepath.Join(dir, wizardCertificateDir))
 
 	vpn := filepath.Join(dir, "vpn.toml")
 	if err := enableMetrics(vpn, metricsPort); err != nil {
@@ -148,11 +163,16 @@ func verifyProvidedCertificate(dir string, p *panel.TrustTunnelNode) error {
 	return nil
 }
 
-// The native wizard derives provided-certificate hostnames from the entire
-// certificate subject, rather than the requested hostname. A SAN-only leaf or
-// a certificate with a different CN would select the wrong TLS host. Keep its
-// generated paths and future settings, replacing only the one main hostname.
-func setProvidedHostname(path, hostname string) error {
+// wizardCertificateDir is where the native wizard's self-signed branch writes
+// its pair (DEFAULT_CERTIFICATE_FOLDER in tools/setup_wizard).
+const wizardCertificateDir = "certs"
+
+// setHostCertificate points the wizard's one main TLS host at the panel
+// hostname and V2bX's managed certificate snapshot, keeping every other
+// setting it generated. The host's name must be the panel's: the native
+// demultiplexer selects a host by that name or its allowed_sni, and the wizard
+// derives it from a certificate subject rather than the requested hostname.
+func setHostCertificate(path, hostname, certPath, keyPath string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read generated hosts.toml: %w", err)
@@ -169,12 +189,12 @@ func setProvidedHostname(path, hostname string) error {
 	if !ok {
 		return fmt.Errorf("wizard generated an invalid main TLS host")
 	}
-	host["hostname"] = hostname
+	host["hostname"], host["cert_chain_path"], host["private_key_path"] = hostname, certPath, keyPath
 	raw, err = toml.Marshal(settings)
 	if err != nil {
 		return fmt.Errorf("encode generated hosts.toml")
 	}
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
+	if err := file.WriteAtomic(path, raw, 0o600); err != nil {
 		return fmt.Errorf("write generated hosts.toml: %w", err)
 	}
 	return nil

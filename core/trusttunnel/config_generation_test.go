@@ -45,10 +45,27 @@ func runConfigWizardHelper() bool {
 `), 0o600); err != nil {
 		os.Exit(92)
 	}
-	hostname := argumentValue(os.Args[1:], "-n")
-	if argumentValue(os.Args[1:], "--cert-type") == "provided" {
-		hostname = "CN=legacy.example.test, O=Example"
+	// 🔴 The shipped wizard deadlocks in its provided and letsencrypt
+	// branches (see generateConfig). Fail at once rather than hang, so a
+	// change back to either one breaks these tests instead of the nodes.
+	switch argumentValue(os.Args[1:], "--cert-type") {
+	case "self-signed":
+	case "provided", "letsencrypt":
+		fmt.Fprintln(os.Stderr, "the native wizard deadlocks in this branch")
+		os.Exit(77)
+	default:
+		os.Exit(78)
 	}
+	// Like the native self-signed branch: a throwaway pair in certs/ and a
+	// main host that names the -n hostname and points at that pair.
+	if err := os.MkdirAll("certs", 0o700); err != nil {
+		os.Exit(95)
+	}
+	if os.WriteFile("certs/cert.pem", []byte("wizard throwaway certificate"), 0o600) != nil ||
+		os.WriteFile("certs/key.pem", []byte("wizard throwaway key"), 0o600) != nil {
+		os.Exit(96)
+	}
+	hostname := argumentValue(os.Args[1:], "-n")
 	hosts := fmt.Sprintf(`[[main_hosts]]
 hostname = %q
 cert_chain_path = %q
@@ -63,7 +80,7 @@ future_setting = "retain extra table"
 hostname = "ping.example.test"
 cert_chain_path = "ping-cert.pem"
 private_key_path = "ping-key.pem"
-`, hostname, argumentValue(os.Args[1:], "--cert-chain-path"), argumentValue(os.Args[1:], "--cert-key-path"))
+`, hostname, "certs/cert.pem", "certs/key.pem")
 	if err := os.WriteFile("hosts.toml", []byte(hosts), 0o600); err != nil {
 		os.Exit(93)
 	}
@@ -225,28 +242,59 @@ func TestGenerateConfig_ExplicitCertificateModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			args := readWizardArgs(t, dir)
-			if got := argumentValue(args, "--cert-type"); got != "provided" {
-				t.Fatalf("native certificate mode = %q, want pre-managed provided pair", got)
+			// 🔴 Whatever the panel asked for: the native wizard's other
+			// branches deadlock, and the certificate is V2bX's anyway.
+			if got := argumentValue(args, "--cert-type"); got != "self-signed" {
+				t.Fatalf("native certificate mode = %q, want the wizard's self-signed branch", got)
 			}
 			if got := argumentValue(args, "-n"); got != p.Hostname {
 				t.Fatal("generic CertConfig replaced the panel hostname")
 			}
-			if got := argumentValue(args, "--acme-email"); got != "" {
-				t.Fatal("native wizard was asked to own ACME instead of the shared manager")
+			for _, flag := range []string{"--acme-email", "--cert-chain-path", "--cert-key-path"} {
+				if got := argumentValue(args, flag); got != "" {
+					t.Fatalf("native wizard was given %s; it must not own the certificate", flag)
+				}
 			}
-			for _, field := range []struct{ flag, want string }{
-				{"--cert-chain-path", p.CertChainPath}, {"--cert-key-path", p.CertKeyPath},
-			} {
-				got := argumentValue(args, field.flag)
-				if got == "" || got == field.want || !filepath.IsAbs(got) {
-					t.Fatalf("%s does not point to an isolated immutable snapshot for %s", field.flag, mode)
+			host := mainHost(t, dir)
+			if host["hostname"] != p.Hostname {
+				t.Fatalf("main host = %v, want the panel hostname", host["hostname"])
+			}
+			for _, key := range []string{"cert_chain_path", "private_key_path"} {
+				got, _ := host[key].(string)
+				if got == "" || !filepath.IsAbs(got) || got == p.CertChainPath || got == p.CertKeyPath ||
+					!strings.HasPrefix(got, filepath.Join(dir, "certificates")+string(filepath.Separator)) {
+					t.Fatalf("%s = %q does not point to an isolated immutable snapshot for %s", key, got, mode)
 				}
 				if _, err := os.Stat(got); err != nil {
-					t.Fatalf("snapshot passed to native wizard does not exist: %v", err)
+					t.Fatalf("snapshot in hosts.toml does not exist: %v", err)
 				}
+			}
+			if _, err := os.Stat(filepath.Join(dir, wizardCertificateDir)); !os.IsNotExist(err) {
+				t.Fatal("the wizard's throwaway pair was left behind")
 			}
 		})
 	}
+}
+
+func mainHost(t *testing.T, dir string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, "hosts.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := toml.Unmarshal(raw, &settings); err != nil {
+		t.Fatal(err)
+	}
+	hosts, ok := settings["main_hosts"].([]any)
+	if !ok || len(hosts) != 1 {
+		t.Fatal("hosts.toml needs exactly one main host")
+	}
+	host, ok := hosts[0].(map[string]any)
+	if !ok {
+		t.Fatal("invalid main host")
+	}
+	return host
 }
 
 func TestGenerateConfig_RejectsInvalidInputBeforeWizard(t *testing.T) {
@@ -466,7 +514,7 @@ func TestGenerateConfig_ProvidedRejectsWrongCertificateBeforeWizard(t *testing.T
 	}
 }
 
-func TestSetProvidedHostname_RejectsUnexpectedNativeShape(t *testing.T) {
+func TestSetHostCertificate_RejectsUnexpectedNativeShape(t *testing.T) {
 	for _, raw := range []string{
 		"secret-value = [invalid-private-marker",
 		"[[ping_hosts]]\nhostname = 'example.test'\n",
@@ -476,7 +524,7 @@ func TestSetProvidedHostname_RejectsUnexpectedNativeShape(t *testing.T) {
 		if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := setProvidedHostname(path, "endpoint.example.test"); err == nil || strings.Contains(err.Error(), "private-marker") {
+		if err := setHostCertificate(path, "endpoint.example.test", "/snapshot/cert.pem", "/snapshot/key.pem"); err == nil || strings.Contains(err.Error(), "private-marker") {
 			t.Fatalf("unexpected unsafe-hosts validation result: %v", err)
 		}
 		got, err := os.ReadFile(path)
