@@ -117,6 +117,7 @@ func (n *NodeConfig) UnmarshalJSON(data []byte) (err error) {
 }
 
 type Options struct {
+	MihomoOptions          *MihomoOptions  `json:"MihomoOptions"`
 	Name                   string          `json:"Name"`
 	Core                   string          `json:"Core"`
 	CoreName               string          `json:"CoreName"`
@@ -186,6 +187,12 @@ func (o *Options) UnmarshalJSON(data []byte) error {
 		o.CertConfig.ExpandPaths()
 	}
 	switch o.Core {
+	case "mihomo":
+		o.MihomoOptions = &MihomoOptions{}
+		if err = json.Unmarshal(data, o.MihomoOptions); err != nil {
+			return err
+		}
+		return overlayCoreOptions(data, "MihomoOptions", o.MihomoOptions)
 	case "xray":
 		o.XrayOptions = NewXrayOptions()
 		if err = json.Unmarshal(data, o.XrayOptions); err != nil {

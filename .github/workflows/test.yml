@@ -80,13 +80,13 @@ jobs:
           GOEXPERIMENT: jsonv2
         run: |
           go build -o /tmp/V2bX_tagged \
-            -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel" ./
+            -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" ./
 
       # A tag that compiles proves nothing about the core being registered, so
       # check the names are actually in the binary.
       - name: Cores are registered
         run: |
-          for core in sing xray hysteria2 mdns trusttunnel; do
+          for core in sing xray hysteria2 mdns trusttunnel mihomo; do
             if grep -qa "$core" /tmp/V2bX_tagged; then
               echo "  $core: present"
             else
@@ -157,7 +157,7 @@ jobs:
         run: |
           go test -race -tags with_quic -count=1 -timeout 5m \
             ./common/certmanager ./common/file ./common/tlscert ./common/decoy \
-            ./conf ./api/panel ./node ./core/sing ./core/xray ./core/hy2 ./core/trusttunnel ./cmd
+            ./conf ./api/panel ./node ./core/sing ./core/xray ./core/hy2 ./core/trusttunnel ./core/mihomo ./cmd
 
       - name: Cover sites over HTTP2 and HTTP3
         env:

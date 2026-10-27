@@ -5,6 +5,7 @@ import (
 )
 
 type CoreConfig struct {
+	MihomoConfig    *MihomoConfig    `json:"-"`
 	Type            string           `json:"Type"`
 	Name            string           `json:"Name"`
 	XrayConfig      *XrayConfig      `json:"-"`
@@ -20,6 +21,9 @@ func (c *CoreConfig) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	switch c.Type {
+	case "mihomo":
+		c.MihomoConfig = NewMihomoConfig()
+		return json.Unmarshal(b, c.MihomoConfig)
 	case "xray":
 		c.XrayConfig = NewXrayConfig()
 		return json.Unmarshal(b, c.XrayConfig)

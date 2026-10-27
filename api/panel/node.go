@@ -39,6 +39,8 @@ type NodeInfo struct {
 	// Only the xray core can apply these; see RouteRule.
 	RouteRules []RouteRule
 
+	Mihomo *MihomoNode
+
 	// origin
 	VAllss      *VAllssNode
 	Shadowsocks *ShadowsocksNode
@@ -50,6 +52,30 @@ type NodeInfo struct {
 	Hysteria    *HysteriaNode
 	Hysteria2   *Hysteria2Node
 	Common      *CommonNode
+}
+
+// MihomoNode carries server-side settings for managed protocol nodes.
+// Client private keys and outgoing proxy settings are not server credentials.
+type MihomoNode struct {
+	ZeroRTT              bool   `json:"zero_rtt"`
+	CWND                 int    `json:"cwnd"`
+	BBRProfile           string `json:"bbr_profile"`
+	ReceiveWindowConn    int    `json:"recv_window_conn"`
+	ReceiveWindow        int    `json:"recv_window"`
+	DisableMTUDiscovery  bool   `json:"disable_mtu_discovery"`
+	MaxDatagramFrameSize int    `json:"max_datagram_frame_size"`
+
+	CommonNode
+	TLS                  bool     `json:"tls"`
+	Username             string   `json:"username"`
+	Password             string   `json:"password"`
+	Transport            string   `json:"transport"`
+	TrafficPattern       string   `json:"traffic_pattern"`
+	ALPN                 []string `json:"alpn"`
+	QUICVersions         []string `json:"quic_versions"`
+	CongestionController string   `json:"congestion_controller"`
+	Up                   string   `json:"up"`
+	Down                 string   `json:"down"`
 }
 
 type CommonNode struct {
@@ -404,6 +430,18 @@ func (c *Client) GetNodeInfoContext(ctx context.Context) (node *NodeInfo, err er
 	// parse protocol params
 	var cm *CommonNode
 	switch nodeType {
+	case "http", "socks5", "mieru", "shadowquic":
+		rsp := &MihomoNode{}
+		if err = json.Unmarshal(r.Body(), rsp); err != nil {
+			return nil, fmt.Errorf("decode Mihomo server settings: %w", err)
+		}
+		cm = &rsp.CommonNode
+		node.Mihomo = rsp
+		if rsp.TLS {
+			node.Security = Tls
+		} else {
+			node.Security = None
+		}
 	case "vmess", "vless":
 		rsp := &VAllssNode{}
 		err = json.Unmarshal(r.Body(), rsp)

@@ -24,6 +24,7 @@ var setupCoreProtocols = map[string][]string{
 	"hysteria2":   {"hysteria"},
 	"mdns":        {"mdns"},
 	"trusttunnel": {"trusttunnel"},
+	"mihomo":      {"http", "socks5", "mieru", "shadowquic", "vmess", "vless", "trojan", "tuic", "hysteria2", "anytls", "trusttunnel"},
 }
 
 func validSetupCore(core string) bool { return core == "auto" || setupCoreProtocols[core] != nil }
@@ -56,6 +57,9 @@ func validateSetupCore(core string, info *panel.NodeInfo) error {
 func resolveSetupCore(core string, info *panel.NodeInfo) string {
 	if core != "auto" {
 		return core
+	}
+	if info.Type == "http" || info.Type == "socks5" || info.Type == "mieru" || info.Type == "shadowquic" {
+		return "mihomo"
 	}
 	if info.Type == "mdns" || info.Type == "trusttunnel" {
 		return info.Type
@@ -180,7 +184,7 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 	var cores, nodes []map[string]any
 	var summaries []string
 	seenCores, seenNodes := map[string]bool{}, map[string]bool{}
-	coreNames := []string{"sing", "xray", "hysteria2", "mdns", "trusttunnel"}
+	coreNames := []string{"sing", "xray", "hysteria2", "mdns", "trusttunnel", "mihomo"}
 	for number := 1; ; {
 		fmt.Fprintf(p.out, "\n━━━ Node %d | نود %d ━━━\n", number, number)
 		var id int
@@ -195,7 +199,7 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 			}
 			fmt.Fprintln(p.out, "Node ID must be positive | شناسه باید عدد مثبت باشد")
 		}
-		fmt.Fprintln(p.out, "Core for this node | هسته این نود:\n  1. sing-box (AnyTLS, VMess, VLESS, Trojan, Shadowsocks, Hysteria, TUIC)\n  2. Xray (VLESS, VMess, Trojan, Shadowsocks)\n  3. Hysteria2 (dedicated | اختصاصی)\n  4. MDNS\n  5. TrustTunnel")
+		fmt.Fprintln(p.out, "Core for this node | هسته این نود:\n  1. sing-box (AnyTLS, VMess, VLESS, Trojan, Shadowsocks, Hysteria, TUIC)\n  2. Xray (VLESS, VMess, Trojan, Shadowsocks)\n  3. Hysteria2 (dedicated | اختصاصی)\n  4. MDNS\n  5. TrustTunnel\n  6. Mihomo fork (server | سمت سرور)")
 		fallback := 1
 		for i, core := range coreNames {
 			if core == defaults.core {
@@ -247,6 +251,17 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 		}
 		o := defaults
 		o.nodes, o.core, o.nodeCores, o.detectedNode = label, core, nil, selected
+		if selected.Type == "shadowquic" && core == "mihomo" && o.mihomoJLSAddr == "" {
+			o.mihomoJLSAddr, err = p.ask("ShadowQUIC JLS decoy host:port | نشانی سرویس QUIC استتار", "")
+			if err != nil {
+				return nil, nil, err
+			}
+			o.mihomoJLSSNI, err = p.ask("JLS decoy SNI | نام دامنهٔ سرویس استتار", "")
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+
 		o.existingCert = existingSetupCertificate(o.output, o.panel, selected)
 		applySetupCertificateFlags(&o)
 		fmt.Fprintf(p.out, "Node host | آدرس نود: %s\n", firstNonempty(panelCertificateDomain(selected), "(not provided / ارسال نشده)"))
@@ -341,7 +356,7 @@ func retrySetupNode(p setupPrompter, cause error) (bool, error) {
 }
 
 func setupSecuritySummary(info *panel.NodeInfo, o configureOptions) string {
-	if info.Type == "trusttunnel" {
+	if info.Type == "trusttunnel" && o.core != "mihomo" {
 		return "certificate managed by TrustTunnel / گواهی تحت مدیریت TrustTunnel"
 	}
 	switch info.Security {

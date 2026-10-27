@@ -54,6 +54,26 @@
             "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6IndzIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL2NvbnRyYWN0In0sInRscyI6MSwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NDEsInB1bGxfaW50ZXJ2YWwiOjMxLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6NywiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6M319",
             "content_type": "application/json",
             "etag": "\"a69da60c2f9b62c7a747c5c083c920481a225ef6\""
+        },
+        "http": {
+            "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ0bHMiOnRydWUsInNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo0MSwicHVsbF9pbnRlcnZhbCI6MzEsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjo3LCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjozfX0=",
+            "content_type": "application/json",
+            "etag": "\"49f06c0c0182986bce6458156c2a5a77406c971a\""
+        },
+        "socks5": {
+            "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ0bHMiOnRydWUsInNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo0MSwicHVsbF9pbnRlcnZhbCI6MzEsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjo3LCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjozfX0=",
+            "content_type": "application/json",
+            "etag": "\"49f06c0c0182986bce6458156c2a5a77406c971a\""
+        },
+        "mieru": {
+            "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ0cmFuc3BvcnQiOiJUQ1AiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo0MSwicHVsbF9pbnRlcnZhbCI6MzEsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjo3LCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjozfX0=",
+            "content_type": "application/json",
+            "etag": "\"a13ad0f9686219977f937fbf5b177e7d257735fa\""
+        },
+        "shadowquic": {
+            "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo0MSwicHVsbF9pbnRlcnZhbCI6MzEsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjo3LCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjozfX0=",
+            "content_type": "application/json",
+            "etag": "\"230620f057990b2e316d49bdf22c7ae38f947a7e\""
         }
     },
     "responses": {

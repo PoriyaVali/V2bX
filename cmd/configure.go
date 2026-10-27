@@ -27,6 +27,7 @@ type configureOptions struct {
 	panel, nodes, keyEnv, keyFile, output, core, listen                           string
 	certMode, certDomain, certFile, keyPath, provider, dnsEnvFile, email, webroot string
 	coverRoot, coverTitle                                                         string
+	mihomoJLSAddr, mihomoJLSSNI                                                   string
 	coverTCP                                                                      bool
 	nodeCores                                                                     map[string]string
 	detectedNode                                                                  *panel.NodeInfo
@@ -43,10 +44,12 @@ func newConfigureCommand() *cobra.Command {
 	f.StringVar(&o.keyEnv, "api-key-env", "", "Environment variable holding the panel API key")
 	f.StringVar(&o.keyFile, "api-key-file", "", "File holding the panel API key")
 	f.StringVar(&o.output, "output", "/etc/V2bX/config.json", "Configuration path; existing file is backed up with mode 0600")
-	f.StringVar(&o.core, "core", "auto", "Proxy core: auto (protocol/TLS aware), sing, xray, hysteria2")
+	f.StringVar(&o.core, "core", "auto", "Proxy core: auto (protocol/TLS aware), sing, xray, hysteria2, mihomo")
 	f.StringToStringVar(&o.nodeCores, "node-cores", nil, "Per-node core overrides, e.g. hysteria2:3=hysteria2,vless:2=xray")
 	guided := false
 	f.BoolVar(&guided, "guided", false, "Step-by-step wizard: choose mux, node ID and core; detect the remaining settings")
+	f.StringVar(&o.mihomoJLSAddr, "mihomo-jls-upstream", "", "ShadowQUIC decoy QUIC host:port (required for managed ShadowQUIC)")
+	f.StringVar(&o.mihomoJLSSNI, "mihomo-jls-sni", "", "ShadowQUIC decoy TLS server name")
 	f.StringVar(&o.listen, "listen-ip", "::", "Listener IP")
 	f.StringVar(&o.certMode, "cert-mode", "auto", "auto (HTTP, or DNS with --dns-provider), http, dns, file")
 	f.StringVar(&o.certDomain, "cert-domain", "", "Certificate domain you control; defaults to the node host, never SNI")
@@ -283,8 +286,17 @@ func buildPanelConfig(o configureOptions, key string, askDomain func(string) (st
 		if o.coverRoot != "" || o.coverTitle != "" || !o.coverTCP {
 			nodeConfig["Decoy"] = cover
 		}
+		if core == "mihomo" && info.Type == "shadowquic" {
+			if o.mihomoJLSAddr == "" {
+				return nil, nil, fmt.Errorf("ShadowQUIC requires --mihomo-jls-upstream with a real QUIC endpoint")
+			}
+			if _, _, err := net.SplitHostPort(o.mihomoJLSAddr); err != nil {
+				return nil, nil, fmt.Errorf("invalid --mihomo-jls-upstream")
+			}
+			nodeConfig["MihomoOptions"] = map[string]any{"JLSUpstream": map[string]string{"Addr": o.mihomoJLSAddr, "SNI": o.mihomoJLSSNI}}
+		}
 		certSummary := "certificate not required"
-		if info.Security == panel.Tls && info.Type != "trusttunnel" {
+		if info.Security == panel.Tls && (info.Type != "trusttunnel" || core == "mihomo") {
 			domain := o.certDomain
 			if domain == "" && o.existingCert != nil {
 				domain = o.existingCert.CertDomain

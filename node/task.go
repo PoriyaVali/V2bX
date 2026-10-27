@@ -53,7 +53,7 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 // as at initial startup so newly enabled TLS also gets certificate renewal.
 // TrustTunnel owns its manager and lifecycle inside its separate core.
 func (c *Controller) configureCertificateRenewal(node *panel.NodeInfo) {
-	required := node != nil && node.Security == panel.Tls && node.Type != "trusttunnel" && c.Options != nil && c.CertConfig != nil
+	required := c.needsCertificate(node) && c.Options != nil && c.CertConfig != nil
 	if required {
 		switch c.CertConfig.CertMode {
 		case "http", "dns", "self":
@@ -278,7 +278,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 
 	// Prepare the certificate before retiring a working listener. A transient
 	// authority failure must leave the old node available for the next retry.
-	if newN.Security == panel.Tls && newN.Type != "trusttunnel" {
+	if c.needsCertificate(newN) {
 		if err := c.requestCert(); err != nil {
 			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Request cert failed")
 			c.apiClient.ResetNodeCache()

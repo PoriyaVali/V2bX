@@ -60,6 +60,13 @@ func TestIrboardGeneratedContract(t *testing.T) {
 				t.Fatalf("panel settings did not reach node: %+v", info)
 			}
 			switch typ {
+			case "http", "socks5", "mieru", "shadowquic":
+				if info.Mihomo == nil || info.Common.Host != "node.example.test" || info.Mihomo.Username != "{{uuid}}" || info.Mihomo.Password != "{{uuid}}" {
+					t.Fatal("managed Mihomo node identity or certificate host lost")
+				}
+				if (typ == "http" || typ == "socks5") && info.Security != Tls {
+					t.Fatal("managed TLS flag lost")
+				}
 			case "vless":
 				if info.Security != Reality || info.VAllss.TlsSettings.Xver != 2 || info.VAllss.TlsSettings.ServerPort != "443" {
 					t.Fatal("REALITY settings lost")
