@@ -668,8 +668,10 @@ github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261023030011-25b103d6a5f4 h1:xjP5vmD
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261023030011-25b103d6a5f4/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v1.260909.1 h1:Nf3LbPxI8F7SXIR93DuZfvn5pUz1fjF8R31bEN4t3xU=
 github.com/PoriyaVali/Xray-core v1.260909.1/go.mod h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=
-github.com/PoriyaVali/mihomo v1.19.32-dm3.0.20261027102631-bb977800a1ac h1:/HrGkBkv3AQlCSVW5ejHIXBEGU0xDFjbbpc8BJzjsMw=
-github.com/PoriyaVali/mihomo v1.19.32-dm3.0.20261027102631-bb977800a1ac/go.mod h1:d7xWi5iEktkC9PqXkD/Vo4AEcb0Q92XikfLoySUDWls=
+github.com/PoriyaVali/mihomo v1.19.32-dm3.0.20261027104116-c3f564552b94 h1:emyXPONpq8kV+gJMxpTyq09yqT6HldduuEBJhzhEWMM=
+github.com/PoriyaVali/mihomo v1.19.32-dm3.0.20261027104116-c3f564552b94/go.mod h1:tLpKqo8XJnJFMktU/gruFWSCH1J/XP/n+VKnd1XPd0w=
+github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261027104116-c3f564552b94 h1:e7yBp23ByPxoiqCtp/22h6JRSC2eEXJcXZ1ae0Qqudo=
+github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261027104116-c3f564552b94/go.mod h1:/yI4OiGOSn0SURhZdJF3CbtPg3nwK700bG8TZLMBvAg=
 github.com/PoriyaVali/sing-box v1.13.21-v2bx.2 h1:9fqgzsOwlTtDQ83kSbtcdSNHkctXqOjBpzgWUHOxEiM=
 github.com/PoriyaVali/sing-box v1.13.21-v2bx.2/go.mod h1:3QuzuhcfVrYNDkKPuPsMd/goaOGSTEUyDBbFlBaGx48=
 github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=
@@ -1583,8 +1585,6 @@ github.com/metacubex/sing-vmess v0.2.5 h1:m9Zt5I27lB9fmLMZfism9sH2LcnAfShZfwSkf6
 github.com/metacubex/sing-vmess v0.2.5/go.mod h1:AwtlzUgf8COe9tRYAKqWZ+leDH7p5U98a0ZUpYehl8Q=
 github.com/metacubex/sing-wireguard v0.0.0-20260826105301-c3ae17d19f9e h1:KGKZt//rrELT/dEwgYcHCqNYEGr3a7uVutlZrzrZZWY=
 github.com/metacubex/sing-wireguard v0.0.0-20260826105301-c3ae17d19f9e/go.mod h1:OiYj4hitKrN1YIrgGHXp6zKnc9asCspF+SrYlLN2hYQ=
-github.com/metacubex/smux v0.0.0-20260105030934-d0c8756d3141 h1:DK2l6m2Fc85H2BhiAPgbJygiWhesPlfGmF+9Vw6ARdk=
-github.com/metacubex/smux v0.0.0-20260105030934-d0c8756d3141/go.mod h1:/yI4OiGOSn0SURhZdJF3CbtPg3nwK700bG8TZLMBvAg=
 github.com/metacubex/ssh v0.1.0 h1:iGfr99qk/eMHzUnQ/0bTxXT8+8SWqLSHBWDHoAhngzw=
 github.com/metacubex/ssh v0.1.0/go.mod h1:NUtl0d+/f2cG9ECEpMM8iCVOpmggQlC13oLeDUONDlU=
 github.com/metacubex/tailscale v0.0.0-20260821153257-ff0ecd818181 h1:hWsSSzuCHe+WvPV1zhoJ8gXTXbp/5nhpPKxtpqgIXu0=

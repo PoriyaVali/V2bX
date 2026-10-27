@@ -36,7 +36,9 @@ one server key and are not exposed as separately billable multi-user nodes.
 ## Configuration
 
 Build with the `mihomo` tag in addition to other desired cores. Docker and
-release builds include it. The usual TLS dependency preparation still applies:
+release builds include it. The fork root and its patched smux submodule are pinned to the same commit;
+Go does not inherit replacements from dependencies. The usual TLS dependency
+preparation still applies:
 
 ```sh
 python3 scripts/prepare_tls_dependencies.py --allow-download
