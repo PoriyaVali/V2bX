@@ -72,6 +72,16 @@ An example configuration (replace placeholders locally):
 TrustTunnel. Normal V2bX issuance, renewal, and file certificate modes apply.
 The certificate loader is scoped to the configured server key pair and reloads
 renewed files without widening Mihomo's global safe paths.
+The shared loader validates the configured `CertDomain`, validity dates, server
+authentication usage and matching private key before serving a replacement.
+An invalid or partially written replacement retains the latest valid pair.
+The same policy applies to SOCKS-over-TLS and to the fork's TCP/QUIC listeners.
+
+For `http` and `dns` certificate modes, V2bX checks every six hours and renews
+within 30 days of expiry; failed attempts are retried on subsequent checks.
+`file` mode consumes externally issued files: their external owner, such as
+Certbot, must renew them. Configure the domain you control in `CertDomain`;
+the wizard does not infer certificate ownership from a different client SNI.
 
 For ShadowQUIC add per-node options:
 
@@ -130,6 +140,15 @@ transport, exact byte direction/counts, active revocation and re-admission,
 final reports, bidirectional TCP half-close, separate node/UID ledgers, device admission, destination rules,
 and measured 1 Mbps transfers with an upgrade on the same open connection.
 Run them with the prepared module graph and `go test -race ./core/mihomo`.
+
+`TestMihomoVerifiedCertificateRotation` uses a private CA and hostname-verified
+handshakes for all nine certificate-based protocols, including both TCP and
+QUIC on TrustTunnel. It checks initial identity, rejection of a wrong client
+hostname, live replacement, retention after a wrong-domain candidate and later
+recovery. Shared certificate-manager tests simulate HTTP/DNS issuance, renewal
+and authority failure. These local tests do not establish public HTTP-01/DNS-01
+challenge success for an operator's real domain.
+
 Panel decoding and wizard tests cover the configuration contract. The fork's
 own server regression tests additionally exercise concurrent AnyTLS and
 VLESS Vision stream shutdown.

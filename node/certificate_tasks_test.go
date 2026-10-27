@@ -57,6 +57,11 @@ func TestCertificateRenewalScheduleFollowsModeAndPanelSecurity(t *testing.T) {
 			if c.renewCertPeriodic != nil {
 				t.Fatal("TrustTunnel started a second generic certificate manager")
 			}
+			c.Options.Core = "mihomo"
+			c.configureCertificateRenewal(info)
+			if (c.renewCertPeriodic != nil) != want {
+				t.Fatalf("embedded Mihomo TrustTunnel renewal required=%v, want %v", c.renewCertPeriodic != nil, want)
+			}
 		})
 	}
 	(&Controller{Options: &conf.Options{}}).configureCertificateRenewal(&panel.NodeInfo{Security: panel.Tls})

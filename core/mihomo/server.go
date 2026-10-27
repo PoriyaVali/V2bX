@@ -2,7 +2,6 @@ package mihomo
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PoriyaVali/V2bX/common/tlscert"
 	A "github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/component/auth"
 	C "github.com/metacubex/mihomo/constant"
@@ -92,9 +92,11 @@ func (n *node) buildServer(users map[string]*user) (*managedServer, error) {
 		if cert == "" || key == "" {
 			return nil, errors.New("mihomo TLS server requires server certificate and key paths")
 		}
-		if _, e := tls.LoadX509KeyPair(cert, key); e != nil {
+		loader, e := tlscert.NewForDomain(cert, key, n.options.CertConfig.CertDomain, time.Second)
+		if e != nil {
 			return nil, fmt.Errorf("mihomo server certificate: %w", e)
 		}
+		sock.certificate = loader
 	}
 	sock.certPath, sock.keyPath = cert, key
 	authMap := map[string]string{}
@@ -304,6 +306,7 @@ func transportOptions(network string, raw json.RawMessage) (path, service string
 // clients still in a TLS/protocol handshake when the node is retired.
 type socketFactory struct {
 	certPath, keyPath string
+	certificate       *tlscert.Loader
 	mu                sync.Mutex
 	closed            bool
 	items             map[ioCloser]struct{}
@@ -439,25 +442,15 @@ func (n *node) decoyDial(ctx context.Context, sockets *socketFactory, network, a
 // The host authorizes only its configured server key pair. Keep renewal scoped
 // to this node and return immutable certificates to concurrent handshakes.
 func (s *socketFactory) TLSKeyPairLoader(certPath, keyPath string) (func() (*MTLS.Certificate, error), error) {
-	if certPath != s.certPath || keyPath != s.keyPath || certPath == "" || keyPath == "" {
+	if certPath != s.certPath || keyPath != s.keyPath || certPath == "" || keyPath == "" || s.certificate == nil {
 		return nil, errors.New("unconfigured server certificate path")
 	}
-	pair, e := MTLS.LoadX509KeyPair(certPath, keyPath)
-	if e != nil {
-		return nil, e
-	}
-	var mu sync.Mutex
-	last := time.Now()
-	current := &pair
 	return func() (*MTLS.Certificate, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		if time.Since(last) > time.Second {
-			if next, e := MTLS.LoadX509KeyPair(certPath, keyPath); e == nil {
-				current = &next
-			}
-			last = time.Now()
+		pair, e := s.certificate.GetCertificate(nil)
+		if e != nil {
+			return nil, e
 		}
-		return current, nil
+		return &MTLS.Certificate{Certificate: pair.Certificate, PrivateKey: pair.PrivateKey,
+			OCSPStaple: pair.OCSPStaple, SignedCertificateTimestamps: pair.SignedCertificateTimestamps, Leaf: pair.Leaf}, nil
 	}, nil
 }

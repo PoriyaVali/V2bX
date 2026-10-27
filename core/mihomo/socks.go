@@ -23,18 +23,7 @@ func (n *node) startSOCKS(sockets *socketFactory, t C.Tunnel, authenticator auth
 		return nil, e
 	}
 	if cert != "" {
-		pair, e := tls.LoadX509KeyPair(cert, key)
-		if e != nil {
-			_ = l.Close()
-			return nil, e
-		}
-		l = tls.NewListener(l, &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-			next, e := tls.LoadX509KeyPair(cert, key)
-			if e != nil {
-				return &pair, nil
-			}
-			return &next, nil
-		}})
+		l = tls.NewListener(l, &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: sockets.certificate.GetCertificate})
 	}
 	go func() {
 		for {
