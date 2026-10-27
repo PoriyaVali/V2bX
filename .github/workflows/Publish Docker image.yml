@@ -18,6 +18,11 @@ env:
   # PoriyaVali - every push failed with "repository name must be lowercase".
   IMAGE_NAME: poriyavali/v2bx
 
+# New commits supersede PR builds; release/manual runs retain their own group.
+concurrency:
+  group: docker-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest

@@ -91,12 +91,18 @@ func newHyRig(t *testing.T) *hyRig {
 func (r *hyRig) addNode(t *testing.T, tag string, users ...panel.UserInfo) {
 	t.Helper()
 	info := r.infos[tag]
+	var release func()
 	if info == nil {
 		hy := &panel.Hysteria2Node{}
-		hy.ServerPort = freeUDPPort(t)
+		// Cover tests need both transports free. A random free UDP port can
+		// belong to an unrelated TCP listener or a recently closed TCP client.
+		hy.ServerPort, release = hyCertificatePort(t)
 		info = &panel.NodeInfo{Type: "hysteria2", Hysteria2: hy, Common: &hy.CommonNode, Security: panel.Tls}
 		r.infos[tag] = info
 		limiter.AddLimiter(tag, &conf.LimitConfig{}, users, map[int]int{})
+	}
+	if release != nil {
+		release()
 	}
 	if err := r.h.AddNode(tag, info, r.opts); err != nil {
 		t.Fatalf("AddNode %s: %v", tag, err)

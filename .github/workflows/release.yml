@@ -34,6 +34,11 @@ on:
   release:
     types: [published]
 
+# New commits supersede PR builds; release/manual runs retain their own group.
+concurrency:
+  group: build-release-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
 
   validate:
