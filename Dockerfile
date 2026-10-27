@@ -1,10 +1,11 @@
-# Build stage
-# Same Go as the release build. This was 1.25.11 while go.mod asks for 1.26,
-# so every image build since v1.4 stopped at the first go command.
-FROM golang:1.27.1-alpine AS builder
+# Compile on the build host and cross-compile the static binary for the image.
+# Emulating the Go compiler made the arm64 image validation unnecessarily slow.
+FROM --platform=$BUILDPLATFORM golang:1.27.1-alpine AS builder
 WORKDIR /app
 ENV CGO_ENABLED=0
 ARG VERSION=TempVersion
+ARG TARGETOS
+ARG TARGETARCH
 RUN apk add --no-cache git python3
 # Download, not tidy: tidy rewrites go.mod inside the image, so the image was
 # not built from the dependency set the release was. The local modules go.mod
@@ -16,7 +17,7 @@ RUN go mod download
 COPY . .
 RUN python3 scripts/prepare_tls_dependencies.py --allow-download > /tmp/tls-preparation.json \
     && MODFILE="$(python3 -c 'import json; print(json.load(open("/tmp/tls-preparation.json"))["audit_mod"])')" \
-    && GOEXPERIMENT=jsonv2 go build -mod=readonly -modfile="$MODFILE" -v -o V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" -trimpath -ldflags "-X github.com/PoriyaVali/V2bX/cmd.version=$VERSION -s -w -buildid="
+    && GOOS="$TARGETOS" GOARCH="$TARGETARCH" GOEXPERIMENT=jsonv2 go build -mod=readonly -modfile="$MODFILE" -v -o V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" -trimpath -ldflags "-X github.com/PoriyaVali/V2bX/cmd.version=$VERSION -s -w -buildid="
 
 # Release stage
 FROM alpine
