@@ -477,6 +477,6 @@ replace github.com/sagernet/sing-shadowsocks => ./third_party/sing-shadowsocks
 
 replace github.com/sagernet/sing-quic => ./third_party/sing-quic
 
-replace github.com/metacubex/mihomo => github.com/PoriyaVali/mihomo v1.19.32-dm3.0.20261027104116-c3f564552b94
+replace github.com/metacubex/mihomo => github.com/PoriyaVali/mihomo v1.19.32-dm3.0.20261027112238-8fd40782e828
 
-replace github.com/metacubex/smux => github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261027104116-c3f564552b94
+replace github.com/metacubex/smux => github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261027112238-8fd40782e828

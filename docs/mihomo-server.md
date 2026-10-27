@@ -98,7 +98,9 @@ Upload is subscriber-to-destination payload; download is destination-to-subscrib
 payload. Protocol/TLS headers are excluded. Reports atomically drain counters;
 removed identities keep their original panel UID until both ledgers drain.
 Online addresses and separate per-device traffic reports come from live flows.
-Revocation closes active TCP/UDP forwarding, and retirement waits for final
+TCP forwarding preserves half-close when the transport supports it, including
+responses returned after request EOF. Revocation closes active TCP/UDP forwarding,
+and retirement waits for final
 accounting before returning its last report.
 
 An empty eligible-user list leaves the listener port closed. SOCKS UDP uses a
@@ -123,7 +125,7 @@ cover-site integration. These limits are not advertised as supported features.
 `core/mihomo` tests use real fork clients, TLS certificates, TCP sockets, and
 UDP echo servers. They cover all 11 protocols, optional TLS, Mieru UDP
 transport, exact byte direction/counts, active revocation and re-admission,
-final reports, separate node/UID ledgers, device admission, destination rules,
+final reports, bidirectional TCP half-close, separate node/UID ledgers, device admission, destination rules,
 and measured 1 Mbps transfers with an upgrade on the same open connection.
 Run them with the prepared module graph and `go test -race ./core/mihomo`.
 Panel decoding and wizard tests cover the configuration contract. The fork's

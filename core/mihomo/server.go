@@ -384,6 +384,13 @@ type trackedConn struct {
 func (c *trackedConn) Close() error  { e := c.Conn.Close(); c.owner.remove(c); return e }
 func (c *trackedConn) Upstream() any { return c.Conn }
 
+func (c *trackedConn) CloseWrite() error {
+	if writer, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return writer.CloseWrite()
+	}
+	return errors.ErrUnsupported
+}
+
 type trackedPacket struct {
 	net.PacketConn
 	owner *socketFactory

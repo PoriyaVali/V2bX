@@ -204,10 +204,28 @@ func (n *node) handleTCP(client net.Conn, m *C.Metadata, generation uint64) {
 	}
 	metered := counter.NewConnCounter(limited, &f.user.traffic, device)
 	done := make(chan struct{})
-	go func() { _, _ = io.Copy(remote, metered); f.close(); close(done) }()
-	_, _ = io.Copy(metered, remote)
-	f.close()
+	go func() {
+		_, err := io.Copy(remote, metered)
+		if err != nil || !closeWrite(remote) {
+			f.close()
+		}
+		close(done)
+	}()
+	_, err := io.Copy(metered, remote)
+	if err != nil || !closeWrite(client) {
+		f.close()
+	}
 	<-done
+}
+
+// A TCP FIN ends one direction. Keep the other direction alive for protocols
+// that expose half-close, including servers that respond only after request EOF.
+// Never unwrap a multiplexed connection to close its shared transport.
+func closeWrite(c net.Conn) bool {
+	if writer, ok := c.(interface{ CloseWrite() error }); ok {
+		return writer.CloseWrite() == nil
+	}
+	return false
 }
 
 type udpFlow struct {
