@@ -153,4 +153,12 @@ Panel decoding and wizard tests cover the configuration contract. The fork's
 own server regression tests additionally exercise concurrent AnyTLS and
 VLESS Vision stream shutdown.
 
+The [opt-in full-stack audit](../scripts/e2e/mihomo/README.md) runs actual
+Webman, MariaDB, Redis, queue workers and V2bX with clients on a separate
+Docker network. It creates all 25 panel protocol types and distinguishes the
+14 available server protocols from the 11 profiles without a managed server.
+Its report includes subscription-based TCP/UDP transfers, exact database
+accounting, admission limits, account eligibility, live certificate changes
+and the native MDNS client. The harness uses only disposable data and a local CA.
+
 Changes are reviewable code; no production deployment or release is implied.
