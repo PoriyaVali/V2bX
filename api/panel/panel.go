@@ -84,6 +84,7 @@ func New(c *conf.ApiConfig) (*Client, error) {
 	switch c.NodeType {
 	case "v2ray":
 		c.NodeType = "vmess"
+	case "http", "socks5", "mieru", "shadowquic":
 	case
 		"vmess",
 		"trojan",

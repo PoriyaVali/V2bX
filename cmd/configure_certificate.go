@@ -98,7 +98,7 @@ func applySetupCertificateFlags(o *configureOptions) {
 }
 
 func chooseSetupCertificateDomain(p setupPrompter, o configureOptions, info *panel.NodeInfo) (string, error) {
-	if info.Security != panel.Tls || info.Type == "trusttunnel" {
+	if info.Security != panel.Tls || (info.Type == "trusttunnel" && o.core != "mihomo") {
 		return "", nil
 	}
 	domain := o.certDomain

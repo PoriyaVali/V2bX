@@ -150,7 +150,7 @@ func (s *Selector) AddNode(tag string, info *panel.NodeInfo, option *conf.Option
 // by xray alone (sing warns for those itself). Without this an operator had
 // no way to learn that a rule set in the panel did nothing on this node.
 func warnRulesNotEnforced(tag, coreType string, info *panel.NodeInfo) {
-	if coreType == "xray" || coreType == "sing" {
+	if coreType == "xray" || coreType == "sing" || coreType == "mihomo" {
 		return
 	}
 	r := info.Rules

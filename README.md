@@ -8,6 +8,12 @@ A multi-core V2board node server with updated cores and a bilingual (English/Per
 
 یک سرویس نود چند هسته‌ای برای V2board با هسته‌های به‌روز و منوی دوزبانه (انگلیسی/فارسی). منشعب از [wyx2685/V2bX](https://github.com/wyx2685/V2bX).
 
+The optional **Mihomo server core** supports 11 multi-user listeners, including
+HTTP/SOCKS5, Mieru, and ShadowQUIC. See [setup and supported settings](docs/mihomo-server.md).
+
+هستهٔ سرور Mihomo با مدیریت مصرف و کاربران به‌صورت مستقل برای هر نود اضافه شده؛
+[راهنمای تنظیم و محدودیت‌ها](docs/mihomo-server.md) را ببینید.
+
 ---
 
 ## 🚀 One-Click Install / Update | نصب و آپدیت با یک کلیک
