@@ -3,7 +3,6 @@ package mihomo
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -228,9 +227,25 @@ func closeWrite(c net.Conn) bool {
 	return false
 }
 
+type packetAddress struct{ network, address string }
+
+func packetEndpoint(addr net.Addr) packetAddress {
+	if addr == nil {
+		return packetAddress{}
+	}
+	return packetAddress{addr.Network(), addr.String()}
+}
+
+type udpKey struct {
+	generation      uint64
+	user            string
+	source, inbound packetAddress
+	destination     string
+}
+
 type udpFlow struct {
 	*flow
-	key     string
+	key     udpKey
 	conn    net.Conn
 	packet  C.UDPPacket // retained until reader stops; owns the reply association
 	device  *counter.TrafficStorage
@@ -276,7 +291,15 @@ func (n *node) sendUDP(j udpJob) {
 		p.Drop()
 		return
 	}
-	key := fmt.Sprintf("%d|%s|%s|%s", j.generation, m.InUser, m.SourceAddress(), m.RemoteAddress())
+	// SDK packet addresses carry logical session IDs; the IP metadata alone
+	// collapses separate UDP-over-stream connections into the same NAT entry.
+	key := udpKey{generation: j.generation, user: m.InUser, source: packetEndpoint(p.LocalAddr()), destination: m.RemoteAddress()}
+	if p.LocalAddr() == nil {
+		key.source = packetAddress{address: m.SourceAddress()}
+	}
+	if inbound, ok := p.(C.UDPPacketInAddr); ok {
+		key.inbound = packetEndpoint(inbound.InAddr())
+	}
 	n.mu.Lock()
 	uf := n.udp[key]
 	valid := !n.closed && !n.reloading && j.generation == n.generation

@@ -86,7 +86,7 @@ type node struct {
 	users       map[string]*user // authenticated name, never a client-provided UID
 	records     []*user          // removed identities retained until their counters are drained
 	flows       map[*flow]struct{}
-	udp         map[string]*udpFlow
+	udp         map[udpKey]*udpFlow
 	packets     chan udpJob
 	workers     sync.WaitGroup
 	server      server
@@ -105,7 +105,7 @@ func newNode(tag string, info *panel.NodeInfo, opt *conf.Options, cfg conf.Mihom
 		return nil, errors.New("invalid server port")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	n := &node{tag: tag, info: info, options: opt, config: cfg, limiter: l, ctx: ctx, cancel: cancel, users: map[string]*user{}, flows: map[*flow]struct{}{}, udp: map[string]*udpFlow{}, packets: make(chan udpJob, 256), nat: nat.New()}
+	n := &node{tag: tag, info: info, options: opt, config: cfg, limiter: l, ctx: ctx, cancel: cancel, users: map[string]*user{}, flows: map[*flow]struct{}{}, udp: map[udpKey]*udpFlow{}, packets: make(chan udpJob, 256), nat: nat.New()}
 	// Validate before publishing the node, even when it currently has no users.
 	if _, e := n.buildServer(nil); e != nil {
 		cancel()

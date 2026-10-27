@@ -105,7 +105,9 @@ accounting before returning its last report.
 
 An empty eligible-user list leaves the listener port closed. SOCKS UDP uses a
 separate relay per authenticated TCP association, pins its source IP/port, and
-closes its forwarding flows when the control connection ends. Queues are
+closes its forwarding flows when the control connection ends. UDP NAT keys keep
+SDK session identities and relay addresses, so simultaneous streams sharing a
+source socket remain isolated. Queues are
 bounded, with at most 16 MiB of queued outbound UDP payload per node.
 
 The fork's SDK authentication tables are immutable. Membership changes rebuild

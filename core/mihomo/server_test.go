@@ -111,7 +111,7 @@ func fixture(t *testing.T, protocol string, users []panel.UserInfo) (*Core, *pan
 	}
 	return c, info, options
 }
-func client(t *testing.T, info *panel.NodeInfo, u panel.UserInfo) C.Proxy {
+func client(t *testing.T, info *panel.NodeInfo, u panel.UserInfo, overrides ...map[string]any) C.Proxy {
 	t.Helper()
 	options := map[string]any{"name": "test", "type": info.Type, "server": "127.0.0.1", "port": info.Common.ServerPort, "username": u.Uuid, "password": u.Uuid, "uuid": u.Uuid, "udp": true, "skip-cert-verify": true, "sni": "localhost", "servername": "localhost", "cipher": "auto", "alterId": 0, "version": 5, "congestion-controller": "cubic"}
 	if info.Type == "mieru" {
@@ -119,6 +119,11 @@ func client(t *testing.T, info *panel.NodeInfo, u panel.UserInfo) C.Proxy {
 	}
 	if info.Security == panel.Tls {
 		options["tls"] = true
+	}
+	for _, extra := range overrides {
+		for k, v := range extra {
+			options[k] = v
+		}
 	}
 	p, e := adapter.ParseProxy(options)
 	if e != nil {
