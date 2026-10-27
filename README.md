@@ -36,11 +36,11 @@ v2bx update
 
 Existing configuration and certificate files are preserved. An active service
 is restarted; an inactive service stays inactive. See the
-[v1.9.3 upgrade notes](docs/releases/v1.9.3.md) for certificate lifecycle fixes and setup.
+[v1.10.0 upgrade notes](docs/releases/v1.10.0.md) for Mihomo setup and compatibility.
 
 تنظیمات و گواهی‌های موجود حفظ می‌شوند. سرویس فعال دوباره راه‌اندازی می‌شود؛ سرویس
 خاموش، خاموش می‌ماند. جزئیات تغییرات خودکار و تنظیمات اختیاری در
-[یادداشت ارتقا به v1.9.3](docs/releases/v1.9.3.md) آمده است.
+[یادداشت ارتقا به v1.10.0](docs/releases/v1.10.0.md) آمده است.
 
 Then open the management menu anytime with | سپس هر زمان منوی مدیریت را باز کنید با:
 
@@ -72,6 +72,7 @@ The menu covers install, update, uninstall, start/stop/restart, logs, config wiz
 | xray-core | v26.9.9 (PoriyaVali fork v1.260909.1) |
 | sing-box | v1.13.21-v2bx.2 (PoriyaVali fork) |
 | hysteria2 | v2.11.0 |
+| Mihomo | PoriyaVali fork, pinned `8fd40782e828` (managed server integration) |
 | MasterDnsVPN | android-multiuser-20261023 (`25b103d6a5f4`) |
 
 ## ⌨️ CLI Commands | دستورات
@@ -101,7 +102,7 @@ installed service unchanged instead of switching to the latest version.
 ```bash
 git clone https://github.com/PoriyaVali/V2bX.git && cd V2bX
 GOEXPERIMENT=jsonv2 go build -v -o V2bX \
-  -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel" \
+  -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" \
   -trimpath -ldflags "-s -w -buildid="
 ```
 
