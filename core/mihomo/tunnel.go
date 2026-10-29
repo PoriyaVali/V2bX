@@ -14,6 +14,8 @@ import (
 	"github.com/PoriyaVali/V2bX/common/rate"
 	"github.com/PoriyaVali/V2bX/limiter"
 	C "github.com/metacubex/mihomo/constant"
+	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 )
 
 type nodeTunnel struct {
@@ -112,28 +114,32 @@ func (n *node) dialer(network string) (*net.Dialer, error) {
 	}
 	return d, nil
 }
-func (n *node) destination(ctx context.Context, m *C.Metadata) (string, error) {
+
+// destinations returns the permitted addresses of a flow's target, in resolver
+// order. Callers dial these checked addresses, avoiding a second DNS
+// lookup/rebinding gap.
+func (n *node) destinations(ctx context.Context, m *C.Metadata) ([]netip.Addr, error) {
 	if !m.Valid() || m.DstPort == 0 {
-		return "", errors.New("invalid destination")
+		return nil, errors.New("invalid destination")
 	}
 	host := m.String()
 	if n.limiter.CheckDomainRule(host) {
-		return "", errors.New("blocked domain")
+		return nil, errors.New("blocked domain")
 	}
 	if blocked, _ := n.limiter.CheckDestinationRule(host, m.DstPort); blocked {
-		return "", errors.New("blocked destination")
+		return nil, errors.New("blocked destination")
 	}
 	var ips []netip.Addr
 	if m.Host != "" {
 		var e error
-		ips, e = net.DefaultResolver.LookupNetIP(ctx, "ip", m.Host)
+		ips, e = n.lookup(ctx, "ip", m.Host)
 		if e != nil {
-			return "", e
+			return nil, e
 		}
 	} else {
 		ips = []netip.Addr{m.DstIP}
 	}
-	// Dial the address we checked, avoiding a second DNS lookup/rebinding gap.
+	var permitted []netip.Addr
 	for _, ip := range ips {
 		ip = ip.Unmap()
 		if !ip.IsValid() || ip.IsUnspecified() || ip.IsMulticast() {
@@ -145,9 +151,40 @@ func (n *node) destination(ctx context.Context, m *C.Metadata) (string, error) {
 		if blocked, _ := n.limiter.CheckDestinationRule(ip.String(), m.DstPort); blocked {
 			continue
 		}
-		return net.JoinHostPort(ip.String(), strconv.Itoa(int(m.DstPort))), nil
+		permitted = append(permitted, ip)
 	}
-	return "", errors.New("no permitted destination address")
+	if len(permitted) == 0 {
+		return nil, errors.New("no permitted destination address")
+	}
+	return permitted, nil
+}
+func (n *node) destination(ctx context.Context, m *C.Metadata) (string, error) {
+	ips, e := n.destinations(ctx, m)
+	if e != nil {
+		return "", e
+	}
+	return net.JoinHostPort(ips[0].String(), strconv.Itoa(int(m.DstPort))), nil
+}
+
+// dialTCP connects to the first reachable checked address. As net.Dialer does
+// for a host name, an unreachable address family delays the other one by
+// 300 ms instead of failing the connection.
+func (n *node) dialTCP(ctx context.Context, ips []netip.Addr, port uint16) (net.Conn, error) {
+	d, e := n.dialer("tcp")
+	if e != nil {
+		return nil, e
+	}
+	return N.DialParallel(ctx, checkedDialer{d}, N.NetworkTCP, M.SocksaddrFrom(ips[0], port), ips, ips[0].Is6(), 0)
+}
+
+// checkedDialer dials only addresses that destinations has already checked.
+type checkedDialer struct{ *net.Dialer }
+
+func (d checkedDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	return d.Dialer.DialContext(ctx, network, destination.String())
+}
+func (checkedDialer) ListenPacket(context.Context, M.Socksaddr) (net.PacketConn, error) {
+	return nil, errors.ErrUnsupported
 }
 func sourceIP(m *C.Metadata, c net.Conn) (string, error) {
 	if m.SrcIP.IsValid() {
@@ -182,15 +219,11 @@ func (n *node) handleTCP(client net.Conn, m *C.Metadata, generation uint64) {
 	}
 	ctx, cancel := context.WithTimeout(f.ctx, time.Duration(n.config.DialTimeout)*time.Second)
 	defer cancel()
-	addr, e := n.destination(ctx, m)
+	ips, e := n.destinations(ctx, m)
 	if e != nil {
 		return
 	}
-	d, e := n.dialer("tcp")
-	if e != nil {
-		return
-	}
-	remote, e := d.DialContext(ctx, "tcp", addr)
+	remote, e := n.dialTCP(ctx, ips, m.DstPort)
 	if e != nil {
 		return
 	}
@@ -245,12 +278,13 @@ type udpKey struct {
 
 type udpFlow struct {
 	*flow
-	key     udpKey
-	conn    net.Conn
-	packet  C.UDPPacket // retained until reader stops; owns the reply association
-	device  *counter.TrafficStorage
-	limiter *rate.LiveLimiter
-	send    chan []byte
+	key      udpKey
+	metadata C.Metadata
+	conn     net.Conn    // set by runUDP before it starts reading or writing
+	packet   C.UDPPacket // retained until reader stops; owns the reply association
+	device   *counter.TrafficStorage
+	limiter  *rate.LiveLimiter
+	send     chan []byte
 }
 
 func (n *node) udpWorker() {
@@ -315,34 +349,7 @@ func (n *node) sendUDP(j udpJob) {
 			p.Drop()
 			return
 		}
-		ctx, cancel := context.WithTimeout(f.ctx, time.Duration(n.config.DialTimeout)*time.Second)
-		addr, e := n.destination(ctx, m)
-		if e != nil {
-			cancel()
-			p.Drop()
-			n.finish(f)
-			return
-		}
-		d, e := n.dialer("udp")
-		if e != nil {
-			cancel()
-			p.Drop()
-			n.finish(f)
-			return
-		}
-		c, e := d.DialContext(ctx, "udp", addr)
-		cancel()
-		if e != nil {
-			p.Drop()
-			n.finish(f)
-			return
-		}
-		if !f.attach(c) {
-			p.Drop()
-			n.finish(f)
-			return
-		}
-		uf = &udpFlow{flow: f, key: key, conn: c, packet: p, device: device, limiter: n.limiter.RateLimiter(format.UserTag(n.tag, f.user.uuid)), send: make(chan []byte, 64)}
+		uf = &udpFlow{flow: f, key: key, metadata: *m, packet: p, device: device, limiter: n.limiter.RateLimiter(format.UserTag(n.tag, f.user.uuid)), send: make(chan []byte, 64)}
 		n.mu.Lock()
 		if n.closed || n.reloading || j.generation != n.generation {
 			n.mu.Unlock()
@@ -361,6 +368,8 @@ func (n *node) sendUDP(j udpJob) {
 			return
 		}
 		retained = true
+		// The flow resolves and dials on its own goroutine. This worker carries
+		// every packet of the node: a slow lookup here stalled all of them.
 		go n.runUDP(uf)
 	}
 	uf.mu.Lock()
@@ -377,28 +386,19 @@ func (n *node) sendUDP(j udpJob) {
 	}
 }
 func (n *node) runUDP(f *udpFlow) {
+	if e := n.connectUDP(f); e != nil {
+		f.close()
+		n.endUDP(f)
+		return
+	}
 	readDone := make(chan struct{})
 	go func() { n.readUDP(f); f.close(); close(readDone) }()
 	for {
 		select {
 		case <-f.ctx.Done():
 			f.close()
-			for draining := true; draining; {
-				select {
-				case payload := <-f.send:
-					n.queuedBytes.Add(-int64(len(payload)))
-				default:
-					draining = false
-				}
-			}
 			<-readDone
-			n.mu.Lock()
-			if n.udp[f.key] == f {
-				delete(n.udp, f.key)
-			}
-			n.mu.Unlock()
-			f.packet.Drop()
-			n.finish(f.flow)
+			n.endUDP(f)
 			return
 		case payload := <-f.send:
 			if e := f.limiter.WaitContext(f.ctx, int64(len(payload))); e != nil {
@@ -413,9 +413,56 @@ func (n *node) runUDP(f *udpFlow) {
 			f.device.UpCounter.Add(int64(count))
 			if e != nil {
 				f.close()
+				continue
 			}
+			// Uploads keep the mapping alive as replies do. A flow that only
+			// sent expired after UDPTimeout and returned from a new port.
+			_ = f.conn.SetReadDeadline(time.Now().Add(time.Duration(n.config.UDPTimeout) * time.Second))
 		}
 	}
+}
+
+// connectUDP resolves and dials a new flow's destination. Its packets wait in
+// f.send meanwhile; closing the flow cancels the lookup.
+func (n *node) connectUDP(f *udpFlow) error {
+	ctx, cancel := context.WithTimeout(f.ctx, time.Duration(n.config.DialTimeout)*time.Second)
+	defer cancel()
+	addr, e := n.destination(ctx, &f.metadata)
+	if e != nil {
+		return e
+	}
+	d, e := n.dialer("udp")
+	if e != nil {
+		return e
+	}
+	c, e := d.DialContext(ctx, "udp", addr)
+	if e != nil {
+		return e
+	}
+	if !f.attach(c) {
+		return net.ErrClosed
+	}
+	f.conn = c
+	return nil
+}
+
+// endUDP releases a closed flow once nothing can queue to it or read for it.
+func (n *node) endUDP(f *udpFlow) {
+	for draining := true; draining; {
+		select {
+		case payload := <-f.send:
+			n.queuedBytes.Add(-int64(len(payload)))
+		default:
+			draining = false
+		}
+	}
+	n.mu.Lock()
+	if n.udp[f.key] == f {
+		delete(n.udp, f.key)
+	}
+	n.mu.Unlock()
+	f.packet.Drop()
+	n.finish(f.flow)
 }
 func (n *node) readUDP(f *udpFlow) {
 	b := make([]byte, 65535)

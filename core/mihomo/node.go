@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -92,6 +93,7 @@ type node struct {
 	server      server
 	sockets     *socketFactory
 	nat         C.NatTable
+	lookup      func(context.Context, string, string) ([]netip.Addr, error)
 }
 
 func newNode(tag string, info *panel.NodeInfo, opt *conf.Options, cfg conf.MihomoConfig, l *limiter.Limiter) (*node, error) {
@@ -104,8 +106,13 @@ func newNode(tag string, info *panel.NodeInfo, opt *conf.Options, cfg conf.Mihom
 	if info.Common.ServerPort < 1 || info.Common.ServerPort > 65535 {
 		return nil, errors.New("invalid server port")
 	}
+	// {{user_id}} is a public sequence number. Without the subscriber's UUID in
+	// either credential, anyone could log in, and be billed, as anyone else.
+	if m := info.Mihomo; m != nil && !strings.Contains(credentialTemplate(m.Username)+credentialTemplate(m.Password), "{{uuid}}") {
+		return nil, errors.New("mihomo credentials must include {{uuid}} in the username or password")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	n := &node{tag: tag, info: info, options: opt, config: cfg, limiter: l, ctx: ctx, cancel: cancel, users: map[string]*user{}, flows: map[*flow]struct{}{}, udp: map[udpKey]*udpFlow{}, packets: make(chan udpJob, 256), nat: nat.New()}
+	n := &node{tag: tag, info: info, options: opt, config: cfg, limiter: l, ctx: ctx, cancel: cancel, users: map[string]*user{}, flows: map[*flow]struct{}{}, udp: map[udpKey]*udpFlow{}, packets: make(chan udpJob, 256), nat: nat.New(), lookup: net.DefaultResolver.LookupNetIP}
 	// Validate before publishing the node, even when it currently has no users.
 	if _, e := n.buildServer(nil); e != nil {
 		cancel()
@@ -115,11 +122,16 @@ func newNode(tag string, info *panel.NodeInfo, opt *conf.Options, cfg conf.Mihom
 	go n.udpWorker()
 	return n, nil
 }
-func credential(template string, u panel.UserInfo) string {
+
+// credentialTemplate is the template an empty panel field stands for.
+func credentialTemplate(template string) string {
 	if template == "" {
-		return u.Uuid
+		return "{{uuid}}"
 	}
-	return strings.NewReplacer("{{uuid}}", u.Uuid, "{{user_id}}", strconv.Itoa(u.Id)).Replace(template)
+	return template
+}
+func credential(template string, u panel.UserInfo) string {
+	return strings.NewReplacer("{{uuid}}", u.Uuid, "{{user_id}}", strconv.Itoa(u.Id)).Replace(credentialTemplate(template))
 }
 func (n *node) makeUser(u panel.UserInfo) (*user, error) {
 	if u.Id <= 0 || u.Uuid == "" {
@@ -204,7 +216,12 @@ func (n *node) delUsers(users []panel.UserInfo) error {
 			}
 		}
 	}
+	unchanged := len(next) == len(n.users)
 	n.mu.Unlock()
+	// A rebuild disconnects every session on the node; removing nobody must not.
+	if unchanged {
+		return nil
+	}
 	return n.replaceUsers(next)
 }
 func (n *node) replaceUsers(next map[string]*user) error {
@@ -225,9 +242,10 @@ func (n *node) replaceUsers(next map[string]*user) error {
 	// Listener SDKs in this fork expose immutable authentication tables. Replace
 	// a node's listener on membership changes; speed edits never enter this path.
 	// Close and await old flows before publishing a replacement identity map.
-	n.closeFlows(nil)
+	flows := n.stopFlows()
 	if n.server != nil {
 		if e = n.server.Close(); e != nil {
+			n.awaitFlows(flows)
 			return e
 		}
 		n.server = nil
@@ -235,6 +253,7 @@ func (n *node) replaceUsers(next map[string]*user) error {
 	if n.sockets != nil {
 		n.sockets.Close()
 	}
+	n.awaitFlows(flows)
 	n.mu.Lock()
 	n.users = next
 	n.mu.Unlock()
@@ -273,18 +292,24 @@ func (n *node) replaceUsers(next map[string]*user) error {
 	}
 	return fmt.Errorf("mihomo listener replacement: %w", e)
 }
-func (n *node) closeFlows(only *user) {
+
+// stopFlows closes every flow and returns them for awaitFlows. Close the node's
+// sockets in between: a flow may be blocked writing to a client that stopped
+// reading (a UDP reply over its stream, a multiplexed stream), and only closing
+// the client's transport ends that write.
+func (n *node) stopFlows() []*flow {
 	n.mu.Lock()
-	var flows []*flow
+	flows := make([]*flow, 0, len(n.flows))
 	for f := range n.flows {
-		if only == nil || f.user == only {
-			flows = append(flows, f)
-		}
+		flows = append(flows, f)
 	}
 	n.mu.Unlock()
 	for _, f := range flows {
 		f.close()
 	}
+	return flows
+}
+func (n *node) awaitFlows(flows []*flow) {
 	for _, f := range flows {
 		<-f.done
 	}
@@ -294,7 +319,7 @@ func (n *node) close() error {
 	n.closed = true
 	n.cancel()
 	n.mu.Unlock()
-	n.closeFlows(nil)
+	flows := n.stopFlows()
 	var err error
 	if n.server != nil {
 		err = n.server.Close()
@@ -303,6 +328,7 @@ func (n *node) close() error {
 	if n.sockets != nil {
 		n.sockets.Close()
 	}
+	n.awaitFlows(flows)
 	n.workers.Wait()
 	return err
 }
