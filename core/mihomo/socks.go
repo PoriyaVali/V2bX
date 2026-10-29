@@ -25,16 +25,31 @@ func (n *node) startSOCKS(sockets *socketFactory, t C.Tunnel, authenticator auth
 	if cert != "" {
 		l = tls.NewListener(l, &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: sockets.certificate.GetCertificate})
 	}
-	go func() {
-		for {
-			c, e := l.Accept()
-			if e != nil {
+	go acceptLoop(l, func(c net.Conn) { n.socksConn(c, sockets, t, authenticator) })
+	return l, nil
+}
+
+// acceptLoop stops only when its listener is closed. A transient failure such
+// as EMFILE must not leave the port bound but no longer accepting.
+func acceptLoop(l net.Listener, handle func(net.Conn)) {
+	var delay time.Duration
+	for {
+		c, e := l.Accept()
+		if e != nil {
+			if errors.Is(e, net.ErrClosed) {
 				return
 			}
-			go n.socksConn(c, sockets, t, authenticator)
+			if delay = 2 * delay; delay == 0 {
+				delay = 5 * time.Millisecond
+			} else if delay > time.Second {
+				delay = time.Second
+			}
+			time.Sleep(delay)
+			continue
 		}
-	}()
-	return l, nil
+		delay = 0
+		go handle(c)
+	}
 }
 func (n *node) port() string { return strconv.Itoa(n.info.Common.ServerPort) }
 func (n *node) socksConn(c net.Conn, sockets *socketFactory, t C.Tunnel, authenticator auth.Authenticator) {
@@ -105,8 +120,14 @@ func (n *node) socksConn(c net.Conn, sockets *socketFactory, t C.Tunnel, authent
 	remoteHost, _, _ := net.SplitHostPort(c.RemoteAddr().String())
 	remoteIP, _ := netip.ParseAddr(remoteHost)
 	pinnedPort := 0
+	// RFC 1928 clients name the address they will send from, or all zeros.
+	// Clients behind NAT and older sing-based clients name another address
+	// (the latter their first destination). Pin a requested port only when the
+	// request names this client's own address; otherwise pin the first datagram.
 	if requested := target.UDPAddr(); requested != nil {
-		pinnedPort = requested.Port
+		if ip, ok := netip.AddrFromSlice(requested.IP); ok && ip.Unmap() == remoteIP.Unmap() {
+			pinnedPort = requested.Port
+		}
 	}
 	udpDone := make(chan struct{})
 	go func() {

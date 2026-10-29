@@ -22,7 +22,13 @@ Irboard's four new server types require the companion managed-server panel
 change. Select **Manage users with V2bX / Mihomo** in the node form. Leave the
 username and password blank, or use `{{uuid}}`; the panel renders each user's
 subscription and the server renders the same credentials. `{{user_id}}` is
-also recognized. Fixed credentials shared by multiple subscribers are rejected.
+also recognized, for example in a readable username, but it is a public
+sequence number: the username or the password must contain `{{uuid}}` (a blank
+field means `{{uuid}}`), so a node with only `{{user_id}}` credentials is
+rejected. Fixed credentials shared by multiple subscribers are rejected.
+The HTTP listener attributes each request to the identity its connection
+verified; a request whose credentials fail is refused rather than billed to
+the account it names.
 The panel's client certificate/private-key fields are never server key paths.
 Configure V2bX against the root node ID; children inherit its subscription
 settings and are not separate managed listeners.
@@ -97,8 +103,11 @@ panel does not provide a certificate hostname.
 Private, loopback, link-local, multicast, and unspecified destination addresses
 are denied by default. For intentionally reachable private services set
 `AllowPrivateDestinations: true` in the **core** configuration. Unspecified and
-multicast destinations remain denied. DNS results are checked and the chosen
-IP is dialed directly, avoiding another lookup between validation and dialing.
+multicast destinations remain denied. DNS results are checked and the checked
+IPs are dialed directly, avoiding another lookup between validation and dialing.
+TCP tries them in resolver order, and an unreachable address family falls back
+to the other one after 300 ms. A UDP flow resolves and dials on its own
+goroutine, so a slow lookup delays only that flow.
 `SendIP`, user/node speed limits, dynamic speed updates, connection caps,
 device admission, and panel domain/IP/port blocks are supported.
 
@@ -115,13 +124,21 @@ accounting before returning its last report.
 
 An empty eligible-user list leaves the listener port closed. SOCKS UDP uses a
 separate relay per authenticated TCP association, pins its source IP/port, and
-closes its forwarding flows when the control connection ends. UDP NAT keys keep
+closes its forwarding flows when the control connection ends. The source IP is
+the control connection's. The port is the one UDP ASSOCIATE requests when the
+request names that IP, as RFC 1928 clients do; otherwise, as for clients behind
+NAT or older sing-based clients naming their first destination, it is the first
+datagram's. UDP NAT keys keep
 SDK session identities and relay addresses, so simultaneous streams sharing a
-source socket remain isolated. Queues are
+source socket remain isolated. A UDP mapping expires after `UDPTimeout`
+without traffic in either direction. Queues are
 bounded, with at most 16 MiB of queued outbound UDP payload per node.
 
 The fork's SDK authentication tables are immutable. Membership changes rebuild
 that node's listener and disconnect its sessions; clients must reconnect.
+Removing users the node does not have changes nothing. Rebuilds and retirement
+close the node's sockets before awaiting its flows, so a client that stopped
+reading cannot hold one up with a blocked write.
 Other nodes are isolated. Preparation failures keep the existing listener;
 bind failures attempt rollback and return any rollback error. Speed/device
 limit edits do not rebuild listeners or disconnect established sessions.
