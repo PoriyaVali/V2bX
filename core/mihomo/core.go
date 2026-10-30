@@ -70,9 +70,9 @@ func (c *Core) AddNode(tag string, info *panel.NodeInfo, options *conf.Options) 
 	if !supported {
 		return fmt.Errorf("mihomo has no managed multi-user server for %q", info.Type)
 	}
-	// Never silently turn a panel's custom routing/DNS/sniffing policy into direct routing.
-	if len(info.RouteRules) > 0 || len(info.RawDNS.DNSJson) > 0 || len(info.RawDNS.DNSMap) > 0 || len(info.Rules.Protocol) > 0 {
-		return errors.New("mihomo server core does not support custom panel DNS, outbound routes, or sniffed protocol rules")
+	// Never silently turn a panel's custom routing or DNS policy into direct routing.
+	if len(info.RouteRules) > 0 || len(info.RawDNS.DNSJson) > 0 || len(info.RawDNS.DNSMap) > 0 {
+		return errors.New("mihomo server core does not support custom panel DNS or outbound routes")
 	}
 	l, err := limiter.GetLimiter(tag)
 	if err != nil {

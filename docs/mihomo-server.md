@@ -109,7 +109,14 @@ TCP tries them in resolver order, and an unreachable address family falls back
 to the other one after 300 ms. A UDP flow resolves and dials on its own
 goroutine, so a slow lookup delays only that flow.
 `SendIP`, user/node speed limits, dynamic speed updates, connection caps,
-device admission, and panel domain/IP/port blocks are supported.
+device admission, and panel domain/IP/port and protocol blocks are supported.
+Protocol rules, and domain rules for a connection made to an address, apply to
+what sniffing finds, with the sniffers and 300 ms timeout of the sing core: TLS
+and QUIC SNI, the HTTP Host, BitTorrent, DNS, SSH, RDP, STUN, DTLS and NTP. A
+QUIC ClientHello split across packets is followed until it names its server. A
+`udp` protocol rule refuses every UDP flow. Only a node with such a rule sniffs,
+and never on the server-first SMTP, IMAP and POP3 ports, so other connections
+do not wait for their client's first bytes.
 
 ## Lifecycle and current limits
 
@@ -153,8 +160,8 @@ bind failures attempt rollback and return any rollback error. Speed/device
 limit edits do not rebuild listeners or disconnect established sessions.
 
 Panel REALITY/ECH/VLESS encryption translation, XHTTP and other transports,
-custom panel DNS, custom outbound routes, sniffed-protocol blocks, and
-`RejectUnknownSni` are currently rejected with explicit errors. Client-only
+custom panel DNS, custom outbound routes, and `RejectUnknownSni` are
+currently rejected with explicit errors. Client-only
 outbound options are not automatically server settings. The core has no V2bX
 cover-site integration. These limits are not advertised as supported features.
 
@@ -165,6 +172,8 @@ UDP echo servers. They cover all 11 protocols, optional TLS, Mieru UDP
 transport, exact byte direction/counts, active revocation and re-admission,
 in-place membership changes that keep other users' TCP and UDP sessions,
 final reports, bidirectional TCP half-close, separate node/UID ledgers, device admission, destination rules,
+sniffed protocol and domain rules on every protocol's TCP streams and on UDP,
+including a split QUIC ClientHello,
 and measured 1 Mbps transfers with an upgrade on the same open connection.
 Run them with the prepared module graph and `go test -race ./core/mihomo`.
 

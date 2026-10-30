@@ -217,6 +217,10 @@ func (n *node) handleTCP(client net.Conn, m *C.Metadata, generation uint64) {
 	if !f.attach(client) {
 		return
 	}
+	client, refused := n.sniffTCP(client, m)
+	if refused {
+		return
+	}
 	ctx, cancel := context.WithTimeout(f.ctx, time.Duration(n.config.DialTimeout)*time.Second)
 	defer cancel()
 	ips, e := n.destinations(ctx, m)
@@ -285,6 +289,7 @@ type udpFlow struct {
 	device   *counter.TrafficStorage
 	limiter  *rate.LiveLimiter
 	send     chan []byte
+	sniff    *packetSniff // while the first packets are sniffed; UDP worker only
 }
 
 func (n *node) udpWorker() {
@@ -350,6 +355,20 @@ func (n *node) sendUDP(j udpJob) {
 			return
 		}
 		uf = &udpFlow{flow: f, key: key, metadata: *m, packet: p, device: device, limiter: n.limiter.RateLimiter(format.UserTag(n.tag, f.user.uuid)), send: make(chan []byte, 64)}
+		// A "udp" protocol rule refuses every UDP flow, as on the sing core.
+		if n.limiter.CheckProtocolRule("udp") {
+			p.Drop()
+			n.finish(f)
+			return
+		}
+		if n.sniffs(m) {
+			uf.sniff = &packetSniff{}
+			if n.sniffPacket(uf, payload) {
+				p.Drop()
+				n.finish(f)
+				return
+			}
+		}
 		n.mu.Lock()
 		if n.closed || n.reloading || j.generation != n.generation {
 			n.mu.Unlock()
@@ -371,6 +390,11 @@ func (n *node) sendUDP(j udpJob) {
 		// The flow resolves and dials on its own goroutine. This worker carries
 		// every packet of the node: a slow lookup here stalled all of them.
 		go n.runUDP(uf)
+	} else if uf.sniff != nil && n.sniffPacket(uf, payload) {
+		// The rest of a split QUIC ClientHello named a refused domain.
+		uf.close()
+		p.Drop()
+		return
 	}
 	uf.mu.Lock()
 	if !uf.closed {

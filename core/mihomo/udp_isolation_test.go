@@ -6,6 +6,7 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	S "github.com/metacubex/mihomo/transport/socks5"
 	"net"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -104,5 +105,36 @@ func TestMuxUDPSessionsKeepSeparateReplies(t *testing.T) {
 	n, _, e := b.ReadFrom(buffer)
 	if e != nil || string(buffer[:n]) != "live" {
 		t.Fatalf("surviving mux UDP stream=%q err=%v", buffer[:n], e)
+	}
+}
+
+// A Mieru session carries each UDP association on a stream of its own, and
+// every one of them used to report the session's address as its source: a
+// client that closed an association and opened another to the same
+// destination had the new one's replies sent to the old, closed one.
+func TestMieruUDPAssociationsGetTheirOwnReplies(t *testing.T) {
+	for _, transport := range []string{"TCP", "UDP"} {
+		t.Run(transport, func(t *testing.T) {
+			c, info, _ := fixture(t, "mieru", nil)
+			info.Mihomo.Transport = transport
+			addUsers(t, c, subscriber)
+			p := client(t, info, subscriber)
+			echo := udpEcho(t)
+			for i := 0; i < 4; i++ {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				m := metadata(t, echo.String())
+				m.NetWork = C.UDP
+				pc, e := p.ListenPacketContext(ctx, m)
+				cancel()
+				if e != nil {
+					t.Fatal(e)
+				}
+				s := &udpSession{t: t, pc: pc, echo: echo}
+				if e := s.roundtrip("association " + strconv.Itoa(i)); e != nil {
+					t.Fatalf("association %d: %v", i, e)
+				}
+				_ = pc.Close()
+			}
+		})
 	}
 }
