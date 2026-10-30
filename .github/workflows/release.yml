@@ -11,6 +11,11 @@ on:
         description: "Release notes (Markdown)"
         required: false
         default: ""
+      skip_tests:
+        description: "Publish already-validated changes without rerunning tests (owner-authorized releases only)"
+        type: boolean
+        required: false
+        default: false
   push:
     branches:
       - master
@@ -42,7 +47,7 @@ concurrency:
 jobs:
 
   validate:
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && !inputs.skip_tests)
     uses: ./.github/workflows/test.yml
 
   # Running this workflow by hand with a tag publishes a release in one go.
@@ -52,7 +57,7 @@ jobs:
   # a release made with GITHUB_TOKEN.
   release:
     needs: validate
-    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.tag != '' && (needs.validate.result == 'success' || (inputs.skip_tests && needs.validate.result == 'skipped')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -82,8 +87,8 @@ jobs:
 
   build:
     needs: [validate, release]
-    # Publishing paths require passing tests and a ready draft. Push/PR builds
-    # have no draft; their regular Test workflow runs separately.
+    # Publishing requires passing tests (or an explicit manual skip) and a ready
+    # draft. Push/PR builds have no draft; their Test workflow runs separately.
     if: ${{ !cancelled() && (needs.validate.result == 'success' || needs.validate.result == 'skipped') && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     strategy:
       matrix:

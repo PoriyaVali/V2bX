@@ -1,5 +1,27 @@
 # AI work log and handoff
 
+## Active handoff - 2026-10-30 - Codex - v1.11.0 preparation; NO repeated tests
+
+Owner authorizes release of all completed Mihomo/V2bX changes without repeating
+tests. Fresh clean isolated clone; dev_new2f01966/latestv1.10.1 inspected before
+edits. PR23, Claude implementation at3fcbf51, already had22platform builds,
+Race/vet and2Docker architecture checks green. Codex merged it with expected
+head lease and [skip ci], merge5289fea587c982033dd6582aa96fd710758dcf6e.
+Implementation attribution stays with Claude; Codex authors release wiring.
+
+Exact preparation files (UNCOMMITTED, no release yet):
+- .github/workflows/release.yml: manual skip_tests boolean defaultfalse;
+  skip only the validation job when explicitly requested, retain draft/build
+  completeness gates and default tests. Needed because owner forbids rerun.
+- docs/releases/v1.11.0.md: new managed Sudoku/Snell nodes and prior evidence.
+- AI_HANDOFF.md: newest entry, older records preserved.
+Shared root C:/Users/dr mobile/hiddify-app/AI_HANDOFF.md also records work.
+YAML parsing, skip_tests defaultfalse check and git diff --check PASS.
+Actual builds/assets still PENDING. NO tests run.
+Prior author-reported371/373fullstack audit has2MDNS environment address clashes;
+no new validation claim. No server, panel, firewall or certificate deployment.
+Mihomo companion v1.19.32-dm5 also being packaged. Old source clones untouched.
+
 ## Active handoff - 2026-10-24 - Codex - CLI restart readiness fixture repair; v1.9.3 still unpublished
 
 Port fixture repair committed/pushed cb223d8. Run40075536034 FAILED at CLI
