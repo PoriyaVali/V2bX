@@ -3,6 +3,7 @@ package node
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/conf"
@@ -53,13 +54,22 @@ func filteringAdviceFor(node *panel.NodeInfo, opts *conf.Options) []filteringAdv
 			"Use CertMode http, dns or file"})
 	}
 
-	switch node.Type {
-	case "hysteria", "hysteria2", "tuic":
+	if overUDP(node) {
 		out = append(out, filteringAdvice{fatal: false, msg: node.Type + " runs over UDP/QUIC, which most " +
 			"Iranian networks have blocked or throttled since mid-2025 (net4people/bbs#489, #626). Keep a TCP " +
 			"node (REALITY or anytls) for the users there"})
 	}
 	return out
+}
+
+func overUDP(node *panel.NodeInfo) bool {
+	switch node.Type {
+	case "hysteria", "hysteria2", "tuic", "shadowquic":
+		return true
+	case "mieru":
+		return node.Mihomo != nil && strings.EqualFold(node.Mihomo.Transport, "UDP")
+	}
+	return false
 }
 
 // looksLikeWhitelistedProtocol reports whether a node's first packets are TLS,
@@ -78,8 +88,17 @@ func looksLikeWhitelistedProtocol(node *panel.NodeInfo) bool {
 		return tcpHTTPHeader(node.VAllss.NetworkSettings)
 	case "mdns":
 		return true // a DNS tunnel; and UDP, which the whitelister does not judge
+	case "mieru":
+		// Random bytes from the first one, over TCP; UDP is not judged.
+		return node.Mihomo != nil && strings.EqualFold(node.Mihomo.Transport, "UDP")
+	case "socks5":
+		return node.Security != panel.None // a SOCKS greeting, unless inside TLS
+	case "sudoku":
+		// The HTTP mask starts with an HTTP request; without it, table bytes.
+		return node.Mihomo == nil || node.Mihomo.HTTPMask == nil || *node.Mihomo.HTTPMask
 	}
-	// trojan, anytls, trusttunnel: TLS. hysteria/hysteria2/tuic: UDP.
+	// trojan, anytls, trusttunnel, snell (ShadowTLS v3): TLS. http: HTTP, or TLS.
+	// hysteria/hysteria2/tuic/shadowquic: UDP.
 	return true
 }
 

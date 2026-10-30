@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -55,6 +56,42 @@ func certificate(t *testing.T) *conf.CertConfig {
 	}
 	return &conf.CertConfig{CertMode: "file", CertFile: certPath, KeyFile: keyPath}
 }
+
+// testSudokuMaster is a fixed master private key; Irboard's tests derive the
+// same user keys from it (tests/Unit/SudokuKeysTest.php).
+const testSudokuMaster = "1a1786c2533e7d5b5b1015d717ea8ce09165858dec91327c66bb958dcbd0050a"
+
+// handshakeServer is a TLS 1.3 server for ShadowTLS v3 to relay handshakes
+// to: the role a real web site has in production.
+func handshakeServer(t *testing.T, cert *conf.CertConfig) string {
+	t.Helper()
+	pair, e := tls.LoadX509KeyPair(cert.CertFile, cert.KeyFile)
+	if e != nil {
+		t.Fatal(e)
+	}
+	l, e := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS13})
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		for {
+			c, e := l.Accept()
+			if e != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+				if c.(*tls.Conn).Handshake() == nil {
+					_, _ = io.Copy(io.Discard, c)
+				}
+			}()
+		}
+	}()
+	return l.Addr().String()
+}
+
 func freePort(t *testing.T) int {
 	t.Helper()
 	l, e := net.Listen("tcp", "127.0.0.1:0")
@@ -83,6 +120,11 @@ func fixture(t *testing.T, protocol string, users []panel.UserInfo) (*Core, *pan
 	switch protocol {
 	case "http", "socks5", "mieru", "shadowquic":
 		info.Mihomo = &panel.MihomoNode{CommonNode: common, Transport: "TCP"}
+	case "sudoku":
+		info.Mihomo = &panel.MihomoNode{CommonNode: common, Key: testSudokuMaster}
+	case "snell":
+		info.Mihomo = &panel.MihomoNode{CommonNode: common, Version: 4, ObfsOpts: &panel.SnellObfsOpts{Mode: "shadow-tls", Version: 3, Host: "localhost"}}
+		options.MihomoOptions.ShadowTLSHandshake = handshakeServer(t, options.CertConfig)
 	case "vmess", "vless":
 		info.VAllss = &panel.VAllssNode{CommonNode: common}
 	case "trojan":
@@ -114,8 +156,21 @@ func fixture(t *testing.T, protocol string, users []panel.UserInfo) (*Core, *pan
 func client(t *testing.T, info *panel.NodeInfo, u panel.UserInfo, overrides ...map[string]any) C.Proxy {
 	t.Helper()
 	options := map[string]any{"name": "test", "type": info.Type, "server": "127.0.0.1", "port": info.Common.ServerPort, "username": u.Uuid, "password": u.Uuid, "uuid": u.Uuid, "udp": true, "skip-cert-verify": true, "sni": "localhost", "servername": "localhost", "cipher": "auto", "alterId": 0, "version": 5, "congestion-controller": "cubic"}
-	if info.Type == "mieru" {
+	switch info.Type {
+	case "mieru":
 		options["transport"] = info.Mihomo.Transport
+	case "sudoku":
+		// The split of the master Irboard renders into this user's profile.
+		master, e := parseSudokuMaster(info.Mihomo.Key)
+		if e != nil {
+			t.Fatal(e)
+		}
+		options["key"] = master.userKey(u.Uuid)
+	case "snell":
+		// One secret is the PSK and the ShadowTLS password, as Irboard renders it.
+		options["psk"] = u.Uuid
+		options["version"] = info.Mihomo.Version
+		options["obfs-opts"] = map[string]any{"mode": "shadow-tls", "version": 3, "host": info.Mihomo.ObfsOpts.Host, "password": u.Uuid, "skip-cert-verify": true}
 	}
 	if info.Security == panel.Tls {
 		options["tls"] = true

@@ -13,7 +13,7 @@ import (
 )
 
 func TestMihomoSetupCoreSelection(t *testing.T) {
-	for _, protocol := range []string{"http", "socks5", "mieru", "shadowquic"} {
+	for _, protocol := range []string{"http", "socks5", "mieru", "shadowquic", "sudoku", "snell"} {
 		info := &panel.NodeInfo{Type: protocol}
 		if got := resolveSetupCore("auto", info); got != "mihomo" {
 			t.Fatalf("%s selected %s", protocol, got)
@@ -22,8 +22,10 @@ func TestMihomoSetupCoreSelection(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	if setupCoreSupports("mihomo", "wireguard") || setupCoreSupports("mihomo", "snell") {
-		t.Fatal("client-only/single-key protocol advertised as managed server")
+	for _, protocol := range []string{"wireguard", "ssh", "ssr", "gostrelay", "masque", "openvpn", "tailscale", "zerotier", "easytier"} {
+		if setupCoreSupports("mihomo", protocol) {
+			t.Fatalf("client-only protocol %s advertised as a managed server", protocol)
+		}
 	}
 }
 

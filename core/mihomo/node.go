@@ -14,11 +14,13 @@ import (
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/counter"
+	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/PoriyaVali/V2bX/limiter"
 	"github.com/gofrs/uuid/v5"
 	"github.com/metacubex/mihomo/component/nat"
 	C "github.com/metacubex/mihomo/constant"
+	log "github.com/sirupsen/logrus"
 )
 
 type user struct {
@@ -98,6 +100,9 @@ type node struct {
 	// passwords. A session the protocol keeps open (a Mieru or ShadowQUIC
 	// session, an HTTP keep-alive connection) may still carry one.
 	revoked map[string]string
+	// cover answers the probers a Sudoku listener hands over; it lives as
+	// long as the node, across listener replacements.
+	cover *decoy.Site
 }
 
 func newNode(tag string, info *panel.NodeInfo, opt *conf.Options, cfg conf.MihomoConfig, l *limiter.Limiter) (*node, error) {
@@ -117,8 +122,24 @@ func newNode(tag string, info *panel.NodeInfo, opt *conf.Options, cfg conf.Mihom
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	n := &node{tag: tag, info: info, options: opt, config: cfg, limiter: l, ctx: ctx, cancel: cancel, users: map[string]*user{}, flows: map[*flow]struct{}{}, udp: map[udpKey]*udpFlow{}, packets: make(chan udpJob, 256), nat: nat.New(), lookup: net.DefaultResolver.LookupNetIP}
+	// A Sudoku listener relays a failed handshake to its fallback, so a
+	// prober finds a web site where it would otherwise find a closed socket.
+	// Losing the disguise is not worth refusing users, unless the operator
+	// configured the site.
+	if info.Type == "sudoku" && (opt.DecoySite == nil || *opt.DecoySite) {
+		d, e := decoy.StartWithConfig(opt.DecoyIdentity(tag), opt.Decoy)
+		if e != nil && opt.Decoy != nil {
+			cancel()
+			return nil, fmt.Errorf("configure cover site: %w", e)
+		}
+		if e != nil {
+			log.WithField("tag", tag).WithError(e).Warn("cover site unavailable; Sudoku probes are closed instead")
+		}
+		n.cover = d
+	}
 	// Validate before publishing the node, even when it currently has no users.
 	if _, e := n.buildServer(nil); e != nil {
+		_ = n.cover.Close()
 		cancel()
 		return nil, e
 	}
@@ -406,6 +427,7 @@ func (n *node) close() error {
 	}
 	n.awaitFlows(flows)
 	n.workers.Wait()
+	_ = n.cover.Close()
 	return err
 }
 func (n *node) NatTable() C.NatTable { return n.nat }

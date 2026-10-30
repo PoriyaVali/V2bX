@@ -74,6 +74,16 @@
             "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo0MSwicHVsbF9pbnRlcnZhbCI6MzEsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjo3LCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjozfX0=",
             "content_type": "application/json",
             "etag": "\"230620f057990b2e316d49bdf22c7ae38f947a7e\""
+        },
+        "sudoku": {
+            "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJrZXkiOiIxYTE3ODZjMjUzM2U3ZDViNWIxMDE1ZDcxN2VhOGNlMDkxNjU4NThkZWM5MTMyN2M2NmJiOTU4ZGNiZDAwNTBhIiwiYWVhZF9tZXRob2QiOiJjaGFjaGEyMC1wb2x5MTMwNSIsInBhZGRpbmdfbWluIjoxMCwicGFkZGluZ19tYXgiOjMwLCJ0YWJsZV90eXBlIjoicHJlZmVyX2FzY2lpIiwiaHR0cF9tYXNrIjp0cnVlLCJodHRwX21hc2tfbW9kZSI6IndzIiwicGF0aF9yb290IjoiY29udHJhY3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo0MSwicHVsbF9pbnRlcnZhbCI6MzEsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjo3LCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjozfX0=",
+            "content_type": "application/json",
+            "etag": "\"d4f5b913b4ce3bf5b62dda154b8523a253e62bf6\""
+        },
+        "snell": {
+            "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ2ZXJzaW9uIjo0LCJvYmZzX29wdHMiOnsibW9kZSI6InNoYWRvdy10bHMiLCJob3N0IjoiY292ZXIuZXhhbXBsZS50ZXN0IiwidmVyc2lvbiI6M30sImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjQxLCJwdWxsX2ludGVydmFsIjozMSwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjcsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjN9fQ==",
+            "content_type": "application/json",
+            "etag": "\"4dceddd7e9944bf78ed430e5e89803b6b4c6a3b8\""
         }
     },
     "responses": {

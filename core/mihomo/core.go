@@ -37,7 +37,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 }
 func (*Core) Type() string { return "mihomo" }
 func (*Core) Protocols() []string {
-	return []string{"http", "socks5", "mieru", "shadowquic", "vmess", "vless", "trojan", "tuic", "hysteria2", "anytls", "trusttunnel"}
+	return []string{"http", "socks5", "mieru", "shadowquic", "sudoku", "snell", "vmess", "vless", "trojan", "tuic", "hysteria2", "anytls", "trusttunnel"}
 }
 func (*Core) Start() error { return nil }
 func (c *Core) get(tag string) (*node, error) {

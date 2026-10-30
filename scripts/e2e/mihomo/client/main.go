@@ -351,12 +351,34 @@ func main() {
 			go func() { <-conn.Context().Done() }()
 		}
 	}()
+	// The web site a Snell node's ShadowTLS v3 relays handshakes to: TLS 1.3
+	// with the decoy certificate, which names node.e2e.test.
+	site, err := MTLS.Listen("tcp", net.JoinHostPort(listenHost, "0"), &MTLS.Config{Certificates: []MTLS.Certificate{pair}, MinVersion: MTLS.VersionTLS13})
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		for {
+			conn, err := site.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+				if conn.(*MTLS.Conn).Handshake() == nil {
+					_, _ = io.Copy(io.Discard, conn)
+				}
+			}()
+		}
+	}()
 	enc := json.NewEncoder(os.Stdout)
-	decoyAddress := decoy.Addr().String()
+	decoyAddress, siteAddress := decoy.Addr().String(), site.Addr().String()
 	if ip := os.Getenv("E2E_DEVICE_IP"); ip != "" {
 		decoyAddress = net.JoinHostPort(ip, fmt.Sprint(decoy.Addr().(*net.UDPAddr).Port))
+		siteAddress = net.JoinHostPort(ip, fmt.Sprint(site.Addr().(*net.TCPAddr).Port))
 	}
-	_ = enc.Encode(map[string]any{"ready": true, "tcp_target": tcpTarget, "udp_target": udpTarget.String(), "decoy": decoyAddress})
+	_ = enc.Encode(map[string]any{"ready": true, "tcp_target": tcpTarget, "udp_target": udpTarget.String(), "decoy": decoyAddress, "handshake": siteAddress})
 	scan := bufio.NewScanner(os.Stdin)
 	scan.Buffer(make([]byte, 4096), 2<<20)
 	for scan.Scan() {

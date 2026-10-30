@@ -668,10 +668,10 @@ github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261023030011-25b103d6a5f4 h1:xjP5vmD
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261023030011-25b103d6a5f4/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v1.260909.1 h1:Nf3LbPxI8F7SXIR93DuZfvn5pUz1fjF8R31bEN4t3xU=
 github.com/PoriyaVali/Xray-core v1.260909.1/go.mod h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=
-github.com/PoriyaVali/mihomo v1.19.32-dm4.0.20261030060211-7466c056a47d h1:UnMPAfy/I4RRfUB1ftx4fZgb24dvuJqxmPhL3ktFSEE=
-github.com/PoriyaVali/mihomo v1.19.32-dm4.0.20261030060211-7466c056a47d/go.mod h1:tLpKqo8XJnJFMktU/gruFWSCH1J/XP/n+VKnd1XPd0w=
-github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030060211-7466c056a47d h1:PeamGTwGWaeieZqGQoYo29X5I+XB7GdgfKbHXPycYkk=
-github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030060211-7466c056a47d/go.mod h1:/yI4OiGOSn0SURhZdJF3CbtPg3nwK700bG8TZLMBvAg=
+github.com/PoriyaVali/mihomo v1.19.32-dm4.0.20261030143528-9e435fd4ef15 h1:RZpAPcuyx0TpBOF+8DYLJ/DZxIAd4vW+ICdMu+Ky2Sw=
+github.com/PoriyaVali/mihomo v1.19.32-dm4.0.20261030143528-9e435fd4ef15/go.mod h1:tLpKqo8XJnJFMktU/gruFWSCH1J/XP/n+VKnd1XPd0w=
+github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030143528-9e435fd4ef15 h1:xVIiyD5ffy51CrQxt7tXQ2xVLHADq9BqWlq7pLioUnE=
+github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030143528-9e435fd4ef15/go.mod h1:/yI4OiGOSn0SURhZdJF3CbtPg3nwK700bG8TZLMBvAg=
 github.com/PoriyaVali/sing-box v1.13.21-v2bx.2 h1:9fqgzsOwlTtDQ83kSbtcdSNHkctXqOjBpzgWUHOxEiM=
 github.com/PoriyaVali/sing-box v1.13.21-v2bx.2/go.mod h1:3QuzuhcfVrYNDkKPuPsMd/goaOGSTEUyDBbFlBaGx48=
 github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=

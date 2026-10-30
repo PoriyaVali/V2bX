@@ -13,12 +13,14 @@ panel node. It does not start Mihomo's client proxy ports or HTTP controller.
 | `socks5` | Yes | Authenticated UDP association | Optional TLS |
 | `mieru` | Yes | UDP over its session | TCP or UDP transport |
 | `shadowquic` | Yes | Yes | Explicit JLS decoy required |
+| `sudoku` | Yes | UDP over TCP | Master key from the panel; HTTP mask modes; cover site |
+| `snell` | Yes | Versions 3-5 | ShadowTLS v3 required |
 | `vmess`, `vless` | Yes | Yes | TCP, WebSocket, gRPC; optional TLS |
 | `trojan` | Yes | Yes | TCP, WebSocket, gRPC; TLS required |
 | `tuic`, `hysteria2`, `anytls` | Yes | Yes | TLS required |
 | `trusttunnel` | Yes | Yes | Embedded HTTP/2 and QUIC; TLS required |
 
-Irboard's four new server types require the companion managed-server panel
+Irboard's six managed server types require the companion managed-server panel
 change. Select **Manage users with V2bX / Mihomo** in the node form. Leave the
 username and password blank, or use `{{uuid}}`; the panel renders each user's
 subscription and the server renders the same credentials. `{{user_id}}` is
@@ -36,8 +38,49 @@ settings and are not separate managed listeners.
 The existing protocol types can explicitly select `Core: "mihomo"`; their
 other core implementations remain available. This core does not implement
 SSR, WireGuard, GOST Relay, SSH, MASQUE, OpenVPN, Tailscale, ZeroTier, EasyTier,
-or Hysteria v1 servers. Snell, Sudoku, and this fork's Shadowsocks listener use
-one server key and are not exposed as separately billable multi-user nodes.
+or Hysteria v1 servers. This fork's Shadowsocks listener uses one server key
+and is not exposed as a separately billable multi-user node.
+
+### Sudoku
+
+A Sudoku server derives its obfuscation tables and AEAD keys from a public key,
+and a client from the public key its key belongs to. Each subscriber holds
+their own split `r || x-r` of the node's master private key `x`, and the hash
+of the split, sent in the client hello, names the user. The panel generates
+the master key, sends it to the node, and renders each user's split; V2bX
+derives the same splits from the master key and the users' UUIDs
+(`core/mihomo/sudoku.go`, `app/Protocols/Mihomo/SudokuKeys.php` in Irboard)
+and accepts only the current users' hashes. An unlisted split, the bare public
+key and any other master are refused before the replay cache keeps state.
+Every holder of a split can recover the master: it keeps strangers out and
+tells users apart, while the per-user secret is the UUID inside the split.
+A user who can read another user's traffic can learn that user's hash; use
+TLS (an HTTP mask tunnel behind a CDN) where users share a network path.
+
+All HTTP mask modes (legacy, stream, poll, auto, ws), session mux and UDP over
+TCP are supported, and connections through HTTP tunnels and mux streams carry
+the client's address for device limits and online reports. A failed handshake
+is relayed to the node's cover site, so a prober finds a web site; set
+`"DecoySite": false` to close such connections instead. The node has no TLS;
+`http-mask-tls` profiles need a CDN or TLS proxy in front of it.
+
+### Snell
+
+Snell has no user identity, and its argon2 key derivation makes trying every
+user's PSK per connection too slow. A managed Snell node therefore requires
+ShadowTLS v3 (`obfs-opts` mode `shadow-tls`, version 3 and a host): its
+handshake names the user, whose PSK, also their ShadowTLS password, opens the
+Snell stream. The handshake, and any stranger in strict mode, is relayed to the
+host on port 443, or to `MihomoOptions.ShadowTLSHandshake`:
+
+```json
+{"MihomoOptions":{"ShadowTLSHandshake":"127.0.0.1:8443"}}
+```
+
+That server must serve TLS 1.3 with the host's certificate, which clients
+verify. Such relays stay outside the traffic ledger; past 4 MiB in a direction
+they are held to 64 KiB/s. Clients must support Snell over ShadowTLS: Surge,
+and Mihomo (v1.19.33 and this fork) do. Versions 3 to 5 carry UDP.
 
 ## Configuration
 
@@ -141,8 +184,8 @@ source socket remain isolated. A UDP mapping expires after `UDPTimeout`
 without traffic in either direction. Queues are
 bounded, with at most 16 MiB of queued outbound UDP payload per node.
 
-HTTP, SOCKS5, Mieru and ShadowQUIC nodes change users in place: a user joining
-or leaving disconnects nobody else. A removed user's TCP/UDP forwarding closes
+HTTP, SOCKS5, Mieru, ShadowQUIC, Sudoku and Snell nodes change users in place:
+a user joining or leaving disconnects nobody else. A removed user's TCP/UDP forwarding closes
 and admission refuses the name at once, so a Mieru or ShadowQUIC session or an
 HTTP keep-alive connection the user still holds can open nothing new. The node
 remembers removed names with their passwords, at most 4,096, and replaces the
@@ -162,14 +205,15 @@ limit edits do not rebuild listeners or disconnect established sessions.
 Panel REALITY/ECH/VLESS encryption translation, XHTTP and other transports,
 custom panel DNS, custom outbound routes, and `RejectUnknownSni` are
 currently rejected with explicit errors. Client-only
-outbound options are not automatically server settings. The core has no V2bX
-cover-site integration. These limits are not advertised as supported features.
+outbound options are not automatically server settings. Of this core's
+listeners, only Sudoku's fallback uses the V2bX cover site. These limits are
+not advertised as supported features.
 
 ## Validation
 
 `core/mihomo` tests use real fork clients, TLS certificates, TCP sockets, and
-UDP echo servers. They cover all 11 protocols, optional TLS, Mieru UDP
-transport, exact byte direction/counts, active revocation and re-admission,
+UDP echo servers. They cover all 13 protocols, optional TLS, Mieru UDP
+transport, Sudoku HTTP mask modes and mux, Snell versions over ShadowTLS v3, exact byte direction/counts, active revocation and re-admission,
 in-place membership changes that keep other users' TCP and UDP sessions,
 final reports, bidirectional TCP half-close, separate node/UID ledgers, device admission, destination rules,
 sniffed protocol and domain rules on every protocol's TCP streams and on UDP,

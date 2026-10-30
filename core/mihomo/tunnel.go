@@ -21,9 +21,17 @@ import (
 type nodeTunnel struct {
 	*node
 	generation uint64
+	// inner is the endpoints the listener may reach on its own (relayInner).
+	inner map[string]bool
 }
 
-func (t *nodeTunnel) HandleTCPConn(c net.Conn, m *C.Metadata) { t.handleTCP(c, m, t.generation) }
+func (t *nodeTunnel) HandleTCPConn(c net.Conn, m *C.Metadata) {
+	if m != nil && m.Type == C.INNER {
+		t.relayInner(c, m)
+		return
+	}
+	t.handleTCP(c, m, t.generation)
+}
 func (t *nodeTunnel) HandleUDPPacket(p C.UDPPacket, m *C.Metadata) {
 	if m == nil {
 		p.Drop()

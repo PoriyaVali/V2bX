@@ -14,7 +14,9 @@ require (
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/juju/ratelimit v1.0.2
+	github.com/metacubex/edwards25519 v1.2.0
 	github.com/metacubex/mihomo v1.19.32
+	github.com/metacubex/quic-go v0.61.1-0.20260727080200-2548683b76f4
 	github.com/metacubex/tls v0.1.8
 	github.com/miekg/dns v1.1.73
 	github.com/pelletier/go-toml/v2 v2.2.2
@@ -34,6 +36,7 @@ require (
 	golang.org/x/term v0.45.0
 	golang.org/x/time v0.15.0
 	google.golang.org/protobuf v1.36.12
+	gopkg.in/yaml.v3 v3.0.1
 	masterdnsvpn-go v0.0.0-20260707155520-295de16bc4db
 )
 
@@ -231,7 +234,6 @@ require (
 	github.com/metacubex/chi v0.1.1 // indirect
 	github.com/metacubex/connect-ip-go v0.0.0-20260727083417-67ccdb0cf771 // indirect
 	github.com/metacubex/cpu v0.1.2 // indirect
-	github.com/metacubex/edwards25519 v1.2.0 // indirect
 	github.com/metacubex/fswatch v0.1.1 // indirect
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759 // indirect
 	github.com/metacubex/gvisor v0.0.0-20260922041103-e2cbcd6e7400 // indirect
@@ -247,7 +249,6 @@ require (
 	github.com/metacubex/mlkem v0.1.0 // indirect
 	github.com/metacubex/nftables v0.0.0-20260426003805-208c2c1ba2cb // indirect
 	github.com/metacubex/qpack v0.6.0 // indirect
-	github.com/metacubex/quic-go v0.61.1-0.20260727080200-2548683b76f4 // indirect
 	github.com/metacubex/randv2 v0.2.0 // indirect
 	github.com/metacubex/restls-client-go v0.1.9 // indirect
 	github.com/metacubex/sing v0.5.8 // indirect
@@ -451,7 +452,6 @@ require (
 	gopkg.in/ini.v1 v1.67.1 // indirect
 	gopkg.in/ns1/ns1-go.v2 v2.17.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gvisor.dev/gvisor v0.0.0-20260122175437-89a5d21be8f0 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
@@ -477,6 +477,6 @@ replace github.com/sagernet/sing-shadowsocks => ./third_party/sing-shadowsocks
 
 replace github.com/sagernet/sing-quic => ./third_party/sing-quic
 
-replace github.com/metacubex/mihomo => github.com/PoriyaVali/mihomo v1.19.32-dm4.0.20261030060211-7466c056a47d
+replace github.com/metacubex/mihomo => github.com/PoriyaVali/mihomo v1.19.32-dm4.0.20261030143528-9e435fd4ef15
 
-replace github.com/metacubex/smux => github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030060211-7466c056a47d
+replace github.com/metacubex/smux => github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030143528-9e435fd4ef15

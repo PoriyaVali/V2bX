@@ -76,6 +76,32 @@ type MihomoNode struct {
 	CongestionController string   `json:"congestion_controller"`
 	Up                   string   `json:"up"`
 	Down                 string   `json:"down"`
+
+	// Sudoku: the master private key, whose splits are the users' keys, and
+	// the obfuscation the clients are given.
+	Key                string   `json:"key"`
+	AEADMethod         string   `json:"aead_method"`
+	PaddingMin         *int     `json:"padding_min"`
+	PaddingMax         *int     `json:"padding_max"`
+	TableType          string   `json:"table_type"`
+	EnablePureDownlink *bool    `json:"enable_pure_downlink"`
+	CustomTable        string   `json:"custom_table"`
+	CustomTables       []string `json:"custom_tables"`
+	HTTPMask           *bool    `json:"http_mask"`
+	HTTPMaskMode       string   `json:"http_mask_mode"`
+	PathRoot           string   `json:"path_root"`
+
+	// Snell: the protocol version and the ShadowTLS v3 camouflage whose
+	// handshake names each user.
+	Version  int            `json:"version"`
+	ObfsOpts *SnellObfsOpts `json:"obfs_opts"`
+}
+
+// SnellObfsOpts is the server half of a Snell profile's obfs-opts.
+type SnellObfsOpts struct {
+	Mode    string `json:"mode"`
+	Host    string `json:"host"`
+	Version int    `json:"version"`
 }
 
 type CommonNode struct {
@@ -430,7 +456,7 @@ func (c *Client) GetNodeInfoContext(ctx context.Context) (node *NodeInfo, err er
 	// parse protocol params
 	var cm *CommonNode
 	switch nodeType {
-	case "http", "socks5", "mieru", "shadowquic":
+	case "http", "socks5", "mieru", "shadowquic", "sudoku", "snell":
 		rsp := &MihomoNode{}
 		if err = json.Unmarshal(r.Body(), rsp); err != nil {
 			return nil, fmt.Errorf("decode Mihomo server settings: %w", err)
