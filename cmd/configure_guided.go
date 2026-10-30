@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -216,6 +217,11 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 		found, err := panel.DiscoverNodeConfigs(ctx, conf.ApiConfig{APIHost: defaults.panel, Key: key, NodeID: id, Timeout: 6}, setupCoreProtocols[core])
 		cancel()
 		if err != nil {
+			if errors.Is(err, panel.ErrNoNode) {
+				if hint := otherCoreHint(cmd.Context(), defaults.panel, key, id, core, coreNames); hint != "" {
+					err = fmt.Errorf("%w\n%s", err, hint)
+				}
+			}
 			if retry, inputErr := retrySetupNode(p, err); inputErr != nil {
 				return nil, nil, inputErr
 			} else if !retry {
@@ -337,6 +343,46 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 		number++
 	}
 	return map[string]any{"Log": map[string]string{"Level": prefs.logLevel, "Output": ""}, "Cores": cores, "Nodes": nodes}, summaries, nil
+}
+
+// otherCoreHint names the cores that serve this ID's node when the chosen core
+// serves none of its protocols, as when a Mieru node is looked up on sing-box.
+func otherCoreHint(ctx context.Context, panelURL, key string, id int, chosen string, coreNames []string) string {
+	probed := map[string]bool{}
+	for _, protocol := range setupCoreProtocols[chosen] {
+		probed[protocol] = true
+	}
+	var others []string
+	for _, core := range coreNames {
+		for _, protocol := range setupCoreProtocols[core] {
+			if !probed[protocol] {
+				probed[protocol] = true
+				others = append(others, protocol)
+			}
+		}
+	}
+	if len(others) == 0 {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	found, err := panel.DiscoverNodeConfigs(ctx, conf.ApiConfig{APIHost: panelURL, Key: key, NodeID: id, Timeout: 6}, others)
+	if err != nil {
+		return ""
+	}
+	var hints []string
+	for _, info := range found {
+		var cores []string
+		for i, core := range coreNames {
+			if validateSetupCore(core, info) == nil {
+				cores = append(cores, fmt.Sprintf("%d (%s)", i+1, core))
+			}
+		}
+		if len(cores) > 0 {
+			hints = append(hints, fmt.Sprintf("ID %d is a %s node: choose core %s | این شناسه یک نود %s است؛ هستهٔ %s را انتخاب کنید", id, info.Type, strings.Join(cores, " or "), info.Type, strings.Join(cores, " یا ")))
+		}
+	}
+	return strings.Join(hints, "\n")
 }
 
 func retrySetupNode(p setupPrompter, cause error) (bool, error) {

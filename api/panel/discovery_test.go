@@ -69,3 +69,46 @@ func TestDiscoverNodeConfigsNeverSelectsFromIncompleteResults(t *testing.T) {
 		})
 	}
 }
+
+// Node IDs are local to each protocol's table, so a Mieru node often shares its
+// ID with, say, an external SOCKS5 node. Irboard refuses to serve that one
+// (501, or 409 for a child node); the Mieru node must still be found.
+func TestDiscoverNodeConfigsSkipsNodesThePanelDeclines(t *testing.T) {
+	external := `{"message":"این نود در حالت سرویس خارجی است"}`
+	for _, withMieru := range []bool{true, false} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Query().Get("node_type") {
+			case "mieru":
+				if withMieru {
+					fmt.Fprint(w, `{"server_port":2443,"transport":"TCP"}`)
+					return
+				}
+			case "socks5":
+				w.WriteHeader(http.StatusNotImplemented)
+				fmt.Fprint(w, external)
+				return
+			case "http":
+				w.WriteHeader(http.StatusConflict)
+				fmt.Fprint(w, `{"message":"child node"}`)
+				return
+			}
+			w.WriteHeader(500)
+			fmt.Fprint(w, `{"message":"server is not exist"}`)
+		}))
+		found, err := DiscoverNodeConfigs(context.Background(), conf.ApiConfig{APIHost: srv.URL, Key: "secret-test-key", NodeID: 1}, []string{"http", "socks5", "mieru", "shadowquic", "vless"})
+		srv.Close()
+		if withMieru {
+			if err != nil || len(found) != 1 || found[0].Type != "mieru" {
+				t.Fatalf("a declined node of another protocol hid the Mieru node: %v / %v", found, err)
+			}
+			continue
+		}
+		if err == nil || found != nil {
+			t.Fatalf("declined nodes were offered: %v", found)
+		}
+		if !strings.Contains(err.Error(), "socks5 node with this ID cannot be served: این نود در حالت سرویس خارجی است") || !strings.Contains(err.Error(), "http node with this ID cannot be served: child node") || strings.Contains(err.Error(), "secret-test-key") {
+			t.Fatalf("the panel's reason was not shown: %v", err)
+		}
+	}
+}
