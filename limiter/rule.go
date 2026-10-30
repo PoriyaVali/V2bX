@@ -49,6 +49,14 @@ func (l *Limiter) CheckDomainRule(destination string) (reject bool) {
 	return false
 }
 
+// SniffedRules reports whether the node has protocol rules and domain rules.
+// A core applies them to what sniffing finds in a connection: its protocol,
+// and the name (TLS SNI, HTTP Host, QUIC SNI) of one made to an address.
+func (l *Limiter) SniffedRules() (protocols, domains bool) {
+	rules := l.currentRules()
+	return len(rules.protocols) > 0, len(rules.domains) > 0 || len(rules.matchers) > 0
+}
+
 func (l *Limiter) CheckProtocolRule(protocol string) (reject bool) {
 	for _, p := range l.currentRules().protocols {
 		if p == protocol {

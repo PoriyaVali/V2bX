@@ -174,17 +174,22 @@ def main():
             "no",
         )
     run("docker", "start", "irboard-v2bx-e2e-db", "irboard-v2bx-e2e-redis")
-    for _ in range(60):
+    # A first start answers ping from the entrypoint's temporary server, before
+    # the root password and database exist; wait until both are usable.
+    for _ in range(120):
         if (
             subprocess.run(
                 [
                     "docker",
                     "exec",
                     "irboard-v2bx-e2e-db",
-                    "mariadb-admin",
+                    "mariadb",
                     "-uroot",
                     "-pisolated-e2e-root",
-                    "ping",
+                    "--protocol=tcp",
+                    "irboard_e2e",
+                    "-e",
+                    "SELECT 1",
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

@@ -109,7 +109,14 @@ TCP tries them in resolver order, and an unreachable address family falls back
 to the other one after 300 ms. A UDP flow resolves and dials on its own
 goroutine, so a slow lookup delays only that flow.
 `SendIP`, user/node speed limits, dynamic speed updates, connection caps,
-device admission, and panel domain/IP/port blocks are supported.
+device admission, and panel domain/IP/port and protocol blocks are supported.
+Protocol rules, and domain rules for a connection made to an address, apply to
+what sniffing finds, with the sniffers and 300 ms timeout of the sing core: TLS
+and QUIC SNI, the HTTP Host, BitTorrent, DNS, SSH, RDP, STUN, DTLS and NTP. A
+QUIC ClientHello split across packets is followed until it names its server. A
+`udp` protocol rule refuses every UDP flow. Only a node with such a rule sniffs,
+and never on the server-first SMTP, IMAP and POP3 ports, so other connections
+do not wait for their client's first bytes.
 
 ## Lifecycle and current limits
 
@@ -134,18 +141,27 @@ source socket remain isolated. A UDP mapping expires after `UDPTimeout`
 without traffic in either direction. Queues are
 bounded, with at most 16 MiB of queued outbound UDP payload per node.
 
-The fork's SDK authentication tables are immutable. Membership changes rebuild
-that node's listener and disconnect its sessions; clients must reconnect.
-Removing users the node does not have changes nothing. Rebuilds and retirement
-close the node's sockets before awaiting its flows, so a client that stopped
-reading cannot hold one up with a blocked write.
+HTTP, SOCKS5, Mieru and ShadowQUIC nodes change users in place: a user joining
+or leaving disconnects nobody else. A removed user's TCP/UDP forwarding closes
+and admission refuses the name at once, so a Mieru or ShadowQUIC session or an
+HTTP keep-alive connection the user still holds can open nothing new. The node
+remembers removed names with their passwords, at most 4,096, and replaces the
+listener when one returns with another password (a username template without
+`{{uuid}}` does that when a UUID is reset), so such a session cannot regain
+access under the name. Gaining a first or losing a last user also replaces it.
+The other protocols' SDK authentication tables are fixed when their listener
+starts, so their membership changes rebuild that node's listener and disconnect
+its sessions; clients must reconnect. Removing users the node does not have
+changes nothing. Rebuilds and retirement close the node's sockets before
+awaiting its flows, so a client that stopped reading cannot hold one up with a
+blocked write; an in-place removal does not wait for the removed flows.
 Other nodes are isolated. Preparation failures keep the existing listener;
 bind failures attempt rollback and return any rollback error. Speed/device
 limit edits do not rebuild listeners or disconnect established sessions.
 
 Panel REALITY/ECH/VLESS encryption translation, XHTTP and other transports,
-custom panel DNS, custom outbound routes, sniffed-protocol blocks, and
-`RejectUnknownSni` are currently rejected with explicit errors. Client-only
+custom panel DNS, custom outbound routes, and `RejectUnknownSni` are
+currently rejected with explicit errors. Client-only
 outbound options are not automatically server settings. The core has no V2bX
 cover-site integration. These limits are not advertised as supported features.
 
@@ -154,7 +170,10 @@ cover-site integration. These limits are not advertised as supported features.
 `core/mihomo` tests use real fork clients, TLS certificates, TCP sockets, and
 UDP echo servers. They cover all 11 protocols, optional TLS, Mieru UDP
 transport, exact byte direction/counts, active revocation and re-admission,
+in-place membership changes that keep other users' TCP and UDP sessions,
 final reports, bidirectional TCP half-close, separate node/UID ledgers, device admission, destination rules,
+sniffed protocol and domain rules on every protocol's TCP streams and on UDP,
+including a split QUIC ClientHello,
 and measured 1 Mbps transfers with an upgrade on the same open connection.
 Run them with the prepared module graph and `go test -race ./core/mihomo`.
 
