@@ -17,7 +17,7 @@ require (
 	github.com/metacubex/edwards25519 v1.2.0
 	github.com/metacubex/mihomo v1.19.32
 	github.com/metacubex/quic-go v0.61.1-0.20260727080200-2548683b76f4
-	github.com/metacubex/tls v0.1.8
+	github.com/metacubex/tls v0.1.9
 	github.com/miekg/dns v1.1.73
 	github.com/pelletier/go-toml/v2 v2.2.2
 	github.com/sagernet/quic-go v0.59.0-sing-box-mod.4
@@ -119,7 +119,7 @@ require (
 	github.com/dunglas/httpsfv v1.0.2 // indirect
 	github.com/easytier/easytier/easytier-go v0.0.0-20260910071355-3d0c9c3ca5e2 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/enfein/mieru/v3 v3.38.0 // indirect
+	github.com/enfein/mieru/v3 v3.38.1 // indirect
 	github.com/ericlagergren/aegis v0.0.0-20250325060835-cd0defd64358 // indirect
 	github.com/ericlagergren/polyval v0.0.0-20220411101811-e25bc10ba391 // indirect
 	github.com/ericlagergren/siv v0.0.0-20220507050439-0b757b3aa5f1 // indirect
@@ -245,7 +245,7 @@ require (
 	github.com/metacubex/jsonv2 v0.0.0-20260721082349-16b4998c8f89 // indirect
 	github.com/metacubex/kcp-go v0.0.0-20260105040817-550693377604 // indirect
 	github.com/metacubex/mhurl v0.1.0 // indirect
-	github.com/metacubex/mipstack v0.0.0-20260930071539-961d4b1c1983 // indirect
+	github.com/metacubex/mipstack v0.0.0-20261019124225-9a80a07eaeb9 // indirect
 	github.com/metacubex/mlkem v0.1.0 // indirect
 	github.com/metacubex/nftables v0.0.0-20260426003805-208c2c1ba2cb // indirect
 	github.com/metacubex/qpack v0.6.0 // indirect
@@ -256,9 +256,9 @@ require (
 	github.com/metacubex/sing-quic v0.0.0-20260904234848-1c242664697a // indirect
 	github.com/metacubex/sing-shadowsocks v0.2.13 // indirect
 	github.com/metacubex/sing-shadowsocks2 v0.2.8 // indirect
-	github.com/metacubex/sing-tun v0.4.27 // indirect
+	github.com/metacubex/sing-tun v0.4.28 // indirect
 	github.com/metacubex/sing-vmess v0.2.5 // indirect
-	github.com/metacubex/sing-wireguard v0.0.0-20260826105301-c3ae17d19f9e // indirect
+	github.com/metacubex/sing-wireguard v0.0.0-20261002050126-e5fa1a607406 // indirect
 	github.com/metacubex/smux v0.0.0-20260105030934-d0c8756d3141 // indirect
 	github.com/metacubex/ssh v0.1.0 // indirect
 	github.com/metacubex/tailscale v0.0.0-20260821153257-ff0ecd818181 // indirect
@@ -477,6 +477,6 @@ replace github.com/sagernet/sing-shadowsocks => ./third_party/sing-shadowsocks
 
 replace github.com/sagernet/sing-quic => ./third_party/sing-quic
 
-replace github.com/metacubex/mihomo => github.com/PoriyaVali/mihomo v1.19.32-dm4.0.20261030143528-9e435fd4ef15
+replace github.com/metacubex/mihomo => github.com/PoriyaVali/mihomo v1.19.32-dm5.0.20261030192231-3de39671cc05
 
-replace github.com/metacubex/smux => github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030143528-9e435fd4ef15
+replace github.com/metacubex/smux => github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030192231-3de39671cc05
