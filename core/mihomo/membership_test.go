@@ -41,8 +41,13 @@ func generation(c *Core, tag string) uint64 {
 	return n.generation
 }
 
+// connDialer is a proxy, or a proxy adapter made with options a profile cannot set.
+type connDialer interface {
+	DialContext(context.Context, *C.Metadata) (C.Conn, error)
+}
+
 // tryRoundtrip opens a new connection and echoes payload over it.
-func tryRoundtrip(p C.Proxy, address, payload string) error {
+func tryRoundtrip(p connDialer, address, payload string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	m := &C.Metadata{}
