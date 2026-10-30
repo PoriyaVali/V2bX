@@ -1,6 +1,38 @@
 # AI work log and handoff
 
+## Active handoff - 2026-10-30 - Codex - All v1.11.0 assets built; publish-skip recovery
+
+Run41084504578 completedSUCCESS with22successful platform builds, release
+draft jobSUCCESS, validation intentionallySKIPPED. Publication was ALSO SKIPPED:
+the publish job's ordinary if inherited the transitive skipped validate job.
+All44assets are uploaded; draft remains unpublished. This is release wiring,
+not a product-code/build failure. No tests were rerun. Mihomo dm5 is PUBLIC
+and its11assets/tag/notes/SHA256checks were verified successfully.
+
+UNCOMMITTED repair files:
+- .github/workflows/release.yml: publish uses !cancelled() plus explicit
+  successful release/build dependencies, bypassing transitive skip propagation.
+- .github/workflows/publish-ready-release.yml: dispatch-only recovery checks
+  original successful release run, all22successful builds, matching draftSHA,
+  44nonempty assets in22archive/digest pairs; publishes withGITHUB_TOKEN and
+  dispatchesDocker without rebuilding or repeating tests.
+- AI_HANDOFF.md: this entry plus earlier release receipts.
+Shared HiddifyAI_HANDOFF also updated. Both YAML files and embedded recovery
+Python parsePASS; diffcheckPASS. Publication/recovery/Docker PENDING.
+Product source/version stays at
+686092e, exactly the source already built. No server deployment.
+
 ## Active handoff - 2026-10-30 - Codex - v1.11.0 preparation; NO repeated tests
+
+BUILD UPDATE:41084504578 validateSKIPPED, release draftready,7/22builds done
+at latest poll;16uploaded assets (polls differ slightly). No publication yet.
+User asks aboutPR23: fresh metadata confirms MERGED5289fea at15:49:15Z;
+released source686092e descends from this merge and includesSudoku+Snell.
+CompanionMihomov1.19.32-dm5 nowPUBLIC(10binaries+SHA256SUMS). Tests not rerun.
+
+COMMITTED/PUSHED686092e68a04369701ef7e078cf1570fae1378b6, Codex authorship,
+normal non-force push. Release41084504578 queued at sameSHA withskip_tests=true.
+Hosted build/publication/Docker PENDING. This receipt itself is UNCOMMITTED.
 
 Owner authorizes release of all completed Mihomo/V2bX changes without repeating
 tests. Fresh clean isolated clone; dev_new2f01966/latestv1.10.1 inspected before

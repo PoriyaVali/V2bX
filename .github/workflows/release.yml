@@ -278,7 +278,7 @@ jobs:
     needs: [release, build]
     # Only when every build uploaded its binaries; otherwise the draft stays a
     # draft and servers keep the release they have.
-    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.tag != '' && needs.release.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

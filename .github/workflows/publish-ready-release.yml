@@ -1,0 +1,69 @@
+name: Publish a completed draft release
+
+# Recover a completed release build without rebuilding or repeating its tests.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing complete draft release tag'
+        required: true
+      source_run:
+        description: 'Successful Build and Release run that uploaded all 22 targets'
+        required: true
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: publish-ready-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the source build and all release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          SOURCE_RUN: ${{ inputs.source_run }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          def gh(*args):
+              return subprocess.check_output(['gh', *args], text=True)
+          def api(path):
+              return json.loads(gh('api', path))
+          repo, tag, run_id = (os.environ[k] for k in ('GITHUB_REPOSITORY', 'TAG', 'SOURCE_RUN'))
+          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag), 'Invalid tag'
+          assert run_id.isdigit(), 'Invalid source run'
+          run = api(f'repos/{repo}/actions/runs/{run_id}')
+          assert run['path'] == '.github/workflows/release.yml', 'Unexpected source workflow'
+          assert run['event'] == 'workflow_dispatch', 'Expected manual release build'
+          assert run['status'] == 'completed' and run['conclusion'] == 'success', 'Source build not successful'
+          jobs = json.loads(gh('api', '--paginate', '--slurp', f'repos/{repo}/actions/runs/{run_id}/jobs?per_page=100'))
+          jobs = [job for page in jobs for job in page['jobs']]
+          builds = [job for job in jobs if job['name'].startswith('build (')]
+          assert len(builds) == 22 and all(job['conclusion'] == 'success' for job in builds), 'Incomplete build matrix'
+          release = api(f'repos/{repo}/releases/tags/{tag}')
+          assert release['draft'] and not release['prerelease'], 'Expected unpublished draft'
+          assert release['target_commitish'] == run['head_sha'], 'Draft source does not match build'
+          assets = release['assets']
+          assert len(assets) == 44 and all(a['size'] > 0 and a['state'] == 'uploaded' for a in assets), 'Incomplete uploads'
+          names = {a['name'] for a in assets}
+          archives = {name for name in names if name.endswith('.zip')}
+          assert len(archives) == 22 and names == archives | {name + '.dgst' for name in archives}, 'Missing archive/digest pairs'
+          print(f'Complete draft {tag}: 22 successful builds, 44 assets, source {run["head_sha"]}')
+          PY
+      - name: Publish the verified draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        # GITHUB_TOKEN prevents the release event from triggering repeat tests.
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+      - name: Publish the matching Docker image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: gh workflow run 'Publish Docker image.yml' --repo "$GITHUB_REPOSITORY" --ref "$TAG"
