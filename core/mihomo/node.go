@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/counter"
@@ -148,6 +149,37 @@ func newNode(tag string, info *panel.NodeInfo, opt *conf.Options, cfg conf.Mihom
 	return n, nil
 }
 
+func (n *node) logFields() *log.Entry {
+	return log.WithFields(log.Fields{"tag": n.tag, "core": "mihomo", "protocol": n.info.Type, "listen": n.listenAddress()})
+}
+
+// listenAddress is the node's socket as "tcp 0.0.0.0:443".
+func (n *node) listenAddress() string {
+	ip := n.options.ListenIP
+	if ip == "" {
+		ip = "0.0.0.0"
+	}
+	network := "tcp"
+	switch n.info.Type {
+	case "shadowquic", "tuic", "hysteria2":
+		network = "udp"
+	case "mieru":
+		if n.info.Mihomo != nil && strings.EqualFold(n.info.Mihomo.Transport, "UDP") {
+			network = "udp"
+		}
+	}
+	return network + " " + net.JoinHostPort(ip, strconv.Itoa(n.info.Common.ServerPort))
+}
+
+// portInUse says in words what "bind: address already in use" means here:
+// something else on this server holds the port, not the panel.
+func portInUse(e error, address string) error {
+	if errors.Is(e, syscall.EADDRINUSE) {
+		return fmt.Errorf("%s is already in use on this server, by another program or by another node in config.json with the same port: %w", address, e)
+	}
+	return e
+}
+
 // credentialTemplate is the template an empty panel field stands for.
 func credentialTemplate(template string) string {
 	if template == "" {
@@ -278,6 +310,7 @@ func (n *node) replaceUsers(next map[string]*user) error {
 	// never enter this path. Close and await old flows before publishing a
 	// replacement identity map.
 	flows := n.stopFlows()
+	listening := n.server != nil
 	if n.server != nil {
 		if e = n.server.Close(); e != nil {
 			n.awaitFlows(flows)
@@ -294,15 +327,19 @@ func (n *node) replaceUsers(next map[string]*user) error {
 	n.revoked = nil
 	n.mu.Unlock()
 	if len(next) == 0 {
+		if listening {
+			n.logFields().Warn("No user may use this node any more; its port is closed until the panel lists one")
+		}
 		return nil
 	}
 	n.mu.Lock()
 	n.reloading = false
 	n.mu.Unlock()
-	e = prepared.Listen(n)
+	e = portInUse(prepared.Listen(n), n.listenAddress())
 	if e == nil {
 		n.server = prepared
 		n.sockets = prepared.sockets
+		n.logFields().WithField("users", len(next)).Info("Listening")
 		return nil
 	}
 	_ = prepared.Close()

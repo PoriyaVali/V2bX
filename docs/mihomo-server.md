@@ -99,7 +99,7 @@ An example configuration (replace placeholders locally):
 ```json
 {
   "Log": {"Level": "info"},
-  "Cores": [{"Type": "mihomo", "DialTimeout": 10, "UDPTimeout": 120}],
+  "Cores": [{"Type": "mihomo", "Log": {"Level": "warn"}, "DialTimeout": 10, "UDPTimeout": 120}],
   "Nodes": [{
     "Core": "mihomo",
     "ApiHost": "https://panel.example.com",
@@ -132,7 +132,9 @@ within 30 days of expiry; failed attempts are retried on subsequent checks.
 Certbot, must renew them. Configure the domain you control in `CertDomain`;
 the wizard does not infer certificate ownership from a different client SNI.
 
-For ShadowQUIC add per-node options:
+ShadowQUIC hands probers to a real QUIC site. By default that is the SNI the
+panel gives the clients, on port 443, so set the node's SNI to a domain whose
+site serves HTTP/3. To use another site add per-node options:
 
 ```json
 {"MihomoOptions":{"JLSUpstream":{"Addr":"decoy.example.com:443","SNI":"decoy.example.com"}}}
@@ -242,3 +244,25 @@ accounting, admission limits, account eligibility, live certificate changes
 and the native MDNS client. The harness uses only disposable data and a local CA.
 
 Changes are reviewable code; no production deployment or release is implied.
+
+## Logs and node health
+
+`v2bx log` shows the Mihomo core's lines with `core=mihomo` and the node's
+`tag`. The core's own `Log.Level` decides how much: `warn` (the default) shows
+refused clients, such as a Sudoku key of another master or a request that does
+not match the HTTP mask; `info` adds each listener as it opens, each refused
+user (device or connection limit) and each request a panel rule blocks;
+`debug` adds every connection. Repeated warnings of one kind are cut to ten a
+minute, and the next line says how many were dropped. Log lines name users by
+their panel ID, never by their credentials.
+
+A Mihomo node keeps its port closed while the panel lists nobody who may use
+it, and logs when it opens and closes it. A port another program or node
+already holds is reported as such.
+
+When the panel deletes a node, V2bX stops serving it at once, closes its port
+and logs one warning; it keeps checking quietly and serves the node again if
+the panel has it again. A node that has no users' traffic to report still
+reports, empty, so the panel shows it as healthy. Each status report carries
+the node's health: whether it serves, how many users it has, and its current
+problem, such as a port in use or a certificate that cannot be issued.

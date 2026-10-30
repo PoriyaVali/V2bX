@@ -3,13 +3,21 @@ package conf
 // MihomoConfig configures isolated server listeners from the user's Mihomo fork.
 // It does not enable Mihomo's global HTTP controller or client proxy ports.
 type MihomoConfig struct {
-	AllowPrivateDestinations bool `json:"AllowPrivateDestinations"`
-	DialTimeout              int  `json:"DialTimeout"`
-	UDPTimeout               int  `json:"UDPTimeout"`
+	// Log.Level is debug, info, warn (the default), error or none, as for the
+	// other cores. warn shows refused clients; info adds each listener, each
+	// refused user and each blocked request; debug adds every connection.
+	LogConfig                MihomoLogConfig `json:"Log"`
+	AllowPrivateDestinations bool            `json:"AllowPrivateDestinations"`
+	DialTimeout              int             `json:"DialTimeout"`
+	UDPTimeout               int             `json:"UDPTimeout"`
+}
+
+type MihomoLogConfig struct {
+	Level string `json:"Level"`
 }
 
 func NewMihomoConfig() *MihomoConfig {
-	return &MihomoConfig{DialTimeout: 10, UDPTimeout: 120}
+	return &MihomoConfig{LogConfig: MihomoLogConfig{Level: "warn"}, DialTimeout: 10, UDPTimeout: 120}
 }
 
 type MihomoOptions struct {
