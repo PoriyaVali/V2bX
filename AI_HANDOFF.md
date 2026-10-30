@@ -1,5 +1,62 @@
 # AI work log and handoff
 
+## Active handoff - 2026-10-30 - Codex - v1.11.0 AND DOCKER RELEASED / VERIFIED
+
+Completed the owner's request to publish all completed Mihomo/V2bX changes
+with new versions WITHOUT repeating tests. V2bX v1.11.0 is public, stable and
+latest: https://github.com/PoriyaVali/V2bX/releases/tag/v1.11.0
+Published at 2026-10-30 16:05:34 UTC. The tag points to the exact built source
+686092e68a04369701ef7e078cf1570fae1378b6 and includes PR23 (merge 5289fea),
+the managed Sudoku/Snell implementation authored by Claude. Codex performed
+the merge and authored release wiring/docs; prior checks remain prior evidence.
+
+All 22 platform builds succeeded in 41084504578. All 44 assets (22 archives and
+22 digest files) are uploaded and nonempty. Exact names, release notes, latest
+state, tag/source and SHA256 agreement with GitHub asset digests were checked.
+No product binaries were executed. Tests were intentionally NOT rerun.
+
+Docker run 41086719000 succeeded for linux/amd64, linux/arm64 and manifest merge,
+on the same source SHA. Public registry metadata independently confirms both:
+ghcr.io/poriyavali/v2bx:v1.11.0
+sha256:f747815f77d6839ddb6e0679dfd8c325e3867242e12ad7b7281dc80dd9383427
+
+Publication incidents and fixes (no rebuild/test reruns): initial publish job
+was skipped through the intentionally skipped validation dependency. Fixed its
+condition and added completed-draft recovery in 74a7e48. Recovery 41086443868
+failed because the unpublished draft's REST tag endpoint returned 404; corrected
+authenticated draft lookup in 5d6600c. Recovery 41086684810 then checked all
+original builds/assets/source and published successfully. These workflow-only
+fixes are on dev_new after the product tag; the tag was not moved. YAML and
+embedded Python parsing, staged diff checks and the actual recovery passed.
+
+Exact authored files, committed and pushed before this final receipt:
+- .github/workflows/release.yml
+- .github/workflows/publish-ready-release.yml
+- docs/releases/v1.11.0.md
+- AI_HANDOFF.md
+This final handoff is documentation after publication. No runtime/source changes
+were added after the built product commit. Existing earlier clones preserved.
+Shared root AI_HANDOFF.md records companion Mihomo v1.19.32-dm5 (also public,
+ten binaries plus SHA256SUMS, all checksums verified). No app or server deploy.
+
+Evidence in ignored C:/Users/dr mobile/hiddify-app/.dart_tool/core-release-20261030/:
+v1.11.0-publication-receipt.json, container-publication-receipt.json,
+publication-receipt.json and failed-recovery-41086443868.log (masked by GitHub).
+Remaining validation limits: no fresh runtime/full-stack tests, by request;
+prior author-reported 371/373 full-stack checks had two MDNS environment address
+clashes, unchanged here. Earlier status snapshots below are preserved as history.
+
+## Active handoff - 2026-10-30 - Codex - v1.11.0 PUBLIC; Docker/final receipt in progress
+
+PUBLIC2026-10-30T16:05:34Z,44assets,tag/source686092e68a04369701ef7e078cf1570fae1378b6.
+Includes ClaudePR23 via merge5289fea(Sudoku/Snell), all22platform buildsPASS.
+Recoverylookup repair5d6600c2a98297fabe9e2224ea9d1f03a100a64c committed/pushed;
+YAML/embeddedPythonparse anddiffcheckPASS. Recovery41086684810SUCCESS checked
+all22builds/44assets/source and published without rebuild or repeated tests.
+Previous41086443868failure and publishskip are preserved below for audit.
+Docker41086719000running at exactv1.11.0source. Asset checksum receiptPENDING.
+CompanionMihomov1.19.32-dm5 public/verified. This receipt UNCOMMITTED.
+
 ## Active handoff - 2026-10-30 - Codex - Recovery draft lookup correction; no product rebuild
 
 Recovery workflow committed/pushed74a7e4880b010124b974515592bbe93f366225b9.
