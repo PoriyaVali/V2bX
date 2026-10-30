@@ -217,7 +217,7 @@ func (l *Lego) CreateCert() (err error) {
 		}
 		certificates, err := l.issuer.Obtain(request)
 		if err != nil {
-			return fmt.Errorf("obtain certificate error: %s", err)
+			return fmt.Errorf("obtain certificate error: %w", explainChallengePort(err))
 		}
 		err = l.writeCert(certificates)
 		if err != nil {
@@ -251,7 +251,7 @@ func (l *Lego) RenewCert() error {
 			Domains: []string{l.config.CertDomain}, Bundle: true,
 		})
 		if err != nil {
-			return err
+			return explainChallengePort(err)
 		}
 		err = l.writeCert(res)
 		if err != nil {
@@ -259,6 +259,17 @@ func (l *Lego) RenewCert() error {
 		}
 		return nil
 	})
+}
+
+// explainChallengePort says what a busy port 80 means for the http-01
+// challenge, which lego serves itself unless HTTPWebRoot is set. The bare
+// "bind: address already in use" read like two nodes fighting over a port.
+func explainChallengePort(err error) error {
+	if err == nil || !strings.Contains(err.Error(), "address already in use") {
+		return err
+	}
+	return fmt.Errorf("the ACME http-01 challenge needs TCP port 80 on this server and something already listens there "+
+		"(a node on port 80, or a web server); use CertMode dns, set HTTPWebRoot to that web server's root, or move the node off port 80: %w", err)
 }
 
 func (l *Lego) renewalDue() bool {
