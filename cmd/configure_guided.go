@@ -25,7 +25,7 @@ var setupCoreProtocols = map[string][]string{
 	"hysteria2":   {"hysteria"},
 	"mdns":        {"mdns"},
 	"trusttunnel": {"trusttunnel"},
-	"mihomo":      {"http", "socks5", "mieru", "shadowquic", "vmess", "vless", "trojan", "tuic", "hysteria2", "anytls", "trusttunnel"},
+	"mihomo":      {"http", "socks5", "mieru", "shadowquic", "sudoku", "snell", "vmess", "vless", "trojan", "tuic", "hysteria2", "anytls", "trusttunnel"},
 }
 
 func validSetupCore(core string) bool { return core == "auto" || setupCoreProtocols[core] != nil }
@@ -59,7 +59,7 @@ func resolveSetupCore(core string, info *panel.NodeInfo) string {
 	if core != "auto" {
 		return core
 	}
-	if info.Type == "http" || info.Type == "socks5" || info.Type == "mieru" || info.Type == "shadowquic" {
+	if info.Type == "http" || info.Type == "socks5" || info.Type == "mieru" || info.Type == "shadowquic" || info.Type == "sudoku" || info.Type == "snell" {
 		return "mihomo"
 	}
 	if info.Type == "mdns" || info.Type == "trusttunnel" {

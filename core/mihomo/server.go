@@ -30,11 +30,27 @@ type managedServer struct {
 	// update replaces the users of the running listener in place. It is nil
 	// for protocols whose SDK authentication table is fixed when it starts.
 	update func(map[string]*user) error
+	// inner is the infrastructure the listener reaches on its own, keyed by
+	// innerAddress: a ShadowTLS handshake server, a cover site.
+	inner map[string]bool
+}
+
+// allowInner lets the listener reach address on its own.
+func (s *managedServer) allowInner(address string) error {
+	key, e := innerAddress(address)
+	if e != nil {
+		return e
+	}
+	if s.inner == nil {
+		s.inner = map[string]bool{}
+	}
+	s.inner[key] = true
+	return nil
 }
 
 func (s *managedServer) Listen(n *node) error {
 	n.mu.Lock()
-	t := &nodeTunnel{node: n, generation: n.generation}
+	t := &nodeTunnel{node: n, generation: n.generation, inner: s.inner}
 	n.mu.Unlock()
 	if s.inbound != nil {
 		return s.inbound.Listen(t)
@@ -176,6 +192,68 @@ func (n *node) buildServer(users map[string]*user) (*managedServer, error) {
 		}
 		s.inbound = in
 		s.update = func(users map[string]*user) error { return in.UpdateUsers(shadowQuicUsers(users)) }
+	case "sudoku":
+		m := n.info.Mihomo
+		if m == nil {
+			return nil, errors.New("missing sudoku settings")
+		}
+		if n.info.Security != 0 {
+			return nil, errors.New("sudoku does not use a TLS server certificate")
+		}
+		master, e := parseSudokuMaster(m.Key)
+		if e != nil {
+			return nil, e
+		}
+		option := I.SudokuOption{BaseOption: base, Key: master.public, AEADMethod: m.AEADMethod, PaddingMin: m.PaddingMin, PaddingMax: m.PaddingMax,
+			TableType: m.TableType, EnablePureDownlink: m.EnablePureDownlink, CustomTable: m.CustomTable, CustomTables: m.CustomTables,
+			DisableHTTPMask: m.HTTPMask != nil && !*m.HTTPMask, HTTPMaskMode: m.HTTPMaskMode, PathRoot: m.PathRoot, Users: master.users(actual)}
+		if n.cover != nil {
+			option.Fallback = n.cover.Addr()
+			if e := s.allowInner(option.Fallback); e != nil {
+				return nil, e
+			}
+		}
+		in, e := I.NewSudoku(&option)
+		if e != nil {
+			return nil, e
+		}
+		s.inbound = in
+		s.update = func(users map[string]*user) error { return in.UpdateUsers(master.users(users)) }
+	case "snell":
+		m := n.info.Mihomo
+		if m == nil {
+			return nil, errors.New("missing snell settings")
+		}
+		if n.info.Security != 0 {
+			return nil, errors.New("snell does not use a TLS server certificate")
+		}
+		// Snell has no user identity; the ShadowTLS v3 handshake supplies it.
+		o := m.ObfsOpts
+		if o == nil || o.Mode != "shadow-tls" || o.Version != 3 || o.Host == "" {
+			return nil, errors.New("a managed snell node needs obfs-opts mode shadow-tls, version 3 and a host")
+		}
+		dest := net.JoinHostPort(o.Host, "443")
+		if opt := n.options.MihomoOptions; opt != nil && opt.ShadowTLSHandshake != "" {
+			dest = opt.ShadowTLSHandshake
+		}
+		if _, _, e := net.SplitHostPort(dest); e != nil {
+			return nil, fmt.Errorf("invalid ShadowTLS handshake server: %w", e)
+		}
+		if e := s.allowInner(dest); e != nil {
+			return nil, e
+		}
+		version := m.Version
+		if version == 0 {
+			version = 4
+		}
+		in, e := I.NewSnell(&I.SnellOption{BaseOption: base, Version: version, UDP: version >= 3,
+			ShadowTLS: I.ShadowTLS{Enable: true, Version: 3, StrictMode: true, Handshake: I.ShadowTLSHandshakeOptions{Dest: dest}},
+			Users:     passwords(actual)})
+		if e != nil {
+			return nil, e
+		}
+		s.inbound = in
+		s.update = func(users map[string]*user) error { return in.UpdateUsers(passwords(users)) }
 	case "vmess", "vless":
 		v := n.info.VAllss
 		if v == nil {

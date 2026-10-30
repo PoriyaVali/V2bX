@@ -100,14 +100,14 @@ func (s *udpSession) roundtrip(payload string) error {
 	return nil
 }
 
-// HTTP, SOCKS, Mieru and ShadowQUIC listeners change users in place: a user
+// HTTP, SOCKS, Mieru, ShadowQUIC, Sudoku and Snell listeners change users in place: a user
 // joining or leaving disconnects nobody else, and the user who leaves loses
 // every session and cannot start another.
 func TestMembershipChangesKeepOtherUsersConnected(t *testing.T) {
 	other := panel.UserInfo{Id: 18, Uuid: "5b0c5bb7-3c2f-4d0e-8a44-5f7b9a5f2e11"}
 	joining := panel.UserInfo{Id: 19, Uuid: "0f3c7a5e-8d41-4b2a-9c6e-2a7d1e4b9f30"}
 	for _, variant := range []struct{ protocol, transport string }{
-		{"http", ""}, {"socks5", ""}, {"mieru", "TCP"}, {"mieru", "UDP"}, {"shadowquic", ""},
+		{"http", ""}, {"socks5", ""}, {"mieru", "TCP"}, {"mieru", "UDP"}, {"shadowquic", ""}, {"sudoku", ""}, {"snell", ""},
 	} {
 		t.Run(variant.protocol+variant.transport, func(t *testing.T) {
 			c, info, _ := fixture(t, variant.protocol, nil)
@@ -200,7 +200,7 @@ func TestReturningNameWithAnotherPasswordEndsItsOldSessions(t *testing.T) {
 	rekeyed := panel.UserInfo{Id: subscriber.Id, Uuid: "9d2e6f1a-7b3c-4e5d-8f90-1a2b3c4d5e6f"}
 	other := panel.UserInfo{Id: 18, Uuid: "5b0c5bb7-3c2f-4d0e-8a44-5f7b9a5f2e11"}
 	name := map[string]any{"username": "u" + strconv.Itoa(subscriber.Id)}
-	for _, protocol := range []string{"mieru", "shadowquic"} {
+	for _, protocol := range []string{"mieru", "shadowquic", "sudoku", "snell"} {
 		t.Run(protocol, func(t *testing.T) {
 			c, info, _ := fixture(t, protocol, nil)
 			info.Mihomo.Username = "u{{user_id}}"

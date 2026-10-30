@@ -24,7 +24,13 @@ func ssNode(port int) *panel.NodeInfo {
 	return &panel.NodeInfo{Type: "shadowsocks", Shadowsocks: ss, Common: &ss.CommonNode}
 }
 
+func mihomoNode(typ string, port int, m panel.MihomoNode) *panel.NodeInfo {
+	m.ServerPort = port
+	return &panel.NodeInfo{Type: typ, Mihomo: &m, Common: &m.CommonNode}
+}
+
 func TestFilteringAdvice(t *testing.T) {
+	off := false
 	tlsCert := &conf.Options{CertConfig: &conf.CertConfig{CertMode: "http"}}
 	selfCert := &conf.Options{CertConfig: &conf.CertConfig{CertMode: "self"}}
 	hy2 := &panel.Hysteria2Node{}
@@ -45,6 +51,14 @@ func TestFilteringAdvice(t *testing.T) {
 		{"plain ws on 8080", vNode("vless", panel.None, 8080, "ws", `{"path":"/"}`), nil, nil},
 		{"self-signed tls", vNode("vless", panel.Tls, 8443, "tcp", ""), selfCert, []string{"self-signed"}},
 		{"hysteria2", &panel.NodeInfo{Type: "hysteria2", Security: panel.Tls, Hysteria2: hy2, Common: &hy2.CommonNode}, tlsCert, []string{"UDP"}},
+		{"mieru tcp on 443", mihomoNode("mieru", 443, panel.MihomoNode{Transport: "TCP"}), nil, []string{"first packets"}},
+		{"mieru tcp on 30443", mihomoNode("mieru", 30443, panel.MihomoNode{Transport: "TCP"}), nil, nil},
+		{"mieru udp", mihomoNode("mieru", 443, panel.MihomoNode{Transport: "UDP"}), nil, []string{"UDP"}},
+		{"socks5 on 80", mihomoNode("socks5", 80, panel.MihomoNode{}), nil, []string{"first packets"}},
+		{"sudoku http mask on 80", mihomoNode("sudoku", 80, panel.MihomoNode{}), nil, nil},
+		{"sudoku without http mask on 80", mihomoNode("sudoku", 80, panel.MihomoNode{HTTPMask: &off}), nil, []string{"first packets"}},
+		{"snell shadow-tls on 443", mihomoNode("snell", 443, panel.MihomoNode{}), nil, nil},
+		{"shadowquic", mihomoNode("shadowquic", 443, panel.MihomoNode{}), nil, []string{"UDP"}},
 	}
 	for _, c := range cases {
 		got := filteringAdviceFor(c.node, c.opts)
