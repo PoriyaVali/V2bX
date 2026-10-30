@@ -2,6 +2,7 @@ package panel
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -18,6 +19,13 @@ func (c *Client) Debug() {
 func (c *Client) assembleURL(path string) string {
 	return strings.TrimRight(c.APIHost, "/") + path
 }
+
+// ErrNodeNotFound is the panel saying it has no node with this type and ID:
+// V2board and Irboard answer every node API call for a deleted node with
+// "server is not exist". It is never inferred from a bare 404, which a
+// misconfigured ApiHost or a maintenance page also returns.
+var ErrNodeNotFound = errors.New("the panel has no such node (deleted?)")
+
 func (c *Client) checkResponse(res *resty.Response, path string, err error) error {
 	if err != nil {
 		return fmt.Errorf("request %s failed: %s", c.assembleURL(path), redactToken(err.Error(), c.Token))
@@ -30,6 +38,9 @@ func (c *Client) checkResponse(res *resty.Response, path string, err error) erro
 		// Include enough overlap to redact a token crossing the log boundary.
 		if limit := 1024 + 3*len(c.Token); len(body) > limit {
 			body = body[:limit]
+		}
+		if strings.Contains(strings.ToLower(string(body)), "server is not exist") {
+			return fmt.Errorf("request %s failed: HTTP %d: %w", c.assembleURL(path), res.StatusCode(), ErrNodeNotFound)
 		}
 		return fmt.Errorf("request %s failed: HTTP %d: %.1024s", c.assembleURL(path), res.StatusCode(), redactToken(string(body), c.Token))
 	}

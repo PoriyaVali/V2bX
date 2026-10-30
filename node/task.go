@@ -2,6 +2,7 @@ package node
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -79,12 +80,20 @@ func (c *Controller) configureCertificateRenewal(node *panel.NodeInfo) {
 func (c *Controller) nodeInfoMonitor() (err error) {
 	// get node info
 	newN, err := c.apiClient.GetNodeInfo()
+	if errors.Is(err, panel.ErrNodeNotFound) {
+		c.nodeDeleted()
+		return nil
+	}
 	if err != nil {
 		log.WithFields(log.Fields{
 			"tag": c.tag,
 			"err": err,
 		}).Error("Get node info failed")
 		return nil
+	}
+	if c.removed.Load() {
+		log.WithField("tag", c.tag).Info("The panel has this node again; serving it")
+		c.removed.Store(false)
 	}
 	// get user info
 	//
@@ -157,6 +166,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		// have deleted users
 		err = c.server.DelUsers(deleted, c.tag, c.info)
 		if err != nil {
+			storeProblem(&c.reloadProblem, fmt.Errorf("remove users: %w", err))
 			log.WithFields(log.Fields{
 				"tag": c.tag,
 				"err": err,
@@ -177,6 +187,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			Users:    added,
 		})
 		if err != nil {
+			storeProblem(&c.reloadProblem, fmt.Errorf("add users: %w", err))
 			log.WithFields(log.Fields{
 				"tag": c.tag,
 				"err": err,
@@ -217,8 +228,10 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		up.UpdateUserLimits(c.tag, newU)
 	}
 	c.userList = newU
+	c.userCount.Store(int64(len(newU)))
 	c.syncUIDIndex()
 	if len(added)+len(deleted) != 0 {
+		storeProblem(&c.reloadProblem, nil)
 		log.WithField("tag", c.tag).
 			Infof("%d user deleted, %d user added", len(deleted), len(added))
 	}
@@ -260,6 +273,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 		l.UpdateUser(tag, added, deleted)
 		l.UpdateUserLimits(tag, newU)
 		c.userList = newU
+		c.userCount.Store(int64(len(newU)))
 		c.syncUIDIndex()
 	}
 	if c.LimitConfig.EnableDynamicSpeedLimit {
@@ -271,6 +285,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 		l.SetAliveList(newA)
 	}
 	if err := l.UpdateRule(&newN.Rules); err != nil {
+		storeProblem(&c.reloadProblem, fmt.Errorf("panel rules: %w", err))
 		log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Update Rule failed")
 		c.apiClient.ResetNodeCache()
 		return
@@ -280,6 +295,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 	// authority failure must leave the old node available for the next retry.
 	if c.needsCertificate(newN) {
 		if err := c.requestCert(); err != nil {
+			storeProblem(&c.reloadProblem, fmt.Errorf("certificate: %w", err))
 			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Request cert failed")
 			c.apiClient.ResetNodeCache()
 			return
@@ -294,6 +310,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 		if err := c.retireCoreNode(tag); err != nil {
 			// Don't crash the whole process (all other nodes) over one node's
 			// reload failure; the next poll retries.
+			storeProblem(&c.reloadProblem, fmt.Errorf("stop the old listener: %w", err))
 			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Delete node failed")
 			c.apiClient.ResetNodeCache()
 			return
@@ -305,6 +322,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 	if err := c.server.AddNode(tag, newN, c.Options); err != nil {
 		// The old node was already removed above, so it's down until the next
 		// poll rebuilds it; the other nodes are untouched.
+		storeProblem(&c.reloadProblem, err)
 		log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Add node failed")
 		c.apiClient.ResetNodeCache()
 		return
@@ -317,11 +335,13 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 	}); err != nil {
 		// needsReload stays set: the next poll takes the node down and brings
 		// it back with its users, rather than leaving it up with nobody on it.
+		storeProblem(&c.reloadProblem, err)
 		log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Add users failed")
 		c.apiClient.ResetNodeCache()
 		return
 	}
 	c.needsReload = false
+	storeProblem(&c.reloadProblem, nil)
 	c.configureCertificateRenewal(newN)
 	c.applyIntervals(newN)
 	log.WithField("tag", tag).Infof("Added %d new users", len(c.userList))
@@ -339,12 +359,45 @@ func (c *Controller) applyIntervals(newN *panel.NodeInfo) {
 	}
 }
 
+// nodeDeleted takes a node the panel no longer has out of service. The node
+// used to keep serving its last users, unmetered because the panel refused
+// their traffic, while every poll logged an error. It keeps polling quietly:
+// an admin who restores the node, or reuses its ID, gets it back.
+func (c *Controller) nodeDeleted() {
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	if c.closed {
+		return
+	}
+	if c.removed.Swap(true) {
+		log.WithField("tag", c.tag).Debug("The panel still has no such node")
+		return
+	}
+	log.WithField("tag", c.tag).Warn("The panel no longer has this node (deleted?): it stops serving and its port is closed. " +
+		"V2bX keeps checking and serves it again if it comes back; remove it from config.json (v2bx config) if it is gone for good")
+	if c.nodeUp {
+		if err := c.retireCoreNode(c.tag); err != nil {
+			log.WithFields(log.Fields{"tag": c.tag, "err": err}).Error("Stop the deleted node failed")
+		} else {
+			c.nodeUp = false
+		}
+	}
+	// Whatever comes back under this ID is rebuilt from a fresh config and
+	// user list, never from what this node last served.
+	c.needsReload = true
+	c.apiClient.ResetNodeCache()
+	c.apiClient.ResetUserCache()
+}
+
 func (c *Controller) reportNodeStatusTask() error {
+	if c.removed.Load() {
+		return nil
+	}
 	status, err := serverstatus.GetSystemStatus()
 	if err != nil {
 		return nil
 	}
-	if err := c.apiClient.ReportNodeStatus(status); err != nil {
+	if err := c.apiClient.ReportNodeHealth(status, c.health()); err != nil {
 		tag, _, _ := c.state()
 		log.WithField("tag", tag).WithError(err).Warn("Report node status failed")
 	}

@@ -3,7 +3,9 @@ package node
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/task"
@@ -52,7 +54,39 @@ type Controller struct {
 	// the node stayed out of the core until the panel's config changed again.
 	needsReload bool
 	closed      bool
+	// removed: the panel answered that it has no such node. The node is out
+	// of the core and its reports stop until the panel has it again.
+	removed atomic.Bool
+	// The node's health for the panel's status report: the problem of the
+	// last reload or user change, the last certificate renewal's, and how
+	// many users the last list held. Read by the status goroutine.
+	reloadProblem atomic.Pointer[string]
+	certProblem   atomic.Pointer[string]
+	userCount     atomic.Int64
 	*conf.Options
+}
+
+func storeProblem(slot *atomic.Pointer[string], err error) {
+	if err == nil {
+		slot.Store(nil)
+		return
+	}
+	text := err.Error()
+	slot.Store(&text)
+}
+
+// health is the node as the panel's status report describes it.
+func (c *Controller) health() *panel.NodeHealth {
+	c.opMu.Lock()
+	serving := c.nodeUp
+	c.opMu.Unlock()
+	var problems []string
+	for _, slot := range []*atomic.Pointer[string]{&c.reloadProblem, &c.certProblem} {
+		if p := slot.Load(); p != nil {
+			problems = append(problems, *p)
+		}
+	}
+	return &panel.NodeHealth{Serving: serving, Users: int(c.userCount.Load()), Error: strings.Join(problems, "; ")}
 }
 
 // NewController return a Node controller with default parameters.
@@ -113,7 +147,7 @@ func (c *Controller) Start() (err error) {
 	// First fetch Node Info
 	node, err := c.apiClient.GetNodeInfo()
 	if err != nil {
-		return fmt.Errorf("get node info error: %s", err)
+		return fmt.Errorf("get node info error: %w", err)
 	}
 	if node == nil {
 		// A 304 or an unchanged body. Only possible if this client has polled
@@ -203,6 +237,7 @@ func (c *Controller) Start() (err error) {
 		return fmt.Errorf("add users error: %s", err)
 	}
 	log.WithField("tag", tag).Infof("Added %d new users", added)
+	c.userCount.Store(int64(len(c.userList)))
 	c.setInfo(node)
 	c.opMu.Lock()
 	c.nodeUp = true
