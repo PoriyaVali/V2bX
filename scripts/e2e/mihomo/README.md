@@ -121,10 +121,10 @@ including separate Hysteria 1/2 variants in their shared native table.
 
 | Server path | Protocols |
 | --- | --- |
-| Embedded Mihomo | HTTP, SOCKS5, Mieru, ShadowQUIC, VMess, VLESS, Trojan, TUIC, Hysteria2, AnyTLS, TrustTunnel |
+| Embedded Mihomo | HTTP, SOCKS5, Mieru, ShadowQUIC, Sudoku, Snell (ShadowTLS v3), VMess, VLESS, Trojan, TUIC, Hysteria2, AnyTLS, TrustTunnel |
 | Existing Sing core | Shadowsocks, Hysteria 1 |
 | Existing native core | MDNS with the MasterDnsVPN client |
-| Catalog entries without a managed server | SSR, Snell, WireGuard, GOST Relay, SSH, Sudoku, MASQUE, OpenVPN, Tailscale, ZeroTier, EasyTier |
+| Catalog entries without a managed server | SSR, WireGuard, GOST Relay, SSH, MASQUE, OpenVPN, Tailscale, ZeroTier, EasyTier |
 
 The last row is checked for an explicit unsupported-server response, currently
 HTTP 501. Creating an external profile does not establish a multi-user server

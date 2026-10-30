@@ -17,7 +17,7 @@ use Tests\Fixtures\MihomoProfiles;
 $action = $argv[1] ?? 'snapshot';
 if ($action === 'seed') {
     $now = time();
-    $protocols = array_values(array_unique(array_merge(['http','socks5','mieru','shadowquic','vmess','vless','trojan','tuic','hysteria2','anytls','trusttunnel','shadowsocks','hysteria','mdns'], Registry::types())));
+    $protocols = array_values(array_unique(array_merge(['http','socks5','mieru','shadowquic','sudoku','snell','vmess','vless','trojan','tuic','hysteria2','anytls','trusttunnel','shadowsocks','hysteria','mdns'], Registry::types())));
     $admin = User::create(['email'=>'admin@e2e.invalid','password'=>password_hash('isolated-e2e-password', PASSWORD_BCRYPT),'uuid'=>'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee','token'=>'e2e-admin-only','is_admin'=>1,'is_staff'=>0,'created_at'=>$now,'updated_at'=>$now]);
     $out = [];
     foreach ($protocols as $index => $type) {
@@ -35,6 +35,10 @@ if ($action === 'seed') {
         if ($type === 'http') $payload['sni']='node.e2e.test';
         if ($type === 'mieru') { $payload['transport']='TCP'; $payload['udp']=true; $payload['port_range']=null; }
         if ($type === 'shadowquic') $payload['sni']='node.e2e.test';
+        // The panel generates the Sudoku master key and hands each user a split.
+        if ($type === 'sudoku') { $payload['managed']=true; $payload['key']=''; }
+        // Each user's PSK is also their ShadowTLS v3 password.
+        if ($type === 'snell') { $payload['managed']=true; $payload['psk']=''; $payload['version']=4; $payload['udp']=true; $payload['obfs_opts']=['mode'=>'shadow-tls','version'=>3,'host'=>'node.e2e.test']; }
         if ($type === 'vmess') $payload += ['network'=>'tcp','tls'=>1,'tlsSettings'=>['serverName'=>'node.e2e.test','allowInsecure'=>false]];
         if ($type === 'vless') $payload += ['network'=>'tcp','tls'=>1,'tls_settings'=>['server_name'=>'node.e2e.test'],'flow'=>null];
         if ($type === 'trojan') $payload += ['network'=>'tcp','server_name'=>'node.e2e.test','allow_insecure'=>0];

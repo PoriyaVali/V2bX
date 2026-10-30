@@ -27,6 +27,8 @@ PROTOCOLS = [
     "socks5",
     "mieru",
     "shadowquic",
+    "sudoku",
+    "snell",
     "vmess",
     "vless",
     "trojan",
@@ -409,6 +411,10 @@ class Audit:
                 node["MihomoOptions"] = {
                     "JLSUpstream": {"Addr": ready["decoy"], "SNI": "node.e2e.test"}
                 }
+            if protocol == "snell":
+                # The panel's obfs-opts host is node.e2e.test; its site runs
+                # beside the client.
+                node["MihomoOptions"] = {"ShadowTLSHandshake": ready["handshake"]}
             cfg["Nodes"].append(node)
         (self.work / "runtime/v2bx.json").write_text(json.dumps(cfg, indent=2))
         self.v2bx = self.spawn(
@@ -1025,7 +1031,7 @@ class Audit:
         for protocol in PROTOCOLS:
             try:
                 profile = self.profile(protocol)
-                if protocol not in ["mieru", "shadowquic", "shadowsocks"]:
+                if protocol not in ["mieru", "shadowquic", "sudoku", "shadowsocks"]:
                     self.record(
                         protocol + "/subscription-verifies-certificates",
                         profile.get("skip-cert-verify") is not True,

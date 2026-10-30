@@ -18,6 +18,8 @@ MIHOMO = [
     "socks5",
     "mieru",
     "shadowquic",
+    "sudoku",
+    "snell",
     "vmess",
     "vless",
     "trojan",
@@ -30,11 +32,9 @@ LEGACY = ["shadowsocks", "hysteria"]
 SERVER_TYPES = MIHOMO + LEGACY + ["mdns"]
 EXTERNAL_TYPES = [
     "ssr",
-    "snell",
     "wireguard",
     "gostrelay",
     "ssh",
-    "sudoku",
     "masque",
     "openvpn",
     "tailscale",
