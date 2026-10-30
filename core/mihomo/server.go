@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/PoriyaVali/V2bX/common/tlscert"
@@ -26,6 +27,9 @@ type managedServer struct {
 	inbound C.InboundListener
 	start   func(C.Tunnel) (server, error)
 	running server
+	// update replaces the users of the running listener in place. It is nil
+	// for protocols whose SDK authentication table is fixed when it starts.
+	update func(map[string]*user) error
 }
 
 func (s *managedServer) Listen(n *node) error {
@@ -51,13 +55,31 @@ func (s *managedServer) Close() error {
 	return e
 }
 
-type fixedAuth map[string]string
+// liveAuth authenticates HTTP and SOCKS clients against a table that membership
+// changes replace while the listener runs. Every request and handshake reads
+// the current table.
+type liveAuth struct {
+	table atomic.Pointer[map[string]string]
+}
 
-func (a fixedAuth) Verify(u, p string) bool { v, ok := a[u]; return ok && v == p }
-func (a fixedAuth) Users() []string {
-	out := make([]string, 0, len(a))
-	for k := range a {
+func newLiveAuth(users map[string]*user) *liveAuth { a := &liveAuth{}; a.set(users); return a }
+func (a *liveAuth) set(users map[string]*user) {
+	table := passwords(users)
+	a.table.Store(&table)
+}
+func (a *liveAuth) Verify(u, p string) bool { v, ok := (*a.table.Load())[u]; return ok && v == p }
+func (a *liveAuth) Users() []string {
+	table := *a.table.Load()
+	out := make([]string, 0, len(table))
+	for k := range table {
 		out = append(out, k)
+	}
+	return out
+}
+func passwords(users map[string]*user) map[string]string {
+	out := make(map[string]string, len(users))
+	for name, u := range users {
+		out[name] = u.password
 	}
 	return out
 }
@@ -99,10 +121,6 @@ func (n *node) buildServer(users map[string]*user) (*managedServer, error) {
 		sock.certificate = loader
 	}
 	sock.certPath, sock.keyPath = cert, key
-	authMap := map[string]string{}
-	for name, u := range users {
-		authMap[name] = u.password
-	}
 	// A validation-only listener is never bound. Nonempty placeholder users let
 	// SDK validation run before the existing listener has to be closed.
 	actual := users
@@ -112,11 +130,15 @@ func (n *node) buildServer(users map[string]*user) (*managedServer, error) {
 	switch n.info.Type {
 	case "http":
 		addr := net.JoinHostPort(ip, base.Port)
+		a := newLiveAuth(users)
 		s.start = func(t C.Tunnel) (server, error) {
-			return H.NewWithConfig(LC.AuthServer{Enable: true, Listen: addr, AuthStore: &fixedStore{a: fixedAuth(authMap)}, Certificate: cert, PrivateKey: key}, sock, t, A.WithInName(n.tag))
+			return H.NewWithConfig(LC.AuthServer{Enable: true, Listen: addr, AuthStore: &fixedStore{a: a}, Certificate: cert, PrivateKey: key}, sock, t, A.WithInName(n.tag))
 		}
+		s.update = func(users map[string]*user) error { a.set(users); return nil }
 	case "socks5":
-		s.start = func(t C.Tunnel) (server, error) { return n.startSOCKS(sock, t, fixedAuth(authMap), cert, key) }
+		a := newLiveAuth(users)
+		s.start = func(t C.Tunnel) (server, error) { return n.startSOCKS(sock, t, a, cert, key) }
+		s.update = func(users map[string]*user) error { a.set(users); return nil }
 	case "mieru":
 		if n.info.Mihomo == nil {
 			return nil, errors.New("missing mieru server settings")
@@ -124,19 +146,16 @@ func (n *node) buildServer(users map[string]*user) (*managedServer, error) {
 		if n.info.Security != 0 {
 			return nil, errors.New("mieru does not use a TLS server certificate")
 		}
-		u := map[string]string{}
-		for name, v := range actual {
-			u[name] = v.password
-		}
 		transport := n.info.Mihomo.Transport
 		if transport == "" {
 			transport = "TCP"
 		}
-		var e error
-		s.inbound, e = I.NewMieru(&I.MieruOption{BaseOption: base, Transport: transport, Users: u, TrafficPattern: n.info.Mihomo.TrafficPattern})
+		in, e := I.NewMieru(&I.MieruOption{BaseOption: base, Transport: transport, Users: passwords(actual), TrafficPattern: n.info.Mihomo.TrafficPattern})
 		if e != nil {
 			return nil, e
 		}
+		s.inbound = in
+		s.update = func(users map[string]*user) error { return in.UpdateUsers(passwords(users)) }
 	case "shadowquic":
 		if n.info.Mihomo == nil {
 			return nil, errors.New("missing shadowquic settings")
@@ -148,18 +167,15 @@ func (n *node) buildServer(users map[string]*user) (*managedServer, error) {
 		if _, _, e := net.SplitHostPort(opt.JLSUpstream.Addr); e != nil {
 			return nil, errors.New("invalid ShadowQUIC JLS upstream address")
 		}
-		var u []I.ShadowQuicUser
-		for name, v := range actual {
-			u = append(u, I.ShadowQuicUser{Username: name, Password: v.password})
-		}
 		m := n.info.Mihomo
-		var e error
-		s.inbound, e = I.NewShadowQuic(&I.ShadowQuicOption{BaseOption: base, Users: u, PacketDialer: func(ctx context.Context, network, address string) (net.PacketConn, net.Addr, error) {
+		in, e := I.NewShadowQuic(&I.ShadowQuicOption{BaseOption: base, Users: shadowQuicUsers(actual), PacketDialer: func(ctx context.Context, network, address string) (net.PacketConn, net.Addr, error) {
 			return n.decoyDial(ctx, sock, network, address)
 		}, JLSUpstream: I.ShadowQuicJLSUpstream{Addr: opt.JLSUpstream.Addr, SNI: opt.JLSUpstream.SNI}, ALPN: m.ALPN, QUICVersions: m.QUICVersions, ZeroRTT: m.ZeroRTT, CWND: m.CWND, BBRProfile: m.BBRProfile, ReceiveWindowConn: m.ReceiveWindowConn, ReceiveWindow: m.ReceiveWindow, DisableMTUDiscovery: m.DisableMTUDiscovery, MaxDatagramFrameSize: m.MaxDatagramFrameSize, CongestionController: m.CongestionController, Up: m.Up, Down: m.Down})
 		if e != nil {
 			return nil, e
 		}
+		s.inbound = in
+		s.update = func(users map[string]*user) error { return in.UpdateUsers(shadowQuicUsers(users)) }
 	case "vmess", "vless":
 		v := n.info.VAllss
 		if v == nil {
@@ -262,6 +278,13 @@ func (n *node) buildServer(users map[string]*user) (*managedServer, error) {
 		return nil, errors.New("unsupported mihomo server protocol")
 	}
 	return s, nil
+}
+func shadowQuicUsers(users map[string]*user) []I.ShadowQuicUser {
+	out := make([]I.ShadowQuicUser, 0, len(users))
+	for name, v := range users {
+		out = append(out, I.ShadowQuicUser{Username: name, Password: v.password})
+	}
+	return out
 }
 func bandwidth(mbps int) string {
 	if mbps == 0 {

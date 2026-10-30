@@ -90,10 +90,14 @@ type node struct {
 	udp         map[udpKey]*udpFlow
 	packets     chan udpJob
 	workers     sync.WaitGroup
-	server      server
+	server      *managedServer
 	sockets     *socketFactory
 	nat         C.NatTable
 	lookup      func(context.Context, string, string) ([]netip.Addr, error)
+	// revoked holds the names removed from the running listener and their
+	// passwords. A session the protocol keeps open (a Mieru or ShadowQUIC
+	// session, an HTTP keep-alive connection) may still carry one.
+	revoked map[string]string
 }
 
 func newNode(tag string, info *panel.NodeInfo, opt *conf.Options, cfg conf.MihomoConfig, l *limiter.Limiter) (*node, error) {
@@ -224,10 +228,19 @@ func (n *node) delUsers(users []panel.UserInfo) error {
 	}
 	return n.replaceUsers(next)
 }
+
+// maxRevoked bounds the removed credentials a running listener remembers; the
+// change that would exceed it replaces the listener instead.
+const maxRevoked = 4096
+
 func (n *node) replaceUsers(next map[string]*user) error {
 	prepared, e := n.buildServer(next)
 	if e != nil {
 		return e
+	}
+	if n.updateUsers(next) {
+		_ = prepared.Close()
+		return nil
 	}
 	n.mu.Lock()
 	if n.closed {
@@ -239,9 +252,10 @@ func (n *node) replaceUsers(next map[string]*user) error {
 	n.generation++
 	n.mu.Unlock()
 	defer func() { n.mu.Lock(); n.reloading = false; n.mu.Unlock() }()
-	// Listener SDKs in this fork expose immutable authentication tables. Replace
-	// a node's listener on membership changes; speed edits never enter this path.
-	// Close and await old flows before publishing a replacement identity map.
+	// The other listener SDKs in this fork fix their authentication table when
+	// they start, so their membership changes replace the listener; speed edits
+	// never enter this path. Close and await old flows before publishing a
+	// replacement identity map.
 	flows := n.stopFlows()
 	if n.server != nil {
 		if e = n.server.Close(); e != nil {
@@ -256,6 +270,7 @@ func (n *node) replaceUsers(next map[string]*user) error {
 	n.awaitFlows(flows)
 	n.mu.Lock()
 	n.users = next
+	n.revoked = nil
 	n.mu.Unlock()
 	if len(next) == 0 {
 		return nil
@@ -291,6 +306,67 @@ func (n *node) replaceUsers(next map[string]*user) error {
 		}
 	}
 	return fmt.Errorf("mihomo listener replacement: %w", e)
+}
+
+// updateUsers changes the users of the running listener in place and closes
+// only the flows of the users it removes; everyone else stays connected. It
+// reports false when the listener has to be replaced instead: the protocol
+// cannot change its users, the node gains its first or loses its last user, or
+// a removed name returns with another password while a session may still carry
+// the old one.
+func (n *node) updateUsers(next map[string]*user) bool {
+	if n.server == nil || n.server.update == nil || len(next) == 0 {
+		return false
+	}
+	n.mu.Lock()
+	revoked := make(map[string]string, len(n.revoked))
+	for name, password := range n.revoked {
+		revoked[name] = password
+	}
+	for name, u := range n.users {
+		if v := next[name]; v == nil {
+			revoked[name] = u.password
+		} else if v != u && v.password != u.password {
+			n.mu.Unlock()
+			return false
+		}
+	}
+	for name, u := range next {
+		if password, ok := revoked[name]; ok {
+			if password != u.password {
+				n.mu.Unlock()
+				return false
+			}
+			delete(revoked, name)
+		}
+	}
+	n.mu.Unlock()
+	if len(revoked) > maxRevoked {
+		return false
+	}
+	// Publish the users to the listener first. Admission then refuses removed
+	// users from the moment n.users changes, and every flow admitted before
+	// that is in n.flows to be closed.
+	if n.server.update(next) != nil {
+		return false
+	}
+	n.mu.Lock()
+	n.users = next
+	n.revoked = revoked
+	var removed []*flow
+	for f := range n.flows {
+		if next[f.user.name] != f.user {
+			removed = append(removed, f)
+		}
+	}
+	n.mu.Unlock()
+	// Do not wait for them: unlike a replacement, nothing here closes the
+	// client transport a flow may be blocked writing to. Their counters stay in
+	// n.records until the flows finish and are drained.
+	for _, f := range removed {
+		f.close()
+	}
+	return true
 }
 
 // stopFlows closes every flow and returns them for awaitFlows. Close the node's

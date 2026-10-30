@@ -134,11 +134,20 @@ source socket remain isolated. A UDP mapping expires after `UDPTimeout`
 without traffic in either direction. Queues are
 bounded, with at most 16 MiB of queued outbound UDP payload per node.
 
-The fork's SDK authentication tables are immutable. Membership changes rebuild
-that node's listener and disconnect its sessions; clients must reconnect.
-Removing users the node does not have changes nothing. Rebuilds and retirement
-close the node's sockets before awaiting its flows, so a client that stopped
-reading cannot hold one up with a blocked write.
+HTTP, SOCKS5, Mieru and ShadowQUIC nodes change users in place: a user joining
+or leaving disconnects nobody else. A removed user's TCP/UDP forwarding closes
+and admission refuses the name at once, so a Mieru or ShadowQUIC session or an
+HTTP keep-alive connection the user still holds can open nothing new. The node
+remembers removed names with their passwords, at most 4,096, and replaces the
+listener when one returns with another password (a username template without
+`{{uuid}}` does that when a UUID is reset), so such a session cannot regain
+access under the name. Gaining a first or losing a last user also replaces it.
+The other protocols' SDK authentication tables are fixed when their listener
+starts, so their membership changes rebuild that node's listener and disconnect
+its sessions; clients must reconnect. Removing users the node does not have
+changes nothing. Rebuilds and retirement close the node's sockets before
+awaiting its flows, so a client that stopped reading cannot hold one up with a
+blocked write; an in-place removal does not wait for the removed flows.
 Other nodes are isolated. Preparation failures keep the existing listener;
 bind failures attempt rollback and return any rollback error. Speed/device
 limit edits do not rebuild listeners or disconnect established sessions.
@@ -154,6 +163,7 @@ cover-site integration. These limits are not advertised as supported features.
 `core/mihomo` tests use real fork clients, TLS certificates, TCP sockets, and
 UDP echo servers. They cover all 11 protocols, optional TLS, Mieru UDP
 transport, exact byte direction/counts, active revocation and re-admission,
+in-place membership changes that keep other users' TCP and UDP sessions,
 final reports, bidirectional TCP half-close, separate node/UID ledgers, device admission, destination rules,
 and measured 1 Mbps transfers with an upgrade on the same open connection.
 Run them with the prepared module graph and `go test -race ./core/mihomo`.

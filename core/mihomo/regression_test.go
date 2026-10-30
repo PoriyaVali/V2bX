@@ -233,7 +233,20 @@ func TestSOCKSListenerSurvivesTransientAcceptErrors(t *testing.T) {
 // pending UDP reply blocks on the stream until the node closes its sockets.
 func TestMembershipChangeDoesNotWaitForAStalledClient(t *testing.T) {
 	other := panel.UserInfo{Id: 18, Uuid: "5b0c5bb7-3c2f-4d0e-8a44-5f7b9a5f2e11"}
-	c, info, _ := fixture(t, "vmess", []panel.UserInfo{subscriber, other})
+	// A VMess change replaces the listener; a Mieru change is made in place,
+	// where removing the stalled user itself must not wait for its flow either.
+	for _, variant := range []struct {
+		protocol string
+		remove   panel.UserInfo
+	}{{"vmess", other}, {"mieru", other}, {"mieru", subscriber}} {
+		t.Run(variant.protocol+strconv.Itoa(variant.remove.Id), func(t *testing.T) {
+			testMembershipChangeDoesNotWait(t, variant.protocol, variant.remove)
+		})
+	}
+}
+func testMembershipChangeDoesNotWait(t *testing.T, protocol string, remove panel.UserInfo) {
+	other := panel.UserInfo{Id: 18, Uuid: "5b0c5bb7-3c2f-4d0e-8a44-5f7b9a5f2e11"}
+	c, info, _ := fixture(t, protocol, []panel.UserInfo{subscriber, other})
 	tag := t.Name()
 	n, _ := c.get(tag)
 	n.limiter.UpdateUser(tag, []panel.UserInfo{subscriber, other}, nil)
@@ -296,7 +309,7 @@ func TestMembershipChangeDoesNotWaitForAStalledClient(t *testing.T) {
 		}
 	}
 	done := make(chan error, 1)
-	go func() { done <- c.DelUsers([]panel.UserInfo{other}, tag, info) }()
+	go func() { done <- c.DelUsers([]panel.UserInfo{remove}, tag, info) }()
 	select {
 	case e := <-done:
 		if e != nil {
