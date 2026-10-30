@@ -1,5 +1,18 @@
 # AI work log and handoff
 
+## Active handoff - 2026-10-30 - Codex - Recovery draft lookup correction; no product rebuild
+
+Recovery workflow committed/pushed74a7e4880b010124b974515592bbe93f366225b9.
+Run41086443868FAILED before publication: source-run/22build checks passed,
+but RESTreleases/tags/v1.11.0 returned404 for this unpublished draft. No release
+orDocker change. Authenticated release listing confirms draft429214684,
+tagv1.11.0, exact686092e source and44assets. Fixed
+.github/workflows/publish-ready-release.yml to list authenticated releases and
+select exacttag, preserving all source/asset gates. AI_HANDOFF.md updated.
+This repair UNCOMMITTED at entry; syntax/diff checks and retry PENDING.
+No tests or product builds rerun. Original completed22build run41084504578
+and44assets preserved; Mihomov1.19.32-dm5 public/verified.
+
 ## Active handoff - 2026-10-30 - Codex - All v1.11.0 assets built; publish-skip recovery
 
 Run41084504578 completedSUCCESS with22successful platform builds, release

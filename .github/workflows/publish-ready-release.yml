@@ -46,7 +46,9 @@ jobs:
           jobs = [job for page in jobs for job in page['jobs']]
           builds = [job for job in jobs if job['name'].startswith('build (')]
           assert len(builds) == 22 and all(job['conclusion'] == 'success' for job in builds), 'Incomplete build matrix'
-          release = api(f'repos/{repo}/releases/tags/{tag}')
+          # A draft has no public tag endpoint yet; list authenticated releases.
+          pages = json.loads(gh('api', '--paginate', '--slurp', f'repos/{repo}/releases?per_page=100'))
+          release = next(release for page in pages for release in page if release['tag_name'] == tag)
           assert release['draft'] and not release['prerelease'], 'Expected unpublished draft'
           assert release['target_commitish'] == run['head_sha'], 'Draft source does not match build'
           assets = release['assets']
