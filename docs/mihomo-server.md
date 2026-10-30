@@ -80,7 +80,7 @@ host on port 443, or to `MihomoOptions.ShadowTLSHandshake`:
 That server must serve TLS 1.3 with the host's certificate, which clients
 verify. Such relays stay outside the traffic ledger; past 4 MiB in a direction
 they are held to 64 KiB/s. Clients must support Snell over ShadowTLS: Surge,
-and this fork's mihomo, do. Versions 3 to 5 carry UDP.
+and Mihomo (v1.19.33 and this fork) do. Versions 3 to 5 carry UDP.
 
 ## Configuration
 

@@ -60,12 +60,21 @@ func TestIrboardGeneratedContract(t *testing.T) {
 				t.Fatalf("panel settings did not reach node: %+v", info)
 			}
 			switch typ {
-			case "http", "socks5", "mieru", "shadowquic":
+			case "http", "socks5", "mieru", "shadowquic", "sudoku", "snell":
 				if info.Mihomo == nil || info.Common.Host != "node.example.test" || info.Mihomo.Username != "{{uuid}}" || info.Mihomo.Password != "{{uuid}}" {
 					t.Fatal("managed Mihomo node identity or certificate host lost")
 				}
 				if (typ == "http" || typ == "socks5") && info.Security != Tls {
 					t.Fatal("managed TLS flag lost")
+				}
+				m := info.Mihomo
+				if typ == "sudoku" && (m.Key != "1a1786c2533e7d5b5b1015d717ea8ce09165858dec91327c66bb958dcbd0050a" || m.AEADMethod != "chacha20-poly1305" ||
+					m.PaddingMin == nil || *m.PaddingMin != 10 || m.PaddingMax == nil || *m.PaddingMax != 30 || m.TableType != "prefer_ascii" ||
+					m.HTTPMask == nil || !*m.HTTPMask || m.HTTPMaskMode != "ws" || m.PathRoot != "contract" || info.Security != None) {
+					t.Fatalf("sudoku server settings lost: %+v", m)
+				}
+				if typ == "snell" && (m.Version != 4 || m.ObfsOpts == nil || *m.ObfsOpts != (SnellObfsOpts{Mode: "shadow-tls", Host: "cover.example.test", Version: 3}) || info.Security != None) {
+					t.Fatalf("snell server settings lost: %+v", m)
 				}
 			case "vless":
 				if info.Security != Reality || info.VAllss.TlsSettings.Xver != 2 || info.VAllss.TlsSettings.ServerPort != "443" {

@@ -7,8 +7,8 @@ is fictional. Response bodies are base64 to preserve MessagePack bytes.
 
 The source panel is PoriyaVali/Irboard's `feat/mihomo-server-contract` at `5bd1a6e`,
 with node host metadata separate from SNI and the HTTP contract test. Fixtures
-cover the existing protocol configurations, the `v2ray` alias, and the four
-managed Mihomo protocols (HTTP, SOCKS5, Mieru, ShadowQUIC), plus eligible and
+cover the existing protocol configurations, the `v2ray` alias, and the six
+managed Mihomo protocols (HTTP, SOCKS5, Mieru, ShadowQUIC, Sudoku, Snell), plus eligible and
 empty user lists in both formats, ETags, an empty alive
 object and report acknowledgements. V2bX consumes these in ordinary Go tests;
 Irboard independently tests actual device clearing and traffic retry deduplication,
