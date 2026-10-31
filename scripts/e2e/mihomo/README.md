@@ -114,6 +114,23 @@ The outputs are `results/report-fa.md` and `results/consolidated.json`. The
 report command exits nonzero when required coverage is missing, a recorded
 check failed or its recorded accounting values contradict its success flag.
 
+## Official clients
+
+The audit client is built from the fork V2bX embeds, so it cannot notice the
+fork drifting from what users run: Mihomo v1.19.33 changed the Sudoku wire
+format, and the audit stayed green while every official client failed. With
+V2bX serving the managed nodes and a local target it may reach, connect an
+official Mihomo build through each one from the user's real subscription:
+
+```sh
+python3 scripts/e2e/mihomo/official_clients.py --mihomo /path/to/mihomo \
+  --panel http://127.0.0.1:6600 --server 127.0.0.1 \
+  --target http://127.0.0.1:18181/ --expect hello
+```
+
+It prints PASS or FAIL for HTTP, SOCKS5, Mieru, ShadowQUIC, Sudoku and Snell
+and exits with the number of failures.
+
 ## What is checked
 
 Preparation creates all 25 protocol variants exposed by the tested panel,
