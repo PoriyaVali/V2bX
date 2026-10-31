@@ -12,6 +12,7 @@ import (
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	"github.com/PoriyaVali/V2bX/limiter"
+	log "github.com/sirupsen/logrus"
 )
 
 type Core struct {
@@ -33,6 +34,12 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	if cfg.DialTimeout <= 0 || cfg.UDPTimeout <= 0 {
 		return nil, errors.New("mihomo timeouts must be positive seconds")
 	}
+	// A typo in a log level must not take the nodes down with it.
+	level, err := parseLogLevel(cfg.LogConfig.Level)
+	if err != nil {
+		log.WithError(err).Warn("Using the mihomo core's default log level, warn")
+	}
+	setLogLevel(level)
 	return &Core{nodes: make(map[string]*node), config: cfg}, nil
 }
 func (*Core) Type() string { return "mihomo" }
@@ -85,6 +92,7 @@ func (c *Core) AddNode(tag string, info *panel.NodeInfo, options *conf.Options) 
 	// Empty user sets keep the port closed, including protocols whose SDK treats
 	// an empty authentication map as 'allow all'. First AddUsers binds the port.
 	c.nodes[tag] = n
+	n.logFields().Info("Node ready; its port opens when the panel lists the first user")
 	return nil
 }
 func netClosed() error { return errors.New("mihomo core is closed") }

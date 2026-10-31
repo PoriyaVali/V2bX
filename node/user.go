@@ -12,6 +12,15 @@ import (
 )
 
 func (c *Controller) reportUserTrafficTask() (err error) {
+	// Dropped even when the panel has the node again by now: the bytes were
+	// served before the deletion.
+	if c.forgetTraffic.Swap(false) {
+		c.dropReportsOfDeletedNode()
+	}
+	if c.removed.Load() {
+		// The panel refuses every report for a node it does not have.
+		return nil
+	}
 	// One consistent view of the node: the node-info goroutine may be replacing
 	// these while this runs.
 	tag, info, lim := c.state()
@@ -56,7 +65,11 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	if len(toReport) > 0 {
 		c.queueTrafficReport(toReport)
 	}
-	c.flushTrafficReports()
+	if len(c.pendingReports) == 0 {
+		c.reportIdle(tag)
+	} else {
+		c.flushTrafficReports()
+	}
 	if lim == nil {
 		return nil
 	}
@@ -218,6 +231,29 @@ func (c *Controller) reportOnlineSnapshot(current map[int][]string) error {
 	}
 	c.reportedOnline = next
 	return nil
+}
+
+// reportIdle sends an empty traffic report. The panel takes a report as the
+// sign that a node works: one that only reported traffic showed every idle
+// node as degraded, and kept the last online count of each for an hour.
+func (c *Controller) reportIdle(tag string) {
+	if err := c.apiClient.ReportUserTraffic(nil); err != nil {
+		log.WithFields(log.Fields{"tag": tag, "err": err}).Info("Report idle node failed")
+	}
+}
+
+// dropReportsOfDeletedNode forgets the traffic of a node the panel deleted:
+// the panel refuses it, and a node that comes back under the same ID starts
+// its accounting afresh, not with bytes served before the deletion.
+func (c *Controller) dropReportsOfDeletedNode() {
+	c.retiredTrafficMu.Lock()
+	c.retiredTraffic = nil
+	c.retiredTrafficMu.Unlock()
+	if len(c.pendingReports) > 0 || len(c.reportAccum) > 0 {
+		tag, _, _ := c.state()
+		log.WithFields(log.Fields{"tag": tag, "batches": len(c.pendingReports)}).Warn("Dropping the unsent traffic of the deleted node")
+	}
+	c.pendingReports, c.reportAccum, c.reportedOnline = nil, nil, nil
 }
 
 // Only the report task (or joined shutdown) owns reportAccum/pendingReports.

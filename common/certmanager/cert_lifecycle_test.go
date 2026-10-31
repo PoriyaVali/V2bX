@@ -470,3 +470,16 @@ func TestRenewalWindowUsesExactTimeAndSelfRenews(t *testing.T) {
 		t.Fatal("self maintenance did not replace a due certificate")
 	}
 }
+
+// A busy port 80 is named as the http-01 challenge's need, not left as a bare
+// "address already in use".
+func TestChallengePortErrorNamesPort80(t *testing.T) {
+	err := explainChallengePort(errors.New("acme: error presenting token: could not start HTTP server for challenge: listen tcp :80: bind: address already in use"))
+	if err == nil || !strings.Contains(err.Error(), "needs TCP port 80") || !strings.Contains(err.Error(), "CertMode dns") {
+		t.Fatalf("busy port 80 not explained: %v", err)
+	}
+	other := errors.New("acme: urn:ietf:params:acme:error:rateLimited")
+	if explainChallengePort(other) != other {
+		t.Fatal("an unrelated failure was rewritten")
+	}
+}

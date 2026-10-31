@@ -76,6 +76,8 @@ type fakePanel struct {
 	port int
 	// alive is what the alive-list endpoint reports (UID -> devices).
 	alive map[int]int
+	// deleted answers every call as Irboard does for a node it does not have.
+	deleted bool
 }
 
 type pushAttempt struct {
@@ -173,9 +175,26 @@ func newFakePanel(t *testing.T, deviceOnlineMinKB int, users []panel.UserInfo) *
 		w.Write([]byte(`{"data":true}`))
 	})
 
-	f.srv = httptest.NewServer(mux)
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		deleted := f.deleted
+		f.mu.Unlock()
+		if deleted {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"message":"server is not exist"}`))
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 	t.Cleanup(f.srv.Close)
 	return f
+}
+
+func (f *fakePanel) setDeleted(deleted bool) {
+	f.mu.Lock()
+	f.deleted = deleted
+	f.mu.Unlock()
 }
 
 // setPort changes the node's server_port: a config change the node must

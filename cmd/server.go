@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -45,6 +46,25 @@ func init() {
 	command.AddCommand(&serverCommand)
 }
 
+// logLevel reads Log.Level. Every value sets a level: an embedded core's
+// package may have changed the process default (Mihomo's sets debug), so a
+// blank or misspelt level used to leave the journal at whatever that was.
+func logLevel(level string) (log.Level, error) {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "", "info":
+		return log.InfoLevel, nil
+	case "debug", "trace":
+		return log.DebugLevel, nil
+	case "warn", "warning":
+		return log.WarnLevel, nil
+	case "error":
+		return log.ErrorLevel, nil
+	case "none", "silent", "off":
+		return log.PanicLevel, nil
+	}
+	return log.InfoLevel, fmt.Errorf("unknown log level %q (use debug, info, warn, error or none)", level)
+}
+
 func serverHandle(_ *cobra.Command, _ []string) error {
 	showVersion()
 	// Before any node builds its panel client, so every request carries it.
@@ -53,15 +73,10 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 	if err := c.LoadFromPath(config); err != nil {
 		return fmt.Errorf("load config file: %w", err)
 	}
-	switch c.LogConfig.Level {
-	case "debug":
-		log.SetLevel(log.DebugLevel)
-	case "info":
-		log.SetLevel(log.InfoLevel)
-	case "warn":
-		log.SetLevel(log.WarnLevel)
-	case "error":
-		log.SetLevel(log.ErrorLevel)
+	level, levelErr := logLevel(c.LogConfig.Level)
+	log.SetLevel(level)
+	if levelErr != nil {
+		log.WithError(levelErr).Warn("Using log level info")
 	}
 	if c.LogConfig.Output != "" {
 		f, err := os.OpenFile(c.LogConfig.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)

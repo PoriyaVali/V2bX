@@ -176,17 +176,14 @@ func (n *node) buildServer(users map[string]*user) (*managedServer, error) {
 		if n.info.Mihomo == nil {
 			return nil, errors.New("missing shadowquic settings")
 		}
-		opt := n.options.MihomoOptions
-		if opt == nil || opt.JLSUpstream.Addr == "" {
-			return nil, errors.New("shadowquic requires MihomoOptions.JLSUpstream.Addr (a real QUIC decoy)")
-		}
-		if _, _, e := net.SplitHostPort(opt.JLSUpstream.Addr); e != nil {
-			return nil, errors.New("invalid ShadowQUIC JLS upstream address")
+		upstream, e := n.jlsUpstream()
+		if e != nil {
+			return nil, e
 		}
 		m := n.info.Mihomo
 		in, e := I.NewShadowQuic(&I.ShadowQuicOption{BaseOption: base, Users: shadowQuicUsers(actual), PacketDialer: func(ctx context.Context, network, address string) (net.PacketConn, net.Addr, error) {
 			return n.decoyDial(ctx, sock, network, address)
-		}, JLSUpstream: I.ShadowQuicJLSUpstream{Addr: opt.JLSUpstream.Addr, SNI: opt.JLSUpstream.SNI}, ALPN: m.ALPN, QUICVersions: m.QUICVersions, ZeroRTT: m.ZeroRTT, CWND: m.CWND, BBRProfile: m.BBRProfile, ReceiveWindowConn: m.ReceiveWindowConn, ReceiveWindow: m.ReceiveWindow, DisableMTUDiscovery: m.DisableMTUDiscovery, MaxDatagramFrameSize: m.MaxDatagramFrameSize, CongestionController: m.CongestionController, Up: m.Up, Down: m.Down})
+		}, JLSUpstream: upstream, ALPN: m.ALPN, QUICVersions: m.QUICVersions, ZeroRTT: m.ZeroRTT, CWND: m.CWND, BBRProfile: m.BBRProfile, ReceiveWindowConn: m.ReceiveWindowConn, ReceiveWindow: m.ReceiveWindow, DisableMTUDiscovery: m.DisableMTUDiscovery, MaxDatagramFrameSize: m.MaxDatagramFrameSize, CongestionController: m.CongestionController, Up: m.Up, Down: m.Down})
 		if e != nil {
 			return nil, e
 		}
@@ -504,11 +501,33 @@ func (c *trackedPacket) Close() error { e := c.PacketConn.Close(); c.owner.remov
 
 // Decoy packets are node infrastructure, kept outside the user traffic ledger.
 // Only the configured JLS endpoint can be reached through this callback.
+// jlsUpstream is the real QUIC site a ShadowQUIC listener hands probers to:
+// MihomoOptions.JLSUpstream when config.json sets it, otherwise the SNI the
+// panel gives the clients, on port 443, as Snell's ShadowTLS uses its host.
+// A node created in the panel used to refuse to start until the operator
+// wrote an upstream into config.json by hand.
+func (n *node) jlsUpstream() (I.ShadowQuicJLSUpstream, error) {
+	if opt := n.options.MihomoOptions; opt != nil && opt.JLSUpstream.Addr != "" {
+		if _, _, e := net.SplitHostPort(opt.JLSUpstream.Addr); e != nil {
+			return I.ShadowQuicJLSUpstream{}, errors.New("invalid ShadowQUIC JLS upstream address")
+		}
+		return I.ShadowQuicJLSUpstream{Addr: opt.JLSUpstream.Addr, SNI: opt.JLSUpstream.SNI}, nil
+	}
+	host := ""
+	if n.info.Mihomo != nil {
+		host = strings.TrimSpace(n.info.Mihomo.ServerName)
+	}
+	if host == "" || net.ParseIP(host) != nil {
+		return I.ShadowQuicJLSUpstream{}, errors.New("shadowquic needs a real QUIC site for probers: set the node's SNI to that site's domain in the panel, or MihomoOptions.JLSUpstream.Addr in config.json")
+	}
+	return I.ShadowQuicJLSUpstream{Addr: net.JoinHostPort(host, "443"), SNI: host}, nil
+}
+
 func (n *node) decoyDial(ctx context.Context, sockets *socketFactory, network, address string) (net.PacketConn, net.Addr, error) {
 	if network != "udp" && network != "udp4" && network != "udp6" {
 		return nil, nil, errors.New("JLS requires UDP")
 	}
-	if n.options.MihomoOptions == nil || address != n.options.MihomoOptions.JLSUpstream.Addr {
+	if upstream, e := n.jlsUpstream(); e != nil || address != upstream.Addr {
 		return nil, nil, errors.New("unexpected JLS endpoint")
 	}
 	m := &C.Metadata{}

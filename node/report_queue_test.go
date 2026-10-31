@@ -9,10 +9,40 @@ import (
 	"github.com/PoriyaVali/V2bX/api/panel"
 )
 
-func (f *fakePanel) pushLog() []pushAttempt {
+// pushLog is the pushes that carried traffic; idlePushes the empty ones a
+// node sends when it has nothing to bill.
+func (f *fakePanel) pushLog() []pushAttempt    { return f.pushesWhere(true) }
+func (f *fakePanel) idlePushes() []pushAttempt { return f.pushesWhere(false) }
+
+func (f *fakePanel) pushesWhere(traffic bool) []pushAttempt {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]pushAttempt(nil), f.pushes...)
+	var out []pushAttempt
+	for _, p := range f.pushes {
+		if (len(p.body) > 0) == traffic {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// A node with nothing to bill still reports, empty: the panel shows a node
+// that stops reporting as degraded and keeps its last online count.
+func TestReport_IdleNodeSendsAnEmptyReport(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u1"}})
+	core := &stubCore{}
+	c := newSyncedController(t, f, core)
+	_ = c.reportUserTrafficTask()
+	_ = c.reportUserTrafficTask()
+	if idle := f.idlePushes(); len(idle) != 2 || len(f.pushLog()) != 0 {
+		t.Fatalf("idle cycles reported %d empty and %d traffic pushes", len(idle), len(f.pushLog()))
+	}
+	// A cycle with traffic sends the traffic, not an extra empty report.
+	core.setTraffic([]panel.UserTraffic{{UID: 1, Upload: 1, Download: 2}})
+	_ = c.reportUserTrafficTask()
+	if len(f.pushLog()) != 1 || len(f.idlePushes()) != 2 {
+		t.Fatalf("a cycle with traffic: %d traffic and %d empty pushes", len(f.pushLog()), len(f.idlePushes()))
+	}
 }
 
 // A traffic batch the panel did not accept is resent on the next cycle under

@@ -62,7 +62,7 @@ func (n *node) admit(m *C.Metadata, generation uint64, source string) (*flow, *c
 	}
 	u := n.users[m.InUser]
 	if u == nil {
-		return nil, nil, errors.New("unauthorized inbound identity")
+		return nil, nil, refusedError{reason: "not a current user of this node"}
 	}
 	userTag := format.UserTag(n.tag, u.uuid)
 	unique := map[string]bool{}
@@ -78,14 +78,14 @@ func (n *node) admit(m *C.Metadata, generation uint64, source string) (*flow, *c
 	if v, ok := n.limiter.UserLimitInfo.Load(userTag); ok {
 		limit := v.(*limiter.UserLimitInfo).DeviceLimit.Load()
 		if limit > 0 && !unique[source] && int64(len(unique)) >= limit {
-			return nil, nil, errors.New("local device limit")
+			return nil, nil, refusedError{uid: u.id, reason: deviceLimitReason(limit)}
 		}
 	}
 	if n.limiter.MaxConns > 0 && count >= n.limiter.MaxConns {
-		return nil, nil, errors.New("connection limit")
+		return nil, nil, refusedError{uid: u.id, reason: "connection limit (" + strconv.Itoa(n.limiter.MaxConns) + ") reached"}
 	}
 	if _, reject := n.limiter.CheckLimit(userTag, source, m.NetWork == C.TCP, true); reject {
-		return nil, nil, errors.New("user device limit")
+		return nil, nil, refusedError{uid: u.id, reason: "device limit reached on the user's other nodes"}
 	}
 	ctx, cancel := context.WithCancel(n.ctx)
 	f := &flow{user: u, source: source, ctx: ctx, cancel: cancel, done: make(chan struct{})}
@@ -132,10 +132,10 @@ func (n *node) destinations(ctx context.Context, m *C.Metadata) ([]netip.Addr, e
 	}
 	host := m.String()
 	if n.limiter.CheckDomainRule(host) {
-		return nil, errors.New("blocked domain")
+		return nil, blockedError{"a panel rule blocks the domain"}
 	}
 	if blocked, _ := n.limiter.CheckDestinationRule(host, m.DstPort); blocked {
-		return nil, errors.New("blocked destination")
+		return nil, blockedError{"a panel rule blocks the destination"}
 	}
 	var ips []netip.Addr
 	if m.Host != "" {
@@ -162,7 +162,9 @@ func (n *node) destinations(ctx context.Context, m *C.Metadata) ([]netip.Addr, e
 		permitted = append(permitted, ip)
 	}
 	if len(permitted) == 0 {
-		return nil, errors.New("no permitted destination address")
+		// Every address was private (AllowPrivateDestinations is off) or
+		// matched a rule.
+		return nil, blockedError{"no permitted destination address (private addresses and panel rules)"}
 	}
 	return permitted, nil
 }
@@ -219,6 +221,7 @@ func (n *node) handleTCP(client net.Conn, m *C.Metadata, generation uint64) {
 	}
 	f, device, e := n.admit(m, generation, source)
 	if e != nil {
+		n.logAdmission(e, source, "tcp")
 		return
 	}
 	defer n.finish(f)
@@ -227,18 +230,22 @@ func (n *node) handleTCP(client net.Conn, m *C.Metadata, generation uint64) {
 	}
 	client, refused := n.sniffTCP(client, m)
 	if refused {
+		n.logDestination(blockedError{"a panel rule blocks the sniffed protocol or domain"}, f.user.id, source, "tcp", m)
 		return
 	}
 	ctx, cancel := context.WithTimeout(f.ctx, time.Duration(n.config.DialTimeout)*time.Second)
 	defer cancel()
 	ips, e := n.destinations(ctx, m)
 	if e != nil {
+		n.logDestination(e, f.user.id, source, "tcp", m)
 		return
 	}
 	remote, e := n.dialTCP(ctx, ips, m.DstPort)
 	if e != nil {
+		n.logDestination(e, f.user.id, source, "tcp", m)
 		return
 	}
+	n.logAccepted(f.user.id, source, "tcp", m)
 	if !f.attach(remote) {
 		return
 	}
@@ -359,12 +366,14 @@ func (n *node) sendUDP(j udpJob) {
 	if uf == nil {
 		f, device, e := n.admit(m, j.generation, source)
 		if e != nil {
+			n.logAdmission(e, source, "udp")
 			p.Drop()
 			return
 		}
 		uf = &udpFlow{flow: f, key: key, metadata: *m, packet: p, device: device, limiter: n.limiter.RateLimiter(format.UserTag(n.tag, f.user.uuid)), send: make(chan []byte, 64)}
 		// A "udp" protocol rule refuses every UDP flow, as on the sing core.
 		if n.limiter.CheckProtocolRule("udp") {
+			n.logDestination(blockedError{"a panel rule blocks UDP"}, f.user.id, source, "udp", m)
 			p.Drop()
 			n.finish(f)
 			return
@@ -372,6 +381,7 @@ func (n *node) sendUDP(j udpJob) {
 		if n.sniffs(m) {
 			uf.sniff = &packetSniff{}
 			if n.sniffPacket(uf, payload) {
+				n.logDestination(blockedError{"a panel rule blocks the sniffed protocol or domain"}, f.user.id, source, "udp", m)
 				p.Drop()
 				n.finish(f)
 				return
@@ -419,10 +429,12 @@ func (n *node) sendUDP(j udpJob) {
 }
 func (n *node) runUDP(f *udpFlow) {
 	if e := n.connectUDP(f); e != nil {
+		n.logDestination(e, f.user.id, f.source, "udp", &f.metadata)
 		f.close()
 		n.endUDP(f)
 		return
 	}
+	n.logAccepted(f.user.id, f.source, "udp", &f.metadata)
 	readDone := make(chan struct{})
 	go func() { n.readUDP(f); f.close(); close(readDone) }()
 	for {

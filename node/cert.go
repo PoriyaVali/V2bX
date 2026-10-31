@@ -1,6 +1,8 @@
 package node
 
 import (
+	"fmt"
+
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/certmanager"
 	"github.com/PoriyaVali/V2bX/conf"
@@ -10,9 +12,12 @@ import (
 
 func (c *Controller) renewCertTask() error {
 	tag, _, _ := c.state()
-	if err := certmanager.Renew(c.CertConfig); err != nil {
+	err := certmanager.Renew(c.CertConfig)
+	if err != nil {
 		log.WithField("tag", tag).Error("renew cert error: ", err)
+		err = fmt.Errorf("certificate renewal: %w", err)
 	}
+	storeProblem(&c.certProblem, err)
 	// A transient authority/provider failure must not stop the periodic task.
 	return nil
 }

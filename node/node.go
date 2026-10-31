@@ -1,12 +1,14 @@
 package node
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
+	"github.com/PoriyaVali/V2bX/common/serverstatus"
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	log "github.com/sirupsen/logrus"
@@ -68,7 +70,13 @@ func (n *Node) Start(nodes []conf.NodeConfig, core vCore.Core) error {
 		c := NewController(core, p, &nodes[i].Options)
 		if err = c.Start(); err != nil {
 			failures = append(failures, fmt.Sprintf("[%s] %s", desc, err))
-			log.WithField("node", desc).Error("Start node controller failed, retrying in the background: ", err)
+			if errors.Is(err, panel.ErrNodeNotFound) {
+				log.WithField("node", desc).Warn("The panel has no such node (deleted, or the wrong type or ID in config.json); " +
+					"V2bX checks again every few minutes. Remove it from config.json (v2bx config) if it was deleted")
+			} else {
+				log.WithField("node", desc).Error("Start node controller failed, retrying in the background: ", err)
+			}
+			reportStartFailure(p, err)
 			n.retryStart(i, &nodes[i], core, stop)
 			retrying++
 			continue
@@ -115,7 +123,13 @@ func (n *Node) retryStart(i int, cfg *conf.NodeConfig, core vCore.Core, stop cha
 			}
 			c := NewController(core, p, &cfg.Options)
 			if err = c.Start(); err != nil {
+				if errors.Is(err, panel.ErrNodeNotFound) {
+					// Said once at startup; a deleted node is not news every few minutes.
+					log.WithField("node", desc).Debugf("Start attempt %d: the panel still has no such node", attempt)
+					continue
+				}
 				log.WithField("node", desc).Warnf("Start attempt %d failed, next in %s: %s", attempt, delay, err)
+				reportStartFailure(p, err)
 				continue
 			}
 			n.mu.Lock()
@@ -160,5 +174,21 @@ func (n *Node) Close() {
 		if err := c.Close(); err != nil {
 			log.WithField("tag", c.tag).Error("Close node failed: ", err)
 		}
+	}
+}
+
+// reportStartFailure tells the panel why a node is not served, so the admin
+// sees it beside the node instead of only in this server's log. A node the
+// panel does not have cannot be told about.
+func reportStartFailure(p *panel.Client, err error) {
+	if errors.Is(err, panel.ErrNodeNotFound) {
+		return
+	}
+	status, statusErr := serverstatus.GetSystemStatus()
+	if statusErr != nil {
+		status = &serverstatus.SystemStatus{}
+	}
+	if reportErr := p.ReportNodeHealth(status, &panel.NodeHealth{Error: "start: " + err.Error()}); reportErr != nil {
+		log.WithError(reportErr).Debug("Report the start failure to the panel failed")
 	}
 }

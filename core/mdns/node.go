@@ -7,6 +7,7 @@ import (
 	"github.com/PoriyaVali/V2bX/common/format"
 	"github.com/PoriyaVali/V2bX/conf"
 	"github.com/PoriyaVali/V2bX/limiter"
+	log "github.com/sirupsen/logrus"
 	mdnssrv "masterdnsvpn-go/server"
 )
 
@@ -26,7 +27,7 @@ func (m *Mdns) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 		EncryptionMethod: info.Mdns.EncryptionMethod,
 		EncryptionKey:    info.Mdns.EncryptionKey,
 		NodeSecret:       info.Mdns.NodeSecret,
-		LogLevel:         "error",
+		LogLevel:         serverLogLevel(),
 	})
 	if err != nil {
 		return fmt.Errorf("mdns: build server for %s: %w", tag, err)
@@ -81,4 +82,19 @@ func (m *Mdns) DelNode(tag string) error {
 		delete(m.nodes, tag)
 	}
 	return nil
+}
+
+// serverLogLevel follows V2bX's own log level. The tunnel's was fixed at
+// error, so raising V2bX's level to diagnose a client showed nothing from it.
+func serverLogLevel() string {
+	switch log.GetLevel() {
+	case log.TraceLevel, log.DebugLevel:
+		return "debug"
+	case log.InfoLevel:
+		return "info"
+	case log.WarnLevel:
+		return "warn"
+	default:
+		return "error"
+	}
 }
