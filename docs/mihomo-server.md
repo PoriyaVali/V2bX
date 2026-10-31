@@ -250,11 +250,12 @@ Changes are reviewable code; no production deployment or release is implied.
 `v2bx log` shows the Mihomo core's lines with `core=mihomo` and the node's
 `tag`. The core's own `Log.Level` decides how much: `warn` (the default) shows
 refused clients, such as a Sudoku key of another master or a request that does
-not match the HTTP mask; `info` adds each listener as it opens, each refused
-user (device or connection limit) and each request a panel rule blocks;
-`debug` adds every connection. Repeated warnings of one kind are cut to ten a
-minute, and the next line says how many were dropped. Log lines name users by
-their panel ID, never by their credentials.
+not match the HTTP mask; `info` adds each refused user (device or connection
+limit) and each request a panel rule blocks; `debug` adds every connection.
+Repeated warnings of one kind are cut to ten a minute, and the next line says
+how many were dropped. Log lines name users by their panel ID, never by their
+credentials. Lines about the node itself, such as a listener that opens with
+its address and user count, follow V2bX's own `Log.Level`.
 
 A Mihomo node keeps its port closed while the panel lists nobody who may use
 it, and logs when it opens and closes it. A port another program or node

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	C "github.com/metacubex/mihomo/constant"
+	mlog "github.com/metacubex/mihomo/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -23,6 +24,15 @@ func (e refusedError) Error() string { return e.reason }
 type blockedError struct{ reason string }
 
 func (e blockedError) Error() string { return e.reason }
+
+// connLogged reports whether the Mihomo core's Log.Level lets a connection
+// line of level through. Lines about connections follow the core's level, as
+// the other cores' access logs do; lines about the node itself (a listener
+// that opens or closes) follow V2bX's own level.
+func connLogged(level mlog.LogLevel) bool {
+	threshold := mlog.LogLevel(forwardLevel.Load())
+	return threshold != mlog.SILENT && level >= threshold
+}
 
 // connLogs caps the lines a refused or blocked client can produce: a device
 // over its limit retries every few seconds, and each UDP packet of a refused
@@ -43,7 +53,7 @@ func (n *node) logEntry(uid int, source, network string) *log.Entry {
 // node is not news: its listener is going away.
 func (n *node) logAdmission(e error, source, network string) {
 	var refused refusedError
-	if !errors.As(e, &refused) {
+	if !errors.As(e, &refused) || !connLogged(mlog.INFO) {
 		return
 	}
 	key := n.tag + "|refused|" + strconv.Itoa(refused.uid) + "|" + refused.reason
@@ -62,7 +72,12 @@ func (n *node) logDestination(e error, uid int, source, network string, m *C.Met
 	target := m.RemoteAddress()
 	var blocked blockedError
 	if !errors.As(e, &blocked) {
-		n.logEntry(uid, source, network).WithField("to", target).Debug("Connect failed: ", e)
+		if connLogged(mlog.DEBUG) {
+			n.logEntry(uid, source, network).WithField("to", target).Debug("Connect failed: ", e)
+		}
+		return
+	}
+	if !connLogged(mlog.INFO) {
 		return
 	}
 	key := n.tag + "|blocked|" + strconv.Itoa(uid) + "|" + target
@@ -76,7 +91,7 @@ func (n *node) logDestination(e error, uid int, source, network string, m *C.Met
 }
 
 func (n *node) logAccepted(uid int, source, network string, m *C.Metadata) {
-	if log.IsLevelEnabled(log.DebugLevel) {
+	if connLogged(mlog.DEBUG) && log.IsLevelEnabled(log.DebugLevel) {
 		n.logEntry(uid, source, network).WithField("to", m.RemoteAddress()).Debug("Accepted")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	mlog "github.com/metacubex/mihomo/log"
+	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -38,4 +39,31 @@ func TestBurstLimiterCountsWhatItDrops(t *testing.T) {
 	dropped, ok := b.allow(key, now.Add(time.Minute))
 	assert.True(t, ok)
 	assert.Equal(t, 3, dropped)
+}
+
+// Connection lines follow the Mihomo core's Log.Level, not V2bX's: at warn a
+// refused user is not logged, at info it is.
+func TestConnectionLinesFollowTheCoresLevel(t *testing.T) {
+	saved := forwardLevel.Load()
+	defer forwardLevel.Store(saved)
+	hook := test.NewGlobal()
+	defer hook.Reset()
+	n := &node{tag: "core-level"}
+	refused := refusedError{uid: 7, reason: "device limit (1) reached"}
+
+	forwardLevel.Store(int32(mlog.WARNING))
+	n.logAdmission(refused, "203.0.113.1", "tcp")
+	assert.Empty(t, hook.AllEntries(), "refused user logged at core level warn")
+
+	forwardLevel.Store(int32(mlog.INFO))
+	n.logAdmission(refused, "203.0.113.2", "tcp")
+	if assert.Len(t, hook.AllEntries(), 1) {
+		entry := hook.LastEntry()
+		assert.Equal(t, 7, entry.Data["uid"])
+		assert.Contains(t, entry.Message, "device limit")
+	}
+
+	forwardLevel.Store(int32(mlog.SILENT))
+	n.logAdmission(refused, "203.0.113.3", "tcp")
+	assert.Len(t, hook.AllEntries(), 1, "core level none logs nothing")
 }
