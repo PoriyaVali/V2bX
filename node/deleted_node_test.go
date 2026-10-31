@@ -1,11 +1,15 @@
 package node
 
 import (
+	"errors"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/conf"
+	vCore "github.com/PoriyaVali/V2bX/core"
 	log "github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
 )
@@ -86,4 +90,39 @@ func TestDeletedNodeStopsServingAndComesBack(t *testing.T) {
 	if len(f.idlePushes()) != 1 {
 		t.Fatal("restored node does not report")
 	}
+}
+
+// A reload whose listener cannot bind leaves the node registered but not
+// serving; its health says so, with the reason.
+func TestHealthOfANodeThatCannotBind(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u1"}})
+	core := &failingUsersCore{}
+	c := newSyncedController(t, f, core)
+	if h := c.health(); !h.Serving || h.Users != 1 || h.Error != "" {
+		t.Fatalf("healthy node reported %+v", h)
+	}
+	core.fail.Store(true)
+	f.setPort(4321) // a config change: the node is rebuilt
+	_ = c.nodeInfoMonitor()
+	if h := c.health(); h.Serving || !strings.Contains(h.Error, "address already in use") {
+		t.Fatalf("node that cannot bind reported %+v", h)
+	}
+	core.fail.Store(false)
+	_ = c.nodeInfoMonitor()
+	if h := c.health(); !h.Serving || h.Error != "" {
+		t.Fatalf("recovered node reported %+v", h)
+	}
+}
+
+// failingUsersCore refuses users, as a core whose listener cannot bind does.
+type failingUsersCore struct {
+	stubCore
+	fail atomic.Bool
+}
+
+func (c *failingUsersCore) AddUsers(p *vCore.AddUsersParams) (int, error) {
+	if c.fail.Load() {
+		return 0, errors.New("listen tcp 0.0.0.0:4321: bind: address already in use")
+	}
+	return len(p.Users), nil
 }

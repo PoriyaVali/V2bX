@@ -77,8 +77,10 @@ func storeProblem(slot *atomic.Pointer[string], err error) {
 
 // health is the node as the panel's status report describes it.
 func (c *Controller) health() *panel.NodeHealth {
+	// A node whose last reload stopped part-way, such as one whose listener
+	// could not bind its port, is registered but does not serve.
 	c.opMu.Lock()
-	serving := c.nodeUp
+	serving := c.nodeUp && !c.needsReload
 	c.opMu.Unlock()
 	var problems []string
 	for _, slot := range []*atomic.Pointer[string]{&c.reloadProblem, &c.certProblem} {
