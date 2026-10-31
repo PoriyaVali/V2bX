@@ -57,6 +57,10 @@ type Controller struct {
 	// removed: the panel answered that it has no such node. The node is out
 	// of the core and its reports stop until the panel has it again.
 	removed atomic.Bool
+	// forgetTraffic: the report task has yet to drop what the deleted node
+	// left unsent. It outlives removed, which the panel may clear before the
+	// report task next runs.
+	forgetTraffic atomic.Bool
 	// The node's health for the panel's status report: the problem of the
 	// last reload or user change, the last certificate renewal's, and how
 	// many users the last list held. Read by the status goroutine.

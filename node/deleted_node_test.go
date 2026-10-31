@@ -126,3 +126,59 @@ func (c *failingUsersCore) AddUsers(p *vCore.AddUsersParams) (int, error) {
 	}
 	return len(p.Users), nil
 }
+
+// stuckCore fails to take its node out as many times as failures says.
+type stuckCore struct {
+	countingCore
+	failures atomic.Int32
+}
+
+func (c *stuckCore) DelNode(tag string) error {
+	if c.failures.Add(-1) >= 0 {
+		return errors.New("close listener: device or resource busy")
+	}
+	return c.countingCore.DelNode(tag)
+}
+
+// A deleted node the core failed to stop is stopped on a later poll, not
+// left serving unmetered while the panel lacks it.
+func TestDeletedNodeThatFailedToStopIsRetried(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u1"}})
+	core := &stuckCore{}
+	c := newSyncedController(t, f, core)
+	core.failures.Store(1)
+	f.setDeleted(true)
+	_ = c.nodeInfoMonitor()
+	if _, removed := core.counts(); removed != 0 || !c.nodeUp {
+		t.Fatalf("the stop did not fail as set up: removed %d, up %v", removed, c.nodeUp)
+	}
+	_ = c.nodeInfoMonitor()
+	if _, removed := core.counts(); removed != 1 || c.nodeUp {
+		t.Fatalf("deleted node still in the core after the next poll: removed %d, up %v", removed, c.nodeUp)
+	}
+}
+
+// The panel may have the node again before the report task runs. What the
+// deleted node served is dropped all the same, not billed to the node that
+// came back.
+func TestQuicklyRestoredNodeDoesNotReportTheDeletedNodesTraffic(t *testing.T) {
+	f := newFakePanel(t, 0, []panel.UserInfo{{Id: 1, Uuid: "u1"}})
+	core := &countingCore{}
+	c := newSyncedController(t, f, core)
+	core.setTraffic([]panel.UserTraffic{{UID: 1, Upload: 5, Download: 6}})
+	f.setDeleted(true)
+	_ = c.nodeInfoMonitor() // the stop collects those bytes
+	core.setTraffic(nil)
+	f.setDeleted(false)
+	_ = c.nodeInfoMonitor()
+	if !c.nodeUp || c.removed.Load() {
+		t.Fatalf("restored node not served again: up %v", c.nodeUp)
+	}
+	_ = c.reportUserTrafficTask()
+	if pushed := f.pushLog(); len(pushed) != 0 {
+		t.Fatalf("the restored node reported the deleted node's traffic: %+v", pushed[0].body)
+	}
+	if len(f.idlePushes()) != 1 {
+		t.Fatal("restored node does not report")
+	}
+}

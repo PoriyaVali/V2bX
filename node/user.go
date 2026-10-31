@@ -12,9 +12,13 @@ import (
 )
 
 func (c *Controller) reportUserTrafficTask() (err error) {
+	// Dropped even when the panel has the node again by now: the bytes were
+	// served before the deletion.
+	if c.forgetTraffic.Swap(false) {
+		c.dropReportsOfDeletedNode()
+	}
 	if c.removed.Load() {
 		// The panel refuses every report for a node it does not have.
-		c.dropReportsOfDeletedNode()
 		return nil
 	}
 	// One consistent view of the node: the node-info goroutine may be replacing
@@ -239,8 +243,8 @@ func (c *Controller) reportIdle(tag string) {
 }
 
 // dropReportsOfDeletedNode forgets the traffic of a node the panel deleted:
-// the panel refuses it, and a node that comes back under the same ID must
-// not bill its new users for the old ones' bytes.
+// the panel refuses it, and a node that comes back under the same ID starts
+// its accounting afresh, not with bytes served before the deletion.
 func (c *Controller) dropReportsOfDeletedNode() {
 	c.retiredTrafficMu.Lock()
 	c.retiredTraffic = nil

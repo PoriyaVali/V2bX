@@ -371,10 +371,17 @@ func (c *Controller) nodeDeleted() {
 	}
 	if c.removed.Swap(true) {
 		log.WithField("tag", c.tag).Debug("The panel still has no such node")
-		return
+	} else {
+		log.WithField("tag", c.tag).Warn("The panel no longer has this node (deleted?): it stops serving and its port is closed. " +
+			"V2bX keeps checking and serves it again if it comes back; remove it from config.json (v2bx config) if it is gone for good")
+		// Whatever comes back under this ID is rebuilt from a fresh config and
+		// user list, never from what this node last served.
+		c.needsReload = true
+		c.apiClient.ResetNodeCache()
+		c.apiClient.ResetUserCache()
 	}
-	log.WithField("tag", c.tag).Warn("The panel no longer has this node (deleted?): it stops serving and its port is closed. " +
-		"V2bX keeps checking and serves it again if it comes back; remove it from config.json (v2bx config) if it is gone for good")
+	// Every poll retries a stop that failed, as a reload does: a node left in
+	// the core would serve on, unmetered, for as long as the panel lacks it.
 	if c.nodeUp {
 		if err := c.retireCoreNode(c.tag); err != nil {
 			log.WithFields(log.Fields{"tag": c.tag, "err": err}).Error("Stop the deleted node failed")
@@ -382,11 +389,8 @@ func (c *Controller) nodeDeleted() {
 			c.nodeUp = false
 		}
 	}
-	// Whatever comes back under this ID is rebuilt from a fresh config and
-	// user list, never from what this node last served.
-	c.needsReload = true
-	c.apiClient.ResetNodeCache()
-	c.apiClient.ResetUserCache()
+	// After the stop, so the bytes it collected are dropped too.
+	c.forgetTraffic.Store(true)
 }
 
 func (c *Controller) reportNodeStatusTask() error {
