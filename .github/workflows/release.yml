@@ -211,6 +211,18 @@ jobs:
           mkdir -p build_assets
           GOEXPERIMENT=jsonv2 go build -v -o build_assets/V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" -trimpath -ldflags "-X 'github.com/PoriyaVali/V2bX/cmd.version=$version' -s -w -buildid="
 
+      - name: Verify shipped Linux version and embedded MDNS source
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          ./build_assets/V2bX version | tee .dart_tool/release-version.txt
+          grep -F "V2bX $version (" .dart_tool/release-version.txt
+          go version -m build_assets/V2bX | tee .dart_tool/release-build-info.txt
+          expected_mdns=$(awk '/^replace masterdnsvpn-go => github.com\/PoriyaVali\/MasterDnsVPN / {print $5}' go.mod)
+          test -n "$expected_mdns"
+          awk -v expected="$expected_mdns" '$1 == "=>" && $2 == "github.com/PoriyaVali/MasterDnsVPN" && $3 == expected {found=1} END {exit !found}' .dart_tool/release-build-info.txt
+          grep -F "vcs.revision=$GITHUB_SHA" .dart_tool/release-build-info.txt
+          grep -F 'vcs.modified=false' .dart_tool/release-build-info.txt
+
       - name: Build Mips softfloat V2bX
         if: matrix.goarch == 'mips' || matrix.goarch == 'mipsle'
         run: |

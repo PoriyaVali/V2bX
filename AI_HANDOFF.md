@@ -1,5 +1,166 @@
 # AI work log and handoff
 
+## Active handoff - 2026-10-31 - Codex - V2bX v1.12.1 READY FOR ROOT COMMIT/RELEASE; not yet published
+
+Exact pending release changes (5files, ALL UNCOMMITTED):
+- go.mod: MDNS replacement v0.0.0-20261031181923-1a73a5ad59f4 only.
+- go.sum: exactly2new verified MDNS checksum lines, prior entries retained.
+- docs/releases/v1.12.1.md: final release notes, accurate local validation,
+  update/version and rollback1.12.0; preparation placeholder removed.
+- .github/workflows/release.yml: ROOT-authored Linuxamd64 native CLI version
+  check, exact embedded MDNS dependency check and clean exact source-vcs check
+  before archive/publication. This workflow change was not authored by the
+  V2bX integration subagent; root reported YAML/defaultskip_testsfalse/diffcheck
+  PASS. Hosted native step has not run yet and is not called passed here.
+- AI_HANDOFF.md: prep/pin/local-validation/this-ready records; earlier entries
+  and full pre-session body retained byte-exact.
+
+Root will own commit/push/manual release with skip_tests=false; no remote
+mutations or commit by this subagent. Release gate requires full Linux CI
+and22successful target builds before public latest/v2bx update availability.
+No app/production node/service deployment. Previous Claude runtime work and
+root's MDNS safety fixes/workflow change retain their distinct attribution.
+
+Actual local results: core/mdns -race count3 PASS1.152s; scoped vet MDNS/panel/
+limiter PASS; verified prepared TLS readonly graph PASS; full release-tag
+Linuxamd64 CGO0/jsonv2 crossbuild PASS with Go1.27.1; exact embedded MDNS
+replacement/sum confirmed via go version-m. Local binary SHA256
+4b7d0ecf68be868cd9399f9ca696fdf04c815833dbc7380971618b4e8a6651b4,
+116334716bytes. Local base82f55002/vcs.modified=true is expected pre-commit;
+this is evidence ONLY, not the eventual published artifact. Linux binary NOT
+executed locally and actual CLI output NOT locally verified.
+
+Evidence: parent/v2bx-linux-build-receipt.json and
+parent/v2bx-local-validation-receipt.json with raw logs/hashes. Initial helper
+version assertion FAILED because -trimpath omits ldflags in metadata, after
+the build had already PASSED. Corrected helper reports version literal only,
+runtime_cli_version_verified=false. Initial receipt builder then FAILED at
+Persian notes decoded using Windowscp1252; explicitUTF8 correction/rerun PASS,
+with no tests repeated. Latest diffcheck/notes whitespace/module-diff guards
+PASS. Full suite/hosted checks/physical node tests are not claimed run here.
+
+## Active handoff - 2026-10-31 - Codex - V2bX v1.12.1 MDNS pin LOCALLY VALIDATED; publication pending root
+
+Owner's authorized release integration is prepared on local branch
+codex/v2bx-mdns-20261031, base dev_new82f55002 (publicv1.12.0). No commit,
+push, tag, workflow dispatch or production server update by this subagent.
+Root agent coordinates source commits/remote release after Linux CI. Prior
+Claude PR24/MasterDnsVPN PR9 implementations retain their authorship.
+
+Exact task-authored V2bX files (ALL UNCOMMITTED):
+- go.mod: only MDNS replace version changed to
+  github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261031181923-1a73a5ad59f4,
+  source1a73a5ad59f492addb7a85e61c3761a02921968b.
+- go.sum: exactly2new verified MDNS checksum entries added; every inherited
+  entry retained; no tidy, unrelated module upgrade or runtime source edit.
+- docs/releases/v1.12.1.md: exact dependency, server CPU-change scope,
+  protocol/auth compatibility, actual local validations, update/version and
+  rollback1.12.0; no fixed CPU/speed percentage claim.
+- AI_HANDOFF.md: new records prepended, pre-session body byte-exact retained.
+MDNS source sum h1:XQXEh4Q1uFdLv85CzQfG5waCSNKLlb9qwGvAEf1OsXk=.
+
+Validation ACTUALLY RUN with cached Go1.27.1 Windowsamd64/jsonv2:
+- canonical Go version query and explicit new MDNS module download PASS;
+- verified TLS preparation with --allow-download PASS (pinned patch/checksum
+  guards, readonly audit.mod graph; ordinary modfiles unchanged by prep);
+- go test -race -count3 -timeout3m ./core/mdns PASS1.152s, including configured
+  listen address, per-node subscriber mapping, device reports and carried
+  traffic across reload; tests used prepared readonly audit.mod;
+- go vet ./core/mdns ./api/panel ./limiter PASS;
+- full22-target-release-tag set Linuxamd64 CGO0 crossbuild PASS, using
+  sing/xray/hysteria2/with_quic/with_grpc/with_utls/with_wireguard/with_acme/
+  with_gvisor/mdns/trusttunnel/mihomo, -trimpath and cmd.version=v1.12.1;
+- go version-m receipt confirms exact embedded replacement/sum, Linuxamd64,
+  CGO0/jsonv2; local main-modulev1.12.0+dirty at82f55002 is EXPECTED because
+  files remain uncommitted. Root's eventual commit/tag/build must be rechecked;
+- graph guard PASS: go.mod text identical to base except exact version
+  substitution, go.sum adds only2MDNS lines. diffcheck/notes whitespace PASS.
+
+Failed/limited validation: initial binary-receipt assertion expected ldflags
+in go version-m, but -trimpath omits them; assertion FAILED AFTER successful
+crossbuild. Helper corrected to assert version literal only and explicitly
+record runtime_cli_version_verified=false. Linux artifact NOT executed; root
+can verify actual CLI version in hosted Linux build/release. PowerShell wraps
+Go download progress in NativeCommandError text despite actual build exit0;
+these were progress messages, not a failed build. Full V2bX suite not rerun
+locally; hosted release uses skip_tests=false and must pass before publish.
+No claim physical node/operator/full-stack tests or universal CPU improvement.
+Known client empty-NOERROR health issue remains outside this server-only bump.
+
+Ignored evidence in parent directory:
+v2bx-mdns-download.json, v2bx-tls-preparation.json/.exit,
+v2bx-mdns-race.log/.exit, v2bx-mdns-vet.log/.exit,
+v2bx-release-build.log/.exit, V2bX-v1.12.1-linux-amd64,
+v2bx-linux-build-receipt.json, verify_v2bx_binary.py and record helpers.
+Earlier clones/original shared root product files remain untouched here.
+
+## Active handoff - 2026-10-31 - Codex - V2bX MDNS exact pin; validation IN PROGRESS
+
+Root supplied published-source MasterDnsVPN commit
+1a73a5ad59f492addb7a85e61c3761a02921968b on multiuser (tag/build publication
+still pending Linux CI). Go query resolved canonical replacement version
+v0.0.0-20261031181923-1a73a5ad59f4, commit time2026-10-31T18:19:23Z.
+Updated go.mod replacement only; root-authored MDNS changes include racer
+ownership safety/harness correction over ClaudePR9 CPU work. Original
+require masterdnsvpn-go pseudo-version unchanged as its module alias; the
+replacement selects the new source. No unrelated dependency upgrades/tidy.
+
+Exact authored files so far, all UNCOMMITTED: go.mod, docs/releases/v1.12.1.md,
+AI_HANDOFF.md. go.sum minimal new-checksum resolution next. No V2bX runtime,
+updater or configuration sources changed; inherited v1.12.0 features retained.
+Root owns remote commit/push/release; this subagent makes no remote mutations.
+
+Go1.27.1 Windowsamd64 is available and canonical version query PASS. Pending:
+new module checksum download, verified TLS preparation/audit.mod, focused
+core/mdns -race, scoped vet, full release-tag Linuxamd64 crossbuild and
+go version-m embedded dependency receipt. Root reports MDNS tests/race passed;
+those upstream tests were not rerun by this subagent and are not V2bX checks.
+Known empty-NOERROR client health stall remains outside this server-only bump;
+no universal CPU benefit or physical node validation is claimed.
+
+## Active handoff - 2026-10-31 - Codex - V2bX v1.12.1 MDNS integration PREPARING
+
+Owner explicitly requests a new MasterDnsVPN release embedded into a new V2bX
+version, available through v2bx update. This grants release/integration scope;
+root agent coordinates source safety fixes, review and remote publication.
+This subagent prepares only this isolated V2bX clone, with no commit/push/tag
+or workflow dispatch until root assignment. Existing production servers are
+not accessed or updated by this work.
+
+Read repository handoff/status/recent log before changes. No AGENTS.md found.
+Fresh clone base dev_new82f55002a1c6e9c524be19f7ebdd2403ee94381a, same as current
+public latestv1.12.0 (44assets), created under shared root's ignored .dart_tool.
+Local branch codex/v2bx-mdns-20261031. Claude authored prior PR24/runtime
+changes; PoriyaVali merged them. Prior agents' work is preserved and not
+claimed as this session's implementation. No inherited local changes here.
+
+Exact changed files now (UNCOMMITTED):
+- docs/releases/v1.12.1.md: preparation notes, update/rollback commands,
+  protocol compatibility and no universal CPU/speed percentage claim.
+- AI_HANDOFF.md: this prepend; earlier body retained byte-exact.
+Pending files: go.mod/go.sum replacement pin after root supplies final MDNS
+source SHA. Current replacement25b103d6a5f4 remains unchanged. No core API or
+updater/runtime source changes planned.
+
+Read-only recon: cmd/install_linux.go update fetches PoriyaVali/V2bX/dev_new/
+install.sh; installer uses this fork's releases/latest or exact requested
+version then V2bX-${arch}.zip. Public latestv1.12.1 with complete44assets will
+be available via v2bx update; explicit v2bx update1.12.1 supported. Release
+workflow manual tag input defaults skip_tests=false, tests before draft,
+22target builds,44archive/digest assets, --latest only after all builds,
+then matching Docker linux/amd64 andlinux/arm64. cmd.version injected by
+ldflags; no source version constant must be changed.
+
+Required validation prepared: Go1.27.1/jsonv2, verified TLS dependency prep
+with audit.mod and readonly graph, focused core/mdns -race (listen IP,
+cross-node users, traffic across reload), scoped vet and all-release-tag
+Linuxamd64 build. Hosted default release validation additionally covers
+installer/CLI, all core registration/build, race integration and certificates.
+No new tests/builds have run yet; final pin is required first. No Linux native
+runtime/physical server or full-stack proof claimed. Initial exploratory
+reads referenced absentv2bx.sh/AGENTS.md/docker.yml and node_test.go or wrong
+script directory/wildcard; corrected to actual paths; no code mutated by them.
+
 ## Active handoff - 2026-10-30 - Codex - v1.11.0 AND DOCKER RELEASED / VERIFIED
 
 Completed the owner's request to publish all completed Mihomo/V2bX changes

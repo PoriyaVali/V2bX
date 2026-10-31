@@ -666,6 +666,8 @@ github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible/go
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261023030011-25b103d6a5f4 h1:xjP5vmD/4a9GYM/CphBoq86QeOozO2MiDkTNofz/EHo=
 github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261023030011-25b103d6a5f4/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261031181923-1a73a5ad59f4 h1:XQXEh4Q1uFdLv85CzQfG5waCSNKLlb9qwGvAEf1OsXk=
+github.com/PoriyaVali/MasterDnsVPN v0.0.0-20261031181923-1a73a5ad59f4/go.mod h1:QakxWXe6vEM0QJf2+LK5JnqtGXHQYx8EtP66P5dGty0=
 github.com/PoriyaVali/Xray-core v1.260909.1 h1:Nf3LbPxI8F7SXIR93DuZfvn5pUz1fjF8R31bEN4t3xU=
 github.com/PoriyaVali/Xray-core v1.260909.1/go.mod h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=
 github.com/PoriyaVali/mihomo v1.19.32-dm5.0.20261030192231-3de39671cc05 h1:4O5d7B4kXPGt34uK8f7Wrxzi25xNm0pGvUusvuBaU/c=
