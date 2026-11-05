@@ -301,6 +301,19 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 			return
 		}
 	}
+	// A core that issues its node's certificate itself - TrustTunnel - does
+	// the same here, for the same reason. Otherwise its AddNode below asks the
+	// authority only after the old endpoint is gone: a new hostname, email or
+	// certificate type left the node down for the whole issuance, and for good
+	// when issuance failed.
+	if p, ok := c.server.(vCore.NodePreparer); ok {
+		if err := p.PrepareNode(tag, newN, c.Options); err != nil {
+			storeProblem(&c.reloadProblem, fmt.Errorf("prepare the node: %w", err))
+			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Prepare node failed")
+			c.apiClient.ResetNodeCache()
+			return
+		}
+	}
 	// Until preparation succeeds, report/status readers must still see the
 	// configuration of the listener that remains live. Membership changes
 	// above deliberately still revoke removed users through that limiter.

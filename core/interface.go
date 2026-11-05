@@ -28,3 +28,13 @@ type Core interface {
 type NodeRetirer interface {
 	RetireNode(tag string) ([]panel.UserTraffic, error)
 }
+
+// NodePreparer is a core that has slow, fallible work to do before a node can
+// start - issuing its certificate - and can do it while the node's previous
+// listener is still serving. A reload calls it before retiring that listener,
+// so a failure leaves the old one up for the next poll to retry, rather than
+// the node down until the authority answers. AddNode must still work without
+// it, as it does at first start; preparing ahead only moves the slow part.
+type NodePreparer interface {
+	PrepareNode(tag string, info *panel.NodeInfo, config *conf.Options) error
+}

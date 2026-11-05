@@ -105,7 +105,7 @@ func TestCertificateSnapshotsKeepValidTLSAcrossPartialProvidedRotation(t *testin
 	p.CertType = "provided"
 	p.CertChainPath, p.CertKeyPath = providedCertificateFixture(t, p.Hostname, "")
 	core := &TrustTunnel{certificateOps: isolatedCertificateOperations(t)}
-	c, err := core.newCertificateLifecycle(dir, p)
+	c, err := core.newCertificateLifecycle(dir, p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestCertificateSnapshotsRejectInvalidExternalUpdates(t *testing.T) {
 			p.CertType = "provided"
 			p.CertChainPath, p.CertKeyPath = providedCertificateFixture(t, p.Hostname, "")
 			core := &TrustTunnel{certificateOps: isolatedCertificateOperations(t)}
-			c, err := core.newCertificateLifecycle(t.TempDir(), p)
+			c, err := core.newCertificateLifecycle(t.TempDir(), p, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -226,7 +226,7 @@ func TestManagedCertificateRenewalPublishesWithoutNativeWizard(t *testing.T) {
 			return writeEndpointSource(config, cert, key)
 		},
 	}}
-	c, err := core.newCertificateLifecycle(t.TempDir(), p)
+	c, err := core.newCertificateLifecycle(t.TempDir(), p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestManagedCertificateRenewalFailureRetainsSnapshotAndRetries(t *testing.T)
 		ensure: isolatedCertificateOperations(t).Ensure,
 		renew:  func(*conf.CertConfig) error { renewals++; return errors.New("isolated ACME unavailable") },
 	}}
-	c, err := core.newCertificateLifecycle(t.TempDir(), p)
+	c, err := core.newCertificateLifecycle(t.TempDir(), p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestCertificatePublicationRetriesFailedReload(t *testing.T) {
 	p.CertType = "provided"
 	p.CertChainPath, p.CertKeyPath = providedCertificateFixture(t, p.Hostname, "")
 	core := &TrustTunnel{certificateOps: isolatedCertificateOperations(t)}
-	c, err := core.newCertificateLifecycle(t.TempDir(), p)
+	c, err := core.newCertificateLifecycle(t.TempDir(), p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestCertificatePublicationRetriesFailedReload(t *testing.T) {
 func TestSharedSelfCertificateRenewsAndReusesLocalPair(t *testing.T) {
 	p := validConfigParams()
 	core := &TrustTunnel{}
-	c, err := core.newCertificateLifecycle(t.TempDir(), p)
+	c, err := core.newCertificateLifecycle(t.TempDir(), p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +355,7 @@ func TestCertificateSourceIsolationAndStoppedMaintenance(t *testing.T) {
 	dir := t.TempDir()
 	p := validConfigParams()
 	core := &TrustTunnel{certificateOps: testCertificateOperations{ensure: func(*conf.CertConfig) error { t.Fatal("stopped certificate loop performed work"); return nil }}}
-	first, err := core.newCertificateLifecycle(dir, p)
+	first, err := core.newCertificateLifecycle(dir, p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestCertificateSourceIsolationAndStoppedMaintenance(t *testing.T) {
 	} {
 		copy := *p
 		change(&copy)
-		next, err := core.newCertificateLifecycle(dir, &copy)
+		next, err := core.newCertificateLifecycle(dir, &copy, nil)
 		if err != nil || next.config.CertFile == first.config.CertFile {
 			t.Fatal("changed certificate ownership shares an old in-flight source")
 		}
@@ -381,7 +381,7 @@ func TestConcurrentCertificateSnapshotsShareCompleteVersion(t *testing.T) {
 	p.CertType = "provided"
 	p.CertChainPath, p.CertKeyPath = providedCertificateFixture(t, p.Hostname, "")
 	core := &TrustTunnel{certificateOps: isolatedCertificateOperations(t)}
-	c, err := core.newCertificateLifecycle(t.TempDir(), p)
+	c, err := core.newCertificateLifecycle(t.TempDir(), p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
