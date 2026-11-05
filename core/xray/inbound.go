@@ -316,8 +316,8 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 	inbound.StreamSetting = &coreConf.StreamConfig{Network: &t}
 	// Set before this return: buildInbound fills it in afterwards, and a
 	// reply with no network settings at all left it nil - a nil dereference
-	// that took the process down.
-	if len(v.NetworkSettings) == 0 {
+	// that took the process down. A PHP panel writes empty settings as [].
+	if len(v.NetworkSettings) == 0 || isEmptyJSONArray(v.NetworkSettings) {
 		return nil
 	}
 	switch v.Network {
@@ -342,7 +342,7 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 			return fmt.Errorf("unmarshal httpupgrade settings error: %s", err)
 		}
 	case "splithttp", "xhttp":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.SplitHTTPSettings)
+		err := json.Unmarshal(xhttpSettings(v.NetworkSettings), &inbound.StreamSetting.SplitHTTPSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal xhttp settings error: %s", err)
 		}
