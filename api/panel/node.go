@@ -478,6 +478,7 @@ func (c *Client) GetNodeInfoContext(ctx context.Context) (node *NodeInfo, err er
 			rsp.NetworkSettings = rsp.NetworkSettingsBack
 			rsp.NetworkSettingsBack = nil
 		}
+		rsp.NetworkSettings = NormalizeNetworkSettings(rsp.NetworkSettings)
 		if rsp.TlsSettingsBack != nil {
 			rsp.TlsSettings = *rsp.TlsSettingsBack
 			rsp.TlsSettingsBack = nil
@@ -500,6 +501,7 @@ func (c *Client) GetNodeInfoContext(ctx context.Context) (node *NodeInfo, err er
 		if err != nil {
 			return nil, fmt.Errorf("decode trojan params error: %s", err)
 		}
+		rsp.NetworkSettings = NormalizeNetworkSettings(rsp.NetworkSettings)
 		cm = &rsp.CommonNode
 		node.Trojan = rsp
 		node.Security = Tls
