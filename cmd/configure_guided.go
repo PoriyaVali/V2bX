@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -54,12 +55,23 @@ func setupCoreServesTransport(core string, info *panel.NodeInfo) bool {
 	if transport == "" {
 		return true
 	}
+	if core == "xray" && (transport == "kcp" || transport == "mkcp") {
+		// The Xray core passes no KCP settings through: it serves KCP with
+		// Xray's defaults, for a node that has none.
+		return setupNoNetworkSettings(info.VAllss.NetworkSettings)
+	}
 	for _, candidate := range setupCoreTransports[core] {
 		if candidate == transport {
 			return true
 		}
 	}
 	return false
+}
+
+// setupNoNetworkSettings: the panel gave none, null or [].
+func setupNoNetworkSettings(raw json.RawMessage) bool {
+	trimmed := bytes.Join(bytes.Fields(raw), nil)
+	return len(trimmed) == 0 || string(trimmed) == "null" || string(trimmed) == "[]"
 }
 
 func validSetupCore(core string) bool { return core == "auto" || setupCoreProtocols[core] != nil }
@@ -94,7 +106,11 @@ func validateSetupCore(core string, info *panel.NodeInfo) error {
 			}
 		}
 		if len(able) == 0 {
-			return fmt.Errorf("no V2bX core serves %s over %s; change the node's transport in the panel | هیچ هسته‌ای %s روی %s را پشتیبانی نمی‌کند", info.Type, setupTransport(info), info.Type, setupTransport(info))
+			hint := "change the node's transport in the panel"
+			if t := setupTransport(info); t == "kcp" || t == "mkcp" {
+				hint = "Xray serves KCP with its default settings only: clear the node's network settings in the panel, or change its transport"
+			}
+			return fmt.Errorf("no V2bX core serves %s over %s with these settings; %s | هیچ هسته‌ای %s روی %s را با این تنظیمات پشتیبانی نمی‌کند", info.Type, setupTransport(info), hint, info.Type, setupTransport(info))
 		}
 		return fmt.Errorf("the %s core cannot serve %s over %s; select %s | هستهٔ %s این انتقال را ندارد؛ %s را انتخاب کنید", core, info.Type, setupTransport(info), strings.Join(able, " or "), core, strings.Join(able, " یا "))
 	}

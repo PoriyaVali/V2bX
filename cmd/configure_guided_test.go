@@ -280,6 +280,11 @@ func TestSetupCoreFollowsTheNodesTransportAndSecurity(t *testing.T) {
 		{"grpc reality", vless("grpc", panel.Reality), "sing", "sing xray"},
 		{"tcp tls", vless("tcp", panel.Tls), "xray", "sing xray mihomo"},
 		{"ws tls", vless("ws", panel.Tls), "sing", "sing xray mihomo"},
+		// Xray serves KCP with its defaults, for a node with no settings:
+		// none, null (as Irboard sends them) or [].
+		{"vmess kcp defaults", vmessKCP(""), "xray", "xray"},
+		{"vmess kcp null", vmessKCP("null"), "xray", "xray"},
+		{"vmess kcp []", vmessKCP("[]"), "xray", "xray"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := resolveSetupCore("auto", tc.info); got != tc.auto {
@@ -296,10 +301,11 @@ func TestSetupCoreFollowsTheNodesTransportAndSecurity(t *testing.T) {
 	if err := validateSetupCore("sing", vless("xhttp", panel.Reality)); err == nil || !strings.Contains(err.Error(), "select xray") {
 		t.Errorf("the refusal does not name the core that can serve it: %v", err)
 	}
-	kcp := &panel.NodeInfo{Type: "vmess", VAllss: &panel.VAllssNode{Network: "kcp"}}
+	// KCP settings are not passed through, so no core serves a node that has some.
+	kcp := vmessKCP(`{"seed":"fictional"}`)
 	for _, core := range []string{"sing", "xray", "mihomo"} {
-		if err := validateSetupCore(core, kcp); err == nil || !strings.Contains(err.Error(), "no V2bX core") {
-			t.Errorf("%s core accepted VMess over kcp, which no core serves: %v", core, err)
+		if err := validateSetupCore(core, kcp); err == nil || !strings.Contains(err.Error(), "no V2bX core") || !strings.Contains(err.Error(), "default settings") {
+			t.Errorf("%s core accepted VMess over kcp with settings, which no core serves: %v", core, err)
 		}
 	}
 	ech := vless("tcp", panel.Tls)
@@ -307,6 +313,14 @@ func TestSetupCoreFollowsTheNodesTransportAndSecurity(t *testing.T) {
 	if validateSetupCore("mihomo", ech) == nil {
 		t.Error("the mihomo core was accepted for an ECH node")
 	}
+}
+
+func vmessKCP(settings string) *panel.NodeInfo {
+	n := &panel.NodeInfo{Type: "vmess", VAllss: &panel.VAllssNode{Network: "kcp"}}
+	if settings != "" {
+		n.VAllss.NetworkSettings = json.RawMessage(settings)
+	}
+	return n
 }
 
 // Unattended and guided setup, for a VLESS XHTTP node over REALITY: auto

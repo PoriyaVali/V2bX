@@ -76,3 +76,10 @@ func mendEmptyArrays(level map[string]any) (changed bool) {
 func isEmptyJSONArray(raw json.RawMessage) bool {
 	return bytes.Equal(bytes.Join(bytes.Fields(raw), nil), []byte("[]"))
 }
+
+// noNetworkSettings reports whether a panel gave no network settings: none,
+// null (Irboard's empty VMess settings) or [].
+func noNetworkSettings(raw json.RawMessage) bool {
+	trimmed := bytes.Join(bytes.Fields(raw), nil)
+	return len(trimmed) == 0 || string(trimmed) == "null" || string(trimmed) == "[]"
+}

@@ -316,8 +316,9 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 	inbound.StreamSetting = &coreConf.StreamConfig{Network: &t}
 	// Set before this return: buildInbound fills it in afterwards, and a
 	// reply with no network settings at all left it nil - a nil dereference
-	// that took the process down. A PHP panel writes empty settings as [].
-	if len(v.NetworkSettings) == 0 || isEmptyJSONArray(v.NetworkSettings) {
+	// that took the process down. A PHP panel writes empty settings as [] or
+	// null; with none, Xray serves the transport with its defaults.
+	if noNetworkSettings(v.NetworkSettings) {
 		return nil
 	}
 	switch v.Network {
