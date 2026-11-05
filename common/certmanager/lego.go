@@ -58,6 +58,11 @@ func NewLegoWithIssuer(config *conf.CertConfig, issuer CertificateIssuer) (*Lego
 	return l, nil
 }
 
+// acmeDirectory is where every ACME request goes: Let's Encrypt. Only a build
+// with the acme_e2e tag, which no release uses, can point it at a local test CA
+// (acme_directory_e2e.go), so issuance and renewal can be tested for real.
+var acmeDirectory = func() string { return lego.LEDirectoryProduction }
+
 // HTTP-01 owns port 80 and DNS providers consume process environment values.
 // Serialize ACME operations so different nodes cannot mix DNS credentials,
 // overwrite account files or compete for the challenge listener.
@@ -125,6 +130,7 @@ func (l *Lego) initClient() error {
 		return fmt.Errorf("create user: %w", err)
 	}
 	c := lego.NewConfig(user)
+	c.CADirURL = acmeDirectory()
 	c.Certificate.KeyType = certcrypto.RSA2048
 	l.client, err = lego.NewClient(c)
 	if err != nil {
@@ -397,6 +403,7 @@ func registerUser(user *User, path string) error {
 	}
 	user.key = privateKey
 	c := lego.NewConfig(user)
+	c.CADirURL = acmeDirectory()
 	client, err := lego.NewClient(c)
 	if err != nil {
 		return fmt.Errorf("create lego client error: %s", err)
