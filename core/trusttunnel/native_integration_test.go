@@ -185,6 +185,27 @@ func TestNativeEndpoint_StartupSyncAndReload(t *testing.T) {
 	if err := assertPID(); err != nil {
 		t.Fatal(err)
 	}
+	// What the panel bills: the echo above moved userB's bytes both ways
+	// through a tunnel authenticated per request, as the reference client
+	// does. An endpoint that stops attributing that traffic reports every
+	// subscriber as idle, which looks exactly like nobody using the node.
+	nativeAwait(t, ctx, "the echoed bytes are billed to the user who sent them", func() error {
+		traffic, err := core.GetUserTrafficSlice(tag, false)
+		if err != nil {
+			return err
+		}
+		for _, u := range traffic {
+			if u.UID != userB.Id {
+				continue
+			}
+			if u.Upload < nativeEchoPayloadSize || u.Download < nativeEchoPayloadSize {
+				return fmt.Errorf("user %d billed %d up / %d down, want at least %d each way", u.UID, u.Upload, u.Download, nativeEchoPayloadSize)
+			}
+			t.Logf("user %d billed %d bytes up and %d down for a %d-byte echo", u.UID, u.Upload, u.Download, nativeEchoPayloadSize)
+			return nil
+		}
+		return fmt.Errorf("no traffic for user %d in %+v", userB.Id, traffic)
+	})
 }
 
 func TestNativeEndpoint_ProvidedCertificateRotation(t *testing.T) {
@@ -386,6 +407,10 @@ func nativeEchoTarget(t *testing.T) string {
 	return l.Addr().String()
 }
 
+const nativeEchoPayload = "native TrustTunnel authenticated echo\n"
+
+const nativeEchoPayloadSize = int64(len(nativeEchoPayload))
+
 func nativeConnect(parent context.Context, endpoint, target, user string) (int, error) {
 	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
@@ -423,7 +448,7 @@ func nativeConnect(parent context.Context, endpoint, target, user string) (int, 
 	if resp.StatusCode != http.StatusOK {
 		return resp.StatusCode, nil
 	}
-	payload := []byte("native TrustTunnel authenticated echo\n")
+	payload := []byte(nativeEchoPayload)
 	if _, err := writer.Write(payload); err != nil {
 		return resp.StatusCode, err
 	}

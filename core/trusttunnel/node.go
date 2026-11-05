@@ -35,11 +35,17 @@ var (
 	stableUptime = time.Minute
 )
 
-const (
-	// How long to wait for a freshly started endpoint to answer before giving
-	// up on signalling it. Generous: being slow here costs nothing.
+// Readiness polling. Variables so tests can shorten them.
+var (
+	// How long a freshly started endpoint is polled quickly. Generous: being
+	// slow here costs nothing.
 	readyTimeout      = 30 * time.Second
 	readyPollInterval = 250 * time.Millisecond
+	// After that, how often it is still polled. Readiness used to be given up
+	// for good at readyTimeout, and a process that answered later was never
+	// signalled: every user change after it - removing a user included - waited
+	// for the endpoint's next restart.
+	slowReadyPollInterval = 5 * time.Second
 )
 
 // node is one endpoint process and the state needed to talk to it.
@@ -109,7 +115,7 @@ func (t *TrustTunnel) AddNode(tag string, info *panel.NodeInfo, opts *conf.Optio
 	if err := t.generateConfig(dir, p, metricsPort, opts); err != nil {
 		return fmt.Errorf("trusttunnel: configure %s: %w", tag, err)
 	}
-	certificates, err := t.newCertificateLifecycle(dir, p)
+	certificates, err := t.newCertificateLifecycle(dir, p, opts)
 	if err != nil {
 		return fmt.Errorf("trusttunnel: certificate lifecycle %s: %w", tag, err)
 	}
@@ -319,7 +325,8 @@ func (n *node) start(bin string) error {
 // must never make its replacement reloadable before it installs SIGHUP.
 func (n *node) waitReady(cmd *exec.Cmd) {
 	deadline := time.Now().Add(readyTimeout)
-	for time.Now().Before(deadline) {
+	warned := false
+	for {
 		n.mu.Lock()
 		closing := n.closing || n.cmd != cmd
 		n.mu.Unlock()
@@ -330,11 +337,25 @@ func (n *node) waitReady(cmd *exec.Cmd) {
 			if err := n.finishReadiness(cmd, func() error { return cmd.Process.Signal(syscall.SIGHUP) }); err != nil {
 				log.WithField("tag", n.tag).Errorf("trusttunnel: replay startup user sync: %v", err)
 			}
+			if warned {
+				log.WithField("tag", n.tag).Info("trusttunnel: endpoint answers on its metrics port; pending user changes applied")
+			}
 			return
 		}
-		time.Sleep(readyPollInterval)
+		interval := readyPollInterval
+		if !time.Now().Before(deadline) {
+			if !warned {
+				log.WithField("tag", n.tag).Warnf("trusttunnel: endpoint did not answer on its metrics port within %s; user changes wait until it does", readyTimeout)
+				warned = true
+			}
+			interval = slowReadyPollInterval
+		}
+		select {
+		case <-n.stop:
+			return
+		case <-time.After(interval):
+		}
 	}
-	log.WithField("tag", n.tag).Warn("trusttunnel: endpoint did not answer on its metrics port; user changes will apply on its next start")
 }
 
 // finishReadiness serializes the deferred signal with file replacement. A

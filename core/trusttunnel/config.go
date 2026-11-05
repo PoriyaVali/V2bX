@@ -27,57 +27,18 @@ import (
 const wizardTimeout = 5 * time.Minute
 
 // generateConfig delegates the native configuration format to the wizard that
-// ships with the endpoint. TrustTunnel uses the panel's own certificate fields;
-// generic CertConfig modes cannot express its certificate lifecycle.
+// ships with the endpoint. TrustTunnel takes its certificate from the panel's
+// own fields; of the node's CertConfig, only how a Let's Encrypt challenge is
+// answered applies (useLocalChallenge).
 func (t *TrustTunnel) generateConfig(dir string, p *panel.TrustTunnelNode, metricsPort int, opts *conf.Options) error {
-	if p == nil {
-		return fmt.Errorf("missing TrustTunnel parameters")
-	}
-	if !validEndpointHostname(p.Hostname) {
-		return fmt.Errorf("hostname must be a DNS hostname or IP address without a scheme, path, or port")
-	}
-	if p.ServerPort < 1 || p.ServerPort > 65535 {
-		return fmt.Errorf("server_port must be between 1 and 65535")
+	addr, err := validateNodeParams(dir, p, opts)
+	if err != nil {
+		return err
 	}
 	if metricsPort < 1 || metricsPort > 65535 {
 		return fmt.Errorf("metrics port must be between 1 and 65535")
 	}
-	listenIP := "::" // The same default as conf.NodeConfig.
-	if opts != nil && opts.ListenIP != "" {
-		listenIP = opts.ListenIP
-	}
-	addr, err := netip.ParseAddr(listenIP)
-	if err != nil || addr.Zone() != "" {
-		return fmt.Errorf("ListenIP must be a numeric IPv4 or IPv6 address without a zone or port")
-	}
-
-	switch p.CertType {
-	case "self-signed":
-	case "letsencrypt":
-		// Reject display names and control characters: this field is an ACME
-		// account address, rather than an email message's recipient header.
-		email, err := mail.ParseAddress(p.AcmeEmail)
-		if err != nil || email.Address != p.AcmeEmail || hasControl(p.AcmeEmail) {
-			return fmt.Errorf("letsencrypt requires a valid acme_email address")
-		}
-	case "provided":
-		if strings.TrimSpace(p.CertChainPath) == "" || hasControl(p.CertChainPath) {
-			return fmt.Errorf("provided requires a cert_chain_path without control characters")
-		}
-		if strings.TrimSpace(p.CertKeyPath) == "" || hasControl(p.CertKeyPath) {
-			return fmt.Errorf("provided requires a cert_key_path without control characters")
-		}
-		if err := verifyProvidedCertificate(dir, p); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("cert_type must explicitly be self-signed, letsencrypt, or provided")
-	}
-	certificates, err := t.newCertificateLifecycle(dir, p)
-	if err != nil {
-		return err
-	}
-	snapshot, err := certificates.prepare()
+	snapshot, err := t.prepareCertificate(dir, p, opts)
 	if err != nil {
 		return err
 	}
@@ -136,6 +97,84 @@ func (t *TrustTunnel) generateConfig(dir string, p *panel.TrustTunnelNode, metri
 	}
 	if p.HasIPv6 != nil {
 		return setTopLevel(vpn, "ipv6_available", strconv.FormatBool(*p.HasIPv6))
+	}
+	return nil
+}
+
+// validateNodeParams rejects what the panel sent before anything is issued or
+// written for it, and returns the address the endpoint listens on.
+func validateNodeParams(dir string, p *panel.TrustTunnelNode, opts *conf.Options) (netip.Addr, error) {
+	if p == nil {
+		return netip.Addr{}, fmt.Errorf("missing TrustTunnel parameters")
+	}
+	if !validEndpointHostname(p.Hostname) {
+		return netip.Addr{}, fmt.Errorf("hostname must be a DNS hostname or IP address without a scheme, path, or port")
+	}
+	if p.ServerPort < 1 || p.ServerPort > 65535 {
+		return netip.Addr{}, fmt.Errorf("server_port must be between 1 and 65535")
+	}
+	listenIP := "::" // The same default as conf.NodeConfig.
+	if opts != nil && opts.ListenIP != "" {
+		listenIP = opts.ListenIP
+	}
+	addr, err := netip.ParseAddr(listenIP)
+	if err != nil || addr.Zone() != "" {
+		return netip.Addr{}, fmt.Errorf("ListenIP must be a numeric IPv4 or IPv6 address without a zone or port")
+	}
+
+	switch p.CertType {
+	case "self-signed":
+	case "letsencrypt":
+		// Reject display names and control characters: this field is an ACME
+		// account address, rather than an email message's recipient header.
+		email, err := mail.ParseAddress(p.AcmeEmail)
+		if err != nil || email.Address != p.AcmeEmail || hasControl(p.AcmeEmail) {
+			return netip.Addr{}, fmt.Errorf("letsencrypt requires a valid acme_email address")
+		}
+	case "provided":
+		if strings.TrimSpace(p.CertChainPath) == "" || hasControl(p.CertChainPath) {
+			return netip.Addr{}, fmt.Errorf("provided requires a cert_chain_path without control characters")
+		}
+		if strings.TrimSpace(p.CertKeyPath) == "" || hasControl(p.CertKeyPath) {
+			return netip.Addr{}, fmt.Errorf("provided requires a cert_key_path without control characters")
+		}
+		if err := verifyProvidedCertificate(dir, p); err != nil {
+			return netip.Addr{}, err
+		}
+	default:
+		return netip.Addr{}, fmt.Errorf("cert_type must explicitly be self-signed, letsencrypt, or provided")
+	}
+	return addr, nil
+}
+
+// prepareCertificate issues, or confirms, the node's certificate and returns
+// the immutable snapshot the endpoint is to be pointed at.
+func (t *TrustTunnel) prepareCertificate(dir string, p *panel.TrustTunnelNode, opts *conf.Options) (*certificateSnapshot, error) {
+	certificates, err := t.newCertificateLifecycle(dir, p, opts)
+	if err != nil {
+		return nil, err
+	}
+	return certificates.prepare()
+}
+
+// PrepareNode does a reload's certificate work while the node's previous
+// endpoint still serves: AddNode, which follows once that endpoint is retired,
+// then finds the certificate in place and asks no authority. Nothing the
+// running endpoint reads is touched - a new certificate gets its own source
+// and snapshot directories, and hosts.toml is AddNode's to rewrite.
+func (t *TrustTunnel) PrepareNode(tag string, info *panel.NodeInfo, opts *conf.Options) error {
+	if info == nil || info.TrustTunnel == nil {
+		return nil // AddNode reports it
+	}
+	dir := filepath.Join(t.workDir, sanitizeTag(tag))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("trusttunnel: create dir for %s: %w", tag, err)
+	}
+	if _, err := validateNodeParams(dir, info.TrustTunnel, opts); err != nil {
+		return fmt.Errorf("trusttunnel: configure %s: %w", tag, err)
+	}
+	if _, err := t.prepareCertificate(dir, info.TrustTunnel, opts); err != nil {
+		return fmt.Errorf("trusttunnel: certificate for %s: %w", tag, err)
 	}
 	return nil
 }

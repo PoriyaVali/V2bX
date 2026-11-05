@@ -49,7 +49,7 @@ type certificateSnapshot struct {
 	keyPath  string
 }
 
-func (t *TrustTunnel) newCertificateLifecycle(dir string, p *panel.TrustTunnelNode) (*certificateLifecycle, error) {
+func (t *TrustTunnel) newCertificateLifecycle(dir string, p *panel.TrustTunnelNode, opts *conf.Options) (*certificateLifecycle, error) {
 	if p == nil || !validEndpointHostname(p.Hostname) {
 		return nil, fmt.Errorf("TrustTunnel certificate requires a valid panel hostname")
 	}
@@ -79,7 +79,10 @@ func (t *TrustTunnel) newCertificateLifecycle(dir string, p *panel.TrustTunnelNo
 		config.CertMode = "self"
 		if p.CertType == "letsencrypt" {
 			config.CertMode = "http"
+			useLocalChallenge(config, opts)
 		}
+		// The challenge is not part of the identity: answering it another way
+		// issues the same certificate, so switching must not re-issue one.
 		identity, _ := json.Marshal([]string{p.CertType, p.Hostname, p.AcmeEmail})
 		source := filepath.Join(dir, "certificate-source", fmt.Sprintf("%x", sha256.Sum256(identity)))
 		config.CertFile = filepath.Join(source, "cert.pem")
@@ -89,6 +92,32 @@ func (t *TrustTunnel) newCertificateLifecycle(dir string, p *panel.TrustTunnelNo
 		return nil, fmt.Errorf("unsupported TrustTunnel certificate mode")
 	}
 	return &certificateLifecycle{dir: dir, hostname: p.Hostname, config: config, ops: ops}, nil
+}
+
+// useLocalChallenge lets the node's own CertConfig say how Let's Encrypt's
+// challenge is answered, and nothing more. The panel still decides that the
+// endpoint uses Let's Encrypt, for which hostname and with which account; only
+// this server knows whether its port 80 is free.
+//
+// Without it the built-in HTTP-01 server was the only way, so a server with a
+// web server or another node on port 80 could never issue or renew - and the
+// error it got told the operator to set CertMode dns or HTTPWebRoot, which this
+// core then ignored.
+func useLocalChallenge(config *conf.CertConfig, opts *conf.Options) {
+	if opts == nil || opts.CertConfig == nil {
+		return
+	}
+	local := opts.CertConfig
+	if local.CertMode == "dns" {
+		config.CertMode = "dns"
+		config.Provider = local.Provider
+		config.DNSEnv = make(map[string]string, len(local.DNSEnv))
+		for k, v := range local.DNSEnv {
+			config.DNSEnv[k] = v
+		}
+		return
+	}
+	config.HTTPWebRoot = local.HTTPWebRoot
 }
 
 // Only validated immutable files are exposed to the native process. A reload
@@ -208,6 +237,13 @@ func (c *certificateLifecycle) refresh(now time.Time, publish func(func() error)
 			return fmt.Errorf("managed endpoint certificate renewal failed: %w", err)
 		}
 		c.nextRenew = now.Add(certificateRenewInterval)
+		// Judge what the renewal produced by the clock after it, not before:
+		// issuance takes seconds, and a certificate can start the moment it is
+		// issued. Read before, every such renewal was logged as "outside its
+		// validity period", and the pair waited a poll to be published.
+		if after := time.Now(); after.After(now) {
+			now = after
+		}
 	}
 	snapshot, err := c.snapshot(now)
 	if err != nil {

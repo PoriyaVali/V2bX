@@ -55,9 +55,14 @@ func (s *managedServer) Listen(n *node) error {
 	if s.inbound != nil {
 		return s.inbound.Listen(t)
 	}
-	var e error
-	s.running, e = s.start(t)
-	return e
+	// Kept only when it started: an HTTP listener that could not bind comes
+	// back as a typed nil, which Close would dereference.
+	running, e := s.start(t)
+	if e != nil {
+		return e
+	}
+	s.running = running
+	return nil
 }
 func (s *managedServer) Close() error {
 	var e error

@@ -89,30 +89,41 @@ func isSupported(protocol string, protocols []string) bool {
 	return false
 }
 
-func (s *Selector) AddNode(tag string, info *panel.NodeInfo, option *conf.Options) error {
-	var core Core
+// pick is the core AddNode places a node on. It only reads: placing and
+// pinning the choice is AddNode's.
+func (s *Selector) pick(info *panel.NodeInfo, option *conf.Options) Core {
 	if len(option.CoreName) > 0 {
 		// use name to select core
-		if c, ok := s.cores[option.CoreName]; ok {
-			core = c
-		}
-	} else {
-		// use type to select core: the first one in config order that fits.
-		// This ranged over a map and kept the LAST match, so when two cores
-		// could serve the protocol the node landed on either at random.
-		for _, name := range s.order {
-			c := s.cores[name]
-			if len(option.Core) == 0 {
-				if !isSupported(info.Type, c.Protocols()) {
-					continue
-				}
-			} else if option.Core != c.Type() {
+		return s.cores[option.CoreName]
+	}
+	// use type to select core: the first one in config order that fits.
+	// This ranged over a map and kept the LAST match, so when two cores
+	// could serve the protocol the node landed on either at random.
+	for _, name := range s.order {
+		c := s.cores[name]
+		if len(option.Core) == 0 {
+			if !isSupported(info.Type, c.Protocols()) {
 				continue
 			}
-			core = c
-			break
+		} else if option.Core != c.Type() {
+			continue
 		}
+		return c
 	}
+	return nil
+}
+
+// PrepareNode runs the preparation of the core AddNode would place this node
+// on, if that core has any. A node no core serves is AddNode's to report.
+func (s *Selector) PrepareNode(tag string, info *panel.NodeInfo, option *conf.Options) error {
+	if p, ok := s.pick(info, option).(NodePreparer); ok {
+		return p.PrepareNode(tag, info, option)
+	}
+	return nil
+}
+
+func (s *Selector) AddNode(tag string, info *panel.NodeInfo, option *conf.Options) error {
+	core := s.pick(info, option)
 	if core == nil {
 		return errors.New("the node type is not support")
 	}
