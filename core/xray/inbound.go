@@ -318,34 +318,43 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 	// reply with no network settings at all left it nil - a nil dereference
 	// that took the process down. A PHP panel writes empty settings as [] or
 	// null; with none, Xray serves the transport with its defaults.
-	if noNetworkSettings(v.NetworkSettings) {
+	settings := panel.NormalizeNetworkSettings(v.NetworkSettings)
+	if len(settings) == 0 {
 		return nil
 	}
 	switch v.Network {
 	case "tcp":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.TCPSettings)
+		err := json.Unmarshal(settings, &inbound.StreamSetting.TCPSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal tcp settings error: %s", err)
 		}
 	case "ws":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.WSSettings)
+		err := json.Unmarshal(settings, &inbound.StreamSetting.WSSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal ws settings error: %s", err)
 		}
 	case "grpc":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.GRPCSettings)
+		err := json.Unmarshal(settings, &inbound.StreamSetting.GRPCSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal grpc settings error: %s", err)
 		}
 	case "httpupgrade":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.HTTPUPGRADESettings)
+		err := json.Unmarshal(settings, &inbound.StreamSetting.HTTPUPGRADESettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal httpupgrade settings error: %s", err)
 		}
 	case "splithttp", "xhttp":
-		err := json.Unmarshal(xhttpSettings(v.NetworkSettings), &inbound.StreamSetting.SplitHTTPSettings)
+		err := json.Unmarshal(settings, &inbound.StreamSetting.SplitHTTPSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal xhttp settings error: %s", err)
+		}
+	// Irboard's VMess form offers KCP, with {"header":{"type":"none"},
+	// "seed":""} for settings. With no case here every such node failed with
+	// "the network type is not vail".
+	case "kcp", "mkcp":
+		err := json.Unmarshal(settings, &inbound.StreamSetting.KCPSettings)
+		if err != nil {
+			return fmt.Errorf("unmarshal kcp settings error: %s", err)
 		}
 	default:
 		return errors.New("the network type is not vail")
@@ -392,8 +401,10 @@ func buildTrojan(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCo
 	t := coreConf.TransportProtocol(network)
 	inbound.StreamSetting = &coreConf.StreamConfig{Network: &t}
 	// A reply without networkSettings is a plain transport, as buildV2ray
-	// treats it; unmarshalling nothing failed the whole node.
-	if len(v.NetworkSettings) == 0 {
+	// treats it; unmarshalling nothing failed the whole node. [] and null,
+	// as a PHP panel writes empty settings, are none too.
+	settings := panel.NormalizeNetworkSettings(v.NetworkSettings)
+	if len(settings) == 0 {
 		switch network {
 		case "tcp", "ws", "grpc":
 			return nil
@@ -402,17 +413,17 @@ func buildTrojan(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCo
 	}
 	switch network {
 	case "tcp":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.TCPSettings)
+		err := json.Unmarshal(settings, &inbound.StreamSetting.TCPSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal tcp settings error: %s", err)
 		}
 	case "ws":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.WSSettings)
+		err := json.Unmarshal(settings, &inbound.StreamSetting.WSSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal ws settings error: %s", err)
 		}
 	case "grpc":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.GRPCSettings)
+		err := json.Unmarshal(settings, &inbound.StreamSetting.GRPCSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal grpc settings error: %s", err)
 		}

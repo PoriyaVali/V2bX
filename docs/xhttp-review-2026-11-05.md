@@ -38,9 +38,11 @@ In V2bX:
    `{"path":"/","mode":"auto","extra":{}}`, reached the node as `"extra":[]`, and
    an emptied `headers` or `xmux` did the same. Xray refuses `[]` where it wants
    an object, so `AddNode` failed with `Failed to unmarshal "extra"`. The core
-   now reads an empty `extra` as `{}` and leaves out the other empty objects
-   (`xhttpSettings` in `core/xray/xhttp.go`). VLESS or VMess settings that are
-   entirely `[]` count as none, whatever the transport.
+   now reads an empty `extra` as `{}` and leaves out the other empty objects.
+   VLESS or VMess settings that are entirely `[]` count as none, whatever the
+   transport. A follow-up moved this into the panel client
+   (`NormalizeNetworkSettings` in `api/panel/network_settings.go`), so that every
+   core gets the settings put right, for every transport.
 
 In Irboard (`app/Utils/Xhttp.php`):
 

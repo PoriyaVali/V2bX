@@ -280,11 +280,17 @@ func TestSetupCoreFollowsTheNodesTransportAndSecurity(t *testing.T) {
 		{"grpc reality", vless("grpc", panel.Reality), "sing", "sing xray"},
 		{"tcp tls", vless("tcp", panel.Tls), "xray", "sing xray mihomo"},
 		{"ws tls", vless("ws", panel.Tls), "sing", "sing xray mihomo"},
-		// Xray serves KCP with its defaults, for a node with no settings:
-		// none, null (as Irboard sends them) or [].
+		// TCP with V2Ray's HTTP header, Irboard's VMess TCP template: sing-box
+		// serves it to sing-box clients only, the Mihomo core drops the header.
+		{"vmess tcp http header", vmessTCP(`{"header":{"type":"http","request":{"path":["/"],"headers":{"Host":["www.baidu.com","www.bing.com"]}}}}`), "xray", "xray"},
+		{"vless tcp http header tls", &panel.NodeInfo{Type: "vless", Security: panel.Tls, VAllss: &panel.VAllssNode{Network: "tcp",
+			NetworkSettings: json.RawMessage(`{"header":{"type":"http"}}`)}}, "xray", "xray"},
+		{"vmess tcp no header", vmessTCP(`{"header":{"type":"none"}}`), "sing", "sing xray mihomo"},
+		// KCP: Xray only, with or without settings - none, null (as Irboard
+		// sends empty ones) or the KCP template of Irboard's VMess form.
 		{"vmess kcp defaults", vmessKCP(""), "xray", "xray"},
 		{"vmess kcp null", vmessKCP("null"), "xray", "xray"},
-		{"vmess kcp []", vmessKCP("[]"), "xray", "xray"},
+		{"vmess kcp template", vmessKCP(`{"header":{"type":"none"},"seed":null}`), "xray", "xray"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := resolveSetupCore("auto", tc.info); got != tc.auto {
@@ -301,11 +307,11 @@ func TestSetupCoreFollowsTheNodesTransportAndSecurity(t *testing.T) {
 	if err := validateSetupCore("sing", vless("xhttp", panel.Reality)); err == nil || !strings.Contains(err.Error(), "select xray") {
 		t.Errorf("the refusal does not name the core that can serve it: %v", err)
 	}
-	// KCP settings are not passed through, so no core serves a node that has some.
-	kcp := vmessKCP(`{"seed":"fictional"}`)
+	// Irboard's VMess form also accepts domainsocket, which no core serves.
+	socket := &panel.NodeInfo{Type: "vmess", VAllss: &panel.VAllssNode{Network: "domainsocket"}}
 	for _, core := range []string{"sing", "xray", "mihomo"} {
-		if err := validateSetupCore(core, kcp); err == nil || !strings.Contains(err.Error(), "no V2bX core") || !strings.Contains(err.Error(), "default settings") {
-			t.Errorf("%s core accepted VMess over kcp with settings, which no core serves: %v", core, err)
+		if err := validateSetupCore(core, socket); err == nil || !strings.Contains(err.Error(), "no V2bX core") {
+			t.Errorf("%s core accepted VMess over domainsocket, which no core serves: %v", core, err)
 		}
 	}
 	ech := vless("tcp", panel.Tls)
@@ -313,6 +319,10 @@ func TestSetupCoreFollowsTheNodesTransportAndSecurity(t *testing.T) {
 	if validateSetupCore("mihomo", ech) == nil {
 		t.Error("the mihomo core was accepted for an ECH node")
 	}
+}
+
+func vmessTCP(settings string) *panel.NodeInfo {
+	return &panel.NodeInfo{Type: "vmess", VAllss: &panel.VAllssNode{Network: "tcp", NetworkSettings: json.RawMessage(settings)}}
 }
 
 func vmessKCP(settings string) *panel.NodeInfo {

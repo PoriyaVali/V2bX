@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,9 +31,12 @@ var setupCoreProtocols = map[string][]string{
 // setupCoreTransports are the VLESS and VMess transports each core serves.
 // Given another, the core fails the node when it starts: sing-box has no
 // XHTTP ("unknown transport type: xhttp"), and the Mihomo core serves TCP,
-// WebSocket and gRPC only.
+// WebSocket and gRPC only. tcp+http is TCP with V2Ray's HTTP header, the
+// default of Irboard's VMess form: sing-box serves its own HTTP transport
+// instead, which Xray-based and Clash clients cannot reach, and the Mihomo
+// core ignores the header.
 var setupCoreTransports = map[string][]string{
-	"xray":   {"tcp", "ws", "grpc", "httpupgrade", "xhttp", "splithttp"},
+	"xray":   {"tcp", "tcp+http", "ws", "grpc", "httpupgrade", "xhttp", "splithttp", "kcp", "mkcp"},
 	"sing":   {"tcp", "ws", "grpc", "httpupgrade", "http", "quic"},
 	"mihomo": {"tcp", "ws", "grpc"},
 }
@@ -44,7 +46,15 @@ func setupTransport(info *panel.NodeInfo) string {
 	if (info.Type != "vless" && info.Type != "vmess") || info.VAllss == nil {
 		return ""
 	}
-	if info.VAllss.Network == "" {
+	if info.VAllss.Network == "" || info.VAllss.Network == "tcp" {
+		var settings struct {
+			Header struct {
+				Type string `json:"type"`
+			} `json:"header"`
+		}
+		if json.Unmarshal(info.VAllss.NetworkSettings, &settings) == nil && settings.Header.Type == "http" {
+			return "tcp+http"
+		}
 		return "tcp"
 	}
 	return info.VAllss.Network
@@ -55,23 +65,12 @@ func setupCoreServesTransport(core string, info *panel.NodeInfo) bool {
 	if transport == "" {
 		return true
 	}
-	if core == "xray" && (transport == "kcp" || transport == "mkcp") {
-		// The Xray core passes no KCP settings through: it serves KCP with
-		// Xray's defaults, for a node that has none.
-		return setupNoNetworkSettings(info.VAllss.NetworkSettings)
-	}
 	for _, candidate := range setupCoreTransports[core] {
 		if candidate == transport {
 			return true
 		}
 	}
 	return false
-}
-
-// setupNoNetworkSettings: the panel gave none, null or [].
-func setupNoNetworkSettings(raw json.RawMessage) bool {
-	trimmed := bytes.Join(bytes.Fields(raw), nil)
-	return len(trimmed) == 0 || string(trimmed) == "null" || string(trimmed) == "[]"
 }
 
 func validSetupCore(core string) bool { return core == "auto" || setupCoreProtocols[core] != nil }
@@ -106,11 +105,7 @@ func validateSetupCore(core string, info *panel.NodeInfo) error {
 			}
 		}
 		if len(able) == 0 {
-			hint := "change the node's transport in the panel"
-			if t := setupTransport(info); t == "kcp" || t == "mkcp" {
-				hint = "Xray serves KCP with its default settings only: clear the node's network settings in the panel, or change its transport"
-			}
-			return fmt.Errorf("no V2bX core serves %s over %s with these settings; %s | هیچ هسته‌ای %s روی %s را با این تنظیمات پشتیبانی نمی‌کند", info.Type, setupTransport(info), hint, info.Type, setupTransport(info))
+			return fmt.Errorf("no V2bX core serves %s over %s; change the node's transport in the panel | هیچ هسته‌ای %s روی %s را پشتیبانی نمی‌کند", info.Type, setupTransport(info), info.Type, setupTransport(info))
 		}
 		return fmt.Errorf("the %s core cannot serve %s over %s; select %s | هستهٔ %s این انتقال را ندارد؛ %s را انتخاب کنید", core, info.Type, setupTransport(info), strings.Join(able, " or "), core, strings.Join(able, " یا "))
 	}
