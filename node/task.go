@@ -268,8 +268,9 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 	// it and was refused as unknown until the process restarted; on the others
 	// every device registration was thrown away, so a device_limit=1 user
 	// reconnecting after the reload was counted against their own device.
+	var deleted, added []panel.UserInfo
 	if userListFresh {
-		deleted, added := compareUserList(c.userList, newU)
+		deleted, added = compareUserList(c.userList, newU)
 		l.UpdateUser(tag, added, deleted)
 		l.UpdateUserLimits(tag, newU)
 		c.userList = newU
@@ -287,6 +288,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 	if err := l.UpdateRule(&newN.Rules); err != nil {
 		storeProblem(&c.reloadProblem, fmt.Errorf("panel rules: %w", err))
 		log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Update Rule failed")
+		c.keepServingCurrentMembers(tag, deleted, added)
 		c.apiClient.ResetNodeCache()
 		return
 	}
@@ -297,6 +299,7 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 		if err := c.requestCert(); err != nil {
 			storeProblem(&c.reloadProblem, fmt.Errorf("certificate: %w", err))
 			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Request cert failed")
+			c.keepServingCurrentMembers(tag, deleted, added)
 			c.apiClient.ResetNodeCache()
 			return
 		}
@@ -310,13 +313,16 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 		if err := p.PrepareNode(tag, newN, c.Options); err != nil {
 			storeProblem(&c.reloadProblem, fmt.Errorf("prepare the node: %w", err))
 			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Prepare node failed")
+			c.keepServingCurrentMembers(tag, deleted, added)
 			c.apiClient.ResetNodeCache()
 			return
 		}
 	}
 	// Until preparation succeeds, report/status readers must still see the
 	// configuration of the listener that remains live. Membership changes
-	// above deliberately still revoke removed users through that limiter.
+	// above revoke removed users through that limiter, and a reload that
+	// stops before this point gives the live node the same members
+	// (keepServingCurrentMembers).
 	c.setInfo(newN)
 	// Remove old node
 	if c.nodeUp {
@@ -358,6 +364,38 @@ func (c *Controller) reloadNode(newN *panel.NodeInfo, newU []panel.UserInfo, use
 	c.configureCertificateRenewal(newN)
 	c.applyIntervals(newN)
 	log.WithField("tag", tag).Infof("Added %d new users", len(c.userList))
+}
+
+// keepServingCurrentMembers brings the node still in the core up to the
+// panel's members, when a reload stops before replacing it. The limiter already
+// has them, which revokes a removed user wherever connections pass through it -
+// but not on TrustTunnel, whose endpoint authenticates from its own credentials.
+// There a removed user kept connecting for as long as the reload kept failing:
+// c.userList already matched the panel, so no later poll found anyone to remove.
+//
+// A node that cannot drop its removed users must not keep serving them. It is
+// retired instead, and the retried reload brings it back with the members it
+// should have.
+func (c *Controller) keepServingCurrentMembers(tag string, deleted, added []panel.UserInfo) {
+	if !c.nodeUp || len(deleted)+len(added) == 0 {
+		return
+	}
+	if len(deleted) > 0 {
+		if err := c.server.DelUsers(deleted, tag, c.info); err != nil {
+			log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Removing users from the node a failed reload kept up failed; stopping it until the reload succeeds")
+			if err := c.retireCoreNode(tag); err != nil {
+				log.WithFields(log.Fields{"tag": tag, "err": err}).Error("Stop the node failed")
+				return
+			}
+			c.nodeUp = false
+			return
+		}
+	}
+	if len(added) > 0 {
+		if _, err := c.server.AddUsers(&vCore.AddUsersParams{Tag: tag, NodeInfo: c.info, Users: added}); err != nil {
+			log.WithFields(log.Fields{"tag": tag, "err": err}).Warn("Adding users to the node a failed reload kept up failed; they join when the reload succeeds")
+		}
+	}
 }
 
 // applyIntervals wakes the existing loops when their intervals change. Starting
