@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,51 @@ var setupCoreProtocols = map[string][]string{
 	"mihomo":      {"http", "socks5", "mieru", "shadowquic", "sudoku", "snell", "vmess", "vless", "trojan", "tuic", "hysteria2", "anytls", "trusttunnel"},
 }
 
+// setupCoreTransports are the VLESS and VMess transports each core serves.
+// Given another, the core fails the node when it starts: sing-box has no
+// XHTTP ("unknown transport type: xhttp"), and the Mihomo core serves TCP,
+// WebSocket and gRPC only.
+var setupCoreTransports = map[string][]string{
+	"xray":   {"tcp", "ws", "grpc", "httpupgrade", "xhttp", "splithttp"},
+	"sing":   {"tcp", "ws", "grpc", "httpupgrade", "http", "quic"},
+	"mihomo": {"tcp", "ws", "grpc"},
+}
+
+// setupTransport is a VLESS or VMess node's transport; "" for other types.
+func setupTransport(info *panel.NodeInfo) string {
+	if (info.Type != "vless" && info.Type != "vmess") || info.VAllss == nil {
+		return ""
+	}
+	if info.VAllss.Network == "" {
+		return "tcp"
+	}
+	return info.VAllss.Network
+}
+
+func setupCoreServesTransport(core string, info *panel.NodeInfo) bool {
+	transport := setupTransport(info)
+	if transport == "" {
+		return true
+	}
+	if core == "xray" && (transport == "kcp" || transport == "mkcp") {
+		// The Xray core passes no KCP settings through: it serves KCP with
+		// Xray's defaults, for a node that has none.
+		return setupNoNetworkSettings(info.VAllss.NetworkSettings)
+	}
+	for _, candidate := range setupCoreTransports[core] {
+		if candidate == transport {
+			return true
+		}
+	}
+	return false
+}
+
+// setupNoNetworkSettings: the panel gave none, null or [].
+func setupNoNetworkSettings(raw json.RawMessage) bool {
+	trimmed := bytes.Join(bytes.Fields(raw), nil)
+	return len(trimmed) == 0 || string(trimmed) == "null" || string(trimmed) == "[]"
+}
+
 func validSetupCore(core string) bool { return core == "auto" || setupCoreProtocols[core] != nil }
 
 func setupCoreSupports(core, protocol string) bool {
@@ -52,6 +98,29 @@ func validateSetupCore(core string, info *panel.NodeInfo) error {
 	if core == "sing" && info.Type == "vless" && info.VAllss != nil && info.VAllss.Encryption != "" {
 		return fmt.Errorf("VLESS encryption requires Xray; select Xray or change the node settings in the panel")
 	}
+	if !setupCoreServesTransport(core, info) {
+		var able []string
+		for _, candidate := range []string{"xray", "sing", "mihomo"} {
+			if setupCoreSupports(candidate, info.Type) && setupCoreServesTransport(candidate, info) {
+				able = append(able, candidate)
+			}
+		}
+		if len(able) == 0 {
+			hint := "change the node's transport in the panel"
+			if t := setupTransport(info); t == "kcp" || t == "mkcp" {
+				hint = "Xray serves KCP with its default settings only: clear the node's network settings in the panel, or change its transport"
+			}
+			return fmt.Errorf("no V2bX core serves %s over %s with these settings; %s | هیچ هسته‌ای %s روی %s را با این تنظیمات پشتیبانی نمی‌کند", info.Type, setupTransport(info), hint, info.Type, setupTransport(info))
+		}
+		return fmt.Errorf("the %s core cannot serve %s over %s; select %s | هستهٔ %s این انتقال را ندارد؛ %s را انتخاب کنید", core, info.Type, setupTransport(info), strings.Join(able, " or "), core, strings.Join(able, " یا "))
+	}
+	// What the Mihomo core refuses when it starts the node.
+	if core == "mihomo" && info.Security == panel.Reality {
+		return fmt.Errorf("the mihomo core cannot serve REALITY; select sing or xray | هستهٔ mihomo از REALITY پشتیبانی نمی‌کند")
+	}
+	if core == "mihomo" && info.VAllss != nil && (info.VAllss.Encryption != "" || info.VAllss.TlsSettings.Ech != "") {
+		return fmt.Errorf("the mihomo core cannot serve the panel's VLESS encryption or ECH; select another core or change the node settings in the panel")
+	}
 	return nil
 }
 
@@ -66,6 +135,10 @@ func resolveSetupCore(core string, info *panel.NodeInfo) string {
 		return info.Type
 	}
 	if info.Type == "vless" && info.VAllss != nil && info.VAllss.Encryption != "" {
+		return "xray"
+	}
+	// XHTTP: sing-box has no such transport.
+	if !setupCoreServesTransport("sing", info) && setupCoreServesTransport("xray", info) {
 		return "xray"
 	}
 	if info.Security == panel.Tls && ((info.Trojan != nil && (info.Trojan.Network == "" || info.Trojan.Network == "tcp")) || (info.VAllss != nil && info.Type == "vless" && info.VAllss.Network == "tcp" && info.VAllss.Encryption == "")) {
@@ -200,7 +273,7 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 			}
 			fmt.Fprintln(p.out, "Node ID must be positive | شناسه باید عدد مثبت باشد")
 		}
-		fmt.Fprintln(p.out, "Core for this node | هسته این نود:\n  1. sing-box (AnyTLS, VMess, VLESS, Trojan, Shadowsocks, Hysteria, TUIC)\n  2. Xray (VLESS, VMess, Trojan, Shadowsocks)\n  3. Hysteria2 (dedicated | اختصاصی)\n  4. MDNS\n  5. TrustTunnel\n  6. Mihomo fork (server | سمت سرور)")
+		fmt.Fprintln(p.out, "Core for this node | هسته این نود:\n  1. sing-box (AnyTLS, VMess, VLESS, Trojan, Shadowsocks, Hysteria, TUIC)\n  2. Xray (VLESS, VMess, Trojan, Shadowsocks; the only core for XHTTP | تنها هسته برای XHTTP)\n  3. Hysteria2 (dedicated | اختصاصی)\n  4. MDNS\n  5. TrustTunnel\n  6. Mihomo fork (server | سمت سرور)")
 		fallback := 1
 		for i, core := range coreNames {
 			if core == defaults.core {
@@ -282,7 +355,11 @@ func guidedPanelConfig(cmd *cobra.Command, defaults configureOptions, key string
 		var config map[string]any
 		var lines []string
 		for {
-			fmt.Fprintf(p.out, "Detected | شناسایی شد: %s — core=%s — port=%d — %s\n", label, core, selected.Common.ServerPort, setupSecuritySummary(selected, o))
+			transport := ""
+			if t := setupTransport(selected); t != "" {
+				transport = " — transport=" + t
+			}
+			fmt.Fprintf(p.out, "Detected | شناسایی شد: %s — core=%s — port=%d%s — %s\n", label, core, selected.Common.ServerPort, transport, setupSecuritySummary(selected, o))
 			if sni := panelTLSName(selected); selected.Security == panel.Tls && selected.Type != "trusttunnel" && sni != "" && !sameSetupDomain(sni, o.certDomain) {
 				fmt.Fprintln(p.out, "SNI differs from the certificate domain. The client's verification name must be covered by the certificate | SNI متفاوت است؛ نام مورد بررسی کلاینت باید در گواهی باشد. تنظیم SNI پنل را بررسی کنید")
 			}

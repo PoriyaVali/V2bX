@@ -256,3 +256,123 @@ func TestConfigureRejectsIncompatibleAndUnusedCoreOverrides(t *testing.T) {
 		})
 	}
 }
+
+// The core is chosen from what the panel says the node is. sing-box has no
+// XHTTP, and the Mihomo core serves VLESS and VMess over TCP, WebSocket and
+// gRPC only, without REALITY: a configuration naming either for such a node
+// was written without a word, and the node failed when V2bX started it.
+func TestSetupCoreFollowsTheNodesTransportAndSecurity(t *testing.T) {
+	vless := func(network string, security int) *panel.NodeInfo {
+		return &panel.NodeInfo{Type: "vless", Security: security, VAllss: &panel.VAllssNode{Network: network}}
+	}
+	for _, tc := range []struct {
+		name  string
+		info  *panel.NodeInfo
+		auto  string
+		serve string // the cores that can serve it
+	}{
+		{"xhttp reality", vless("xhttp", panel.Reality), "xray", "xray"},
+		{"xhttp tls", vless("xhttp", panel.Tls), "xray", "xray"},
+		{"xhttp plain", vless("xhttp", panel.None), "xray", "xray"},
+		{"vmess xhttp", &panel.NodeInfo{Type: "vmess", Security: panel.Tls, VAllss: &panel.VAllssNode{Network: "xhttp"}}, "xray", "xray"},
+		{"httpupgrade tls", vless("httpupgrade", panel.Tls), "sing", "sing xray"},
+		{"tcp reality", vless("tcp", panel.Reality), "sing", "sing xray"},
+		{"grpc reality", vless("grpc", panel.Reality), "sing", "sing xray"},
+		{"tcp tls", vless("tcp", panel.Tls), "xray", "sing xray mihomo"},
+		{"ws tls", vless("ws", panel.Tls), "sing", "sing xray mihomo"},
+		// Xray serves KCP with its defaults, for a node with no settings:
+		// none, null (as Irboard sends them) or [].
+		{"vmess kcp defaults", vmessKCP(""), "xray", "xray"},
+		{"vmess kcp null", vmessKCP("null"), "xray", "xray"},
+		{"vmess kcp []", vmessKCP("[]"), "xray", "xray"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveSetupCore("auto", tc.info); got != tc.auto {
+				t.Errorf("auto chose %s, want %s", got, tc.auto)
+			}
+			for _, core := range []string{"sing", "xray", "mihomo"} {
+				err := validateSetupCore(core, tc.info)
+				if able := strings.Contains(tc.serve, core); able != (err == nil) {
+					t.Errorf("%s core: accepted=%v, want %v (%v)", core, err == nil, able, err)
+				}
+			}
+		})
+	}
+	if err := validateSetupCore("sing", vless("xhttp", panel.Reality)); err == nil || !strings.Contains(err.Error(), "select xray") {
+		t.Errorf("the refusal does not name the core that can serve it: %v", err)
+	}
+	// KCP settings are not passed through, so no core serves a node that has some.
+	kcp := vmessKCP(`{"seed":"fictional"}`)
+	for _, core := range []string{"sing", "xray", "mihomo"} {
+		if err := validateSetupCore(core, kcp); err == nil || !strings.Contains(err.Error(), "no V2bX core") || !strings.Contains(err.Error(), "default settings") {
+			t.Errorf("%s core accepted VMess over kcp with settings, which no core serves: %v", core, err)
+		}
+	}
+	ech := vless("tcp", panel.Tls)
+	ech.VAllss.TlsSettings.Ech = "custom"
+	if validateSetupCore("mihomo", ech) == nil {
+		t.Error("the mihomo core was accepted for an ECH node")
+	}
+}
+
+func vmessKCP(settings string) *panel.NodeInfo {
+	n := &panel.NodeInfo{Type: "vmess", VAllss: &panel.VAllssNode{Network: "kcp"}}
+	if settings != "" {
+		n.VAllss.NetworkSettings = json.RawMessage(settings)
+	}
+	return n
+}
+
+// Unattended and guided setup, for a VLESS XHTTP node over REALITY: auto
+// chooses Xray, the wizard shows the transport, and choosing sing-box is
+// refused with the core to choose instead.
+func TestSetupChoosesXrayForVLESSOverXHTTP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("node_type") != "vless" || r.URL.Query().Get("node_id") != "11" {
+			http.Error(w, "unknown node", 404)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"server_port":443,"network":"xhttp","networkSettings":{"path":"/xh","host":"","mode":"auto","extra":{}},"tls":2,` +
+			`"tls_settings":{"server_name":"cover.example.test","server_port":"443","short_id":"ab","private_key":"fictional"},"base_config":{"push_interval":60,"pull_interval":60}}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("V2BX_TEST_API_KEY", "guided-key")
+
+	output := filepath.Join(t.TempDir(), "config.json")
+	c := newConfigureCommand()
+	c.SetArgs([]string{"--panel", srv.URL, "--api-key-env", "V2BX_TEST_API_KEY", "--nodes", "vless:11", "--output", output})
+	var text bytes.Buffer
+	c.SetOut(&text)
+	c.SetErr(&text)
+	if err := c.Execute(); err != nil {
+		t.Fatalf("%v: %s", err, text.String())
+	}
+	parsed := conf.New()
+	if err := parsed.LoadFromPath(output); err != nil {
+		t.Fatal(err)
+	}
+	if core := parsed.NodeConfig[0].Options.Core; core != "xray" {
+		t.Fatalf("unattended setup chose %s for VLESS over XHTTP", core)
+	}
+
+	// Guided: sing-box first, refused; then Xray.
+	output = filepath.Join(t.TempDir(), "config.json")
+	out, err := executeGuidedTest(srv.URL, output, "none\n\n\nn\n11\n1\n\n11\n2\n\nn\n")
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if !strings.Contains(out, "the sing core cannot serve vless over xhttp; select xray") {
+		t.Fatalf("choosing sing-box for an XHTTP node was not refused:\n%s", out)
+	}
+	if !strings.Contains(out, "transport=xhttp") {
+		t.Fatalf("the wizard did not show the detected transport:\n%s", out)
+	}
+	parsed = conf.New()
+	if err := parsed.LoadFromPath(output); err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.NodeConfig) != 1 || parsed.NodeConfig[0].Options.Core != "xray" {
+		t.Fatalf("guided setup wrote %+v", parsed.NodeConfig)
+	}
+}
