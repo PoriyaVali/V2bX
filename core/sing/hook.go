@@ -547,6 +547,7 @@ func (h *HookServer) RoutedConnection(ctx context.Context, conn net.Conn, m adap
 		if h.users != nil {
 			h.users.mapLock.RUnlock()
 		}
+		h.logMissingGeneration(ctx, m.Inbound)
 		_ = conn.Close()
 		return conn
 	}
@@ -639,6 +640,7 @@ func (h *HookServer) RoutedPacketConnection(ctx context.Context, conn N.PacketCo
 		if h.users != nil {
 			h.users.mapLock.RUnlock()
 		}
+		h.logMissingGeneration(ctx, m.Inbound)
 		_ = conn.Close()
 		return conn
 	}
@@ -680,6 +682,19 @@ func (h *HookServer) currentGenerationLocked(ctx context.Context, tag, key strin
 	// Isolated hooks constructed without listener generations are used by
 	// embedders/tests. A managed production listener must carry its token.
 	return h.users.nodes == nil
+}
+
+// logMissingGeneration says why a connection was refused when it arrived
+// without its listener's generation. A transport that loses its inbound's
+// context makes every user look like this: WebSocket and HTTPUpgrade nodes
+// refused all of them that way, and nothing reached the log.
+func (h *HookServer) logMissingGeneration(ctx context.Context, inbound string) {
+	if _, carried := ctx.Value(nodeGenerationKey{}).(*nodeGeneration); carried || !h.managedInbound(ctx, inbound) {
+		return
+	}
+	if logEvery("generation|"+inbound, time.Minute) {
+		log.Error("[", inbound, "] refused a connection that arrived without its listener's generation; its transport lost the inbound's context")
+	}
 }
 
 func (h *HookServer) managedInbound(ctx context.Context, tag string) bool {

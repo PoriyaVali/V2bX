@@ -23,6 +23,8 @@ type Hysteria2 struct {
 	// traffic counted since the last report, unbilled.
 	hooks  map[string]*HookServer
 	Logger *zap.Logger
+	// allowPrivate is the core's AllowPrivateDestinations.
+	allowPrivate bool
 }
 
 func init() {
@@ -39,9 +41,10 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		return nil, err
 	}
 	return &Hysteria2{
-		Hy2nodes: make(map[string]*Hysteria2node),
-		hooks:    make(map[string]*HookServer),
-		Logger:   log,
+		Hy2nodes:     make(map[string]*Hysteria2node),
+		hooks:        make(map[string]*HookServer),
+		Logger:       log,
+		allowPrivate: c.Hysteria2Config.AllowPrivateDestinations,
 	}, nil
 }
 

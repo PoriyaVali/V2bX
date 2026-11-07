@@ -6,7 +6,7 @@
   "module_sum": "h1:Nf3LbPxI8F7SXIR93DuZfvn5pUz1fjF8R31bEN4t3xU=",
   "go_mod_sum": "h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=",
   "patch": "xray-tls-lifecycle.patch",
-  "patch_sha256": "9340d5f0d4e80b3a05290dbd7e1d4cc64b10db0fc72628412a90f9a5d3c0fe8d",
+  "patch_sha256": "1ba37a47d5bb69ab8c381d6e2e970be2f4648378da553078417a7bf824903776",
   "files": [
     {
       "path": "transport/internet/tls/config.go",
@@ -27,6 +27,41 @@
       "path": "transport/internet/tls/certificate_lifecycle_test.go",
       "base_sha256": null,
       "patched_sha256": "52ccad8a3f9ae648b1c1efa9ebce87a3ff315e10b758042f00f9e24791163a03"
+    },
+    {
+      "path": "transport/internet/kcp/receiving.go",
+      "base_sha256": "a6490e2c156b875f8dbf88904965be4765e9cf56f0609dd526db917870dd3375",
+      "patched_sha256": "d484ee3a86d87e752a19687d10b5f103c1e7c95b141823dc6a7a0ecd44c9324b"
+    },
+    {
+      "path": "proxy/vless/inbound/inbound.go",
+      "base_sha256": "9108a2292f8e1d1cbf506a44836f54103ad3fcfb3769c4f815f726e93acb9e32",
+      "patched_sha256": "2c487f8b49b4a8202530eb7e7b47e905933c0746595be71e45830ece1619f002"
+    },
+    {
+      "path": "proxy/vless/outbound/outbound.go",
+      "base_sha256": "c6d927ec0241f4270ca350a994dc4ac721ad248b45bb8d8fc568ab1fdff9b924",
+      "patched_sha256": "18d72f972497ebad82651718b4d4a5b5ebd2c7305d2571751c60c3ba32f412e6"
+    },
+    {
+      "path": "transport/internet/kcp/receiving_release_test.go",
+      "base_sha256": null,
+      "patched_sha256": "565d42f6bb19a49ba20f056c17c5ab343207fccac560071970eeb02c6283b07c"
+    },
+    {
+      "path": "transport/internet/grpc/encoding/hunkconn.go",
+      "base_sha256": "819e20f5d2ba14e3636adcf81f4fa78ccce702f298c3c785b803fce803aa3d3f",
+      "patched_sha256": "7d0cba5ee54867e179d6b9c716b1de5a7f02d66c1d729c80aa4f97f6d9b0d31c"
+    },
+    {
+      "path": "transport/internet/grpc/encoding/multiconn.go",
+      "base_sha256": "df50cffe73d7fe510a766ce953f72c2bd39deebc83faef3334a641529af9a2b9",
+      "patched_sha256": "0609466494430d69c52d8d48182c0a0de0c881e8a237abda93aa6f440feac9e1"
+    },
+    {
+      "path": "transport/internet/grpc/encoding/closesend_test.go",
+      "base_sha256": null,
+      "patched_sha256": "5a58c10f3d2f5f76641de0e566e071c467a43ea5e2a4ff6b2e6b667fe5a55d04"
     }
   ]
 }

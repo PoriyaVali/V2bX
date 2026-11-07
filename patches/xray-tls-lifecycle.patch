@@ -529,3 +529,350 @@ new file mode 100644
 +		t.Fatalf("final rotated serial=%d, err=%v", serial, err)
 +	}
 +}
+diff --git a/transport/internet/kcp/receiving.go b/transport/internet/kcp/receiving.go
+--- a/transport/internet/kcp/receiving.go
++++ b/transport/internet/kcp/receiving.go
+@@ -182,7 +182,17 @@ func (w *ReceivingWorker) ProcessSegment(seg *DataSegment) {
+ 	}
+ }
+ 
++// ReadMultiBuffer and Read take and keep leftOver under the worker's lock:
++// Release clears it under that lock when the connection is torn down, and
++// reading it outside the lock raced the teardown of every mKCP connection
++// still being read, a node's whole listener among them.
+ func (w *ReceivingWorker) ReadMultiBuffer() buf.MultiBuffer {
++	w.Lock()
++	defer w.Unlock()
++	return w.readMultiBufferLocked()
++}
++
++func (w *ReceivingWorker) readMultiBufferLocked() buf.MultiBuffer {
+ 	if w.leftOver != nil {
+ 		mb := w.leftOver
+ 		w.leftOver = nil
+@@ -190,9 +200,6 @@ func (w *ReceivingWorker) ReadMultiBuffer() buf.MultiBuffer {
+ 	}
+ 
+ 	mb := make(buf.MultiBuffer, 0, 32)
+-
+-	w.Lock()
+-	defer w.Unlock()
+ 	for {
+ 		seg := w.window.Remove(w.nextNumber)
+ 		if seg == nil {
+@@ -207,7 +214,9 @@ func (w *ReceivingWorker) ReadMultiBuffer() buf.MultiBuffer {
+ }
+ 
+ func (w *ReceivingWorker) Read(b []byte) int {
+-	mb := w.ReadMultiBuffer()
++	w.Lock()
++	defer w.Unlock()
++	mb := w.readMultiBufferLocked()
+ 	if mb.IsEmpty() {
+ 		return 0
+ 	}
+diff --git a/proxy/vless/inbound/inbound.go b/proxy/vless/inbound/inbound.go
+--- a/proxy/vless/inbound/inbound.go
++++ b/proxy/vless/inbound/inbound.go
+@@ -561,29 +561,32 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection s
+ 				fallthrough // we will break Mux connections that contain TCP requests
+ 			case protocol.RequestCommandTCP:
+ 				var t reflect.Type
+-				var p uintptr
++				// The connection is carried as a pointer: as a uintptr it was turned
++				// back into pointers to its buffers, which Go does not allow and its
++				// pointer checks (on under the race detector) end the process for.
++				var p unsafe.Pointer
+ 				if commonConn, ok := connection.(*encryption.CommonConn); ok {
+ 					if _, ok := commonConn.Conn.(*encryption.XorConn); ok || !proxy.IsRAWTransportWithoutSecurity(iConn) {
+ 						inbound.CanSpliceCopy = 3 // full-random xorConn / non-RAW transport / another securityConn should not be penetrated
+ 					}
+ 					t = reflect.TypeOf(commonConn).Elem()
+-					p = uintptr(unsafe.Pointer(commonConn))
++					p = unsafe.Pointer(commonConn)
+ 				} else if tlsConn, ok := iConn.(*tls.Conn); ok {
+ 					if tlsConn.ConnectionState().Version != gotls.VersionTLS13 {
+ 						return errors.New(`failed to use `+requestAddons.Flow+`, found outer tls version `, tlsConn.ConnectionState().Version).AtWarning()
+ 					}
+ 					t = reflect.TypeOf(tlsConn.Conn).Elem()
+-					p = uintptr(unsafe.Pointer(tlsConn.Conn))
++					p = unsafe.Pointer(tlsConn.Conn)
+ 				} else if realityConn, ok := iConn.(*reality.Conn); ok {
+ 					t = reflect.TypeOf(realityConn.Conn).Elem()
+-					p = uintptr(unsafe.Pointer(realityConn.Conn))
++					p = unsafe.Pointer(realityConn.Conn)
+ 				} else {
+ 					return errors.New("XTLS only supports TLS and REALITY directly for now.").AtWarning()
+ 				}
+ 				i, _ := t.FieldByName("input")
+ 				r, _ := t.FieldByName("rawInput")
+-				input = (*bytes.Reader)(unsafe.Pointer(p + i.Offset))
+-				rawInput = (*bytes.Buffer)(unsafe.Pointer(p + r.Offset))
++				input = (*bytes.Reader)(unsafe.Add(p, i.Offset))
++				rawInput = (*bytes.Buffer)(unsafe.Add(p, r.Offset))
+ 			}
+ 		} else {
+ 			return errors.New("account " + account.ID.String() + " is not able to use the flow " + requestAddons.Flow).AtWarning()
+diff --git a/proxy/vless/outbound/outbound.go b/proxy/vless/outbound/outbound.go
+--- a/proxy/vless/outbound/outbound.go
++++ b/proxy/vless/outbound/outbound.go
+@@ -262,29 +262,32 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
+ 			fallthrough // let server break Mux connections that contain TCP requests
+ 		case protocol.RequestCommandTCP, protocol.RequestCommandRvs:
+ 			var t reflect.Type
+-			var p uintptr
++			// The connection is carried as a pointer: as a uintptr it was turned
++			// back into pointers to its buffers, which Go does not allow and its
++			// pointer checks (on under the race detector) end the process for.
++			var p unsafe.Pointer
+ 			if commonConn, ok := conn.(*encryption.CommonConn); ok {
+ 				if _, ok := commonConn.Conn.(*encryption.XorConn); ok || !proxy.IsRAWTransportWithoutSecurity(iConn) {
+ 					ob.CanSpliceCopy = 3 // full-random xorConn / non-RAW transport / another securityConn should not be penetrated
+ 				}
+ 				t = reflect.TypeOf(commonConn).Elem()
+-				p = uintptr(unsafe.Pointer(commonConn))
++				p = unsafe.Pointer(commonConn)
+ 			} else if tlsConn, ok := iConn.(*tls.Conn); ok {
+ 				t = reflect.TypeOf(tlsConn.Conn).Elem()
+-				p = uintptr(unsafe.Pointer(tlsConn.Conn))
++				p = unsafe.Pointer(tlsConn.Conn)
+ 			} else if utlsConn, ok := iConn.(*tls.UConn); ok {
+ 				t = reflect.TypeOf(utlsConn.Conn).Elem()
+-				p = uintptr(unsafe.Pointer(utlsConn.Conn))
++				p = unsafe.Pointer(utlsConn.Conn)
+ 			} else if realityConn, ok := iConn.(*reality.UConn); ok {
+ 				t = reflect.TypeOf(realityConn.Conn).Elem()
+-				p = uintptr(unsafe.Pointer(realityConn.Conn))
++				p = unsafe.Pointer(realityConn.Conn)
+ 			} else {
+ 				return errors.New("XTLS only supports TLS and REALITY directly for now.").AtWarning()
+ 			}
+ 			i, _ := t.FieldByName("input")
+ 			r, _ := t.FieldByName("rawInput")
+-			input = (*bytes.Reader)(unsafe.Pointer(p + i.Offset))
+-			rawInput = (*bytes.Buffer)(unsafe.Pointer(p + r.Offset))
++			input = (*bytes.Reader)(unsafe.Add(p, i.Offset))
++			rawInput = (*bytes.Buffer)(unsafe.Add(p, r.Offset))
+ 		default:
+ 			panic("unknown VLESS request command")
+ 		}
+diff --git a/transport/internet/kcp/receiving_release_test.go b/transport/internet/kcp/receiving_release_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/internet/kcp/receiving_release_test.go
+@@ -0,0 +1,51 @@
++package kcp
++
++import (
++	"sync"
++	"testing"
++
++	"github.com/xtls/xray-core/common/buf"
++)
++
++type noOpCloser struct{}
++
++func (noOpCloser) Close() error { return nil }
++
++// 🔴 Regression: an mKCP connection torn down while it is being read.
++// ReadMultiBuffer and Read took leftOver outside the lock Release clears it
++// under; the race detector reported it whenever a node's listener closed
++// with a connection still reading.
++func TestReceivingWorkerReleaseDuringRead(t *testing.T) {
++	conn := NewConnection(ConnMetadata{Conversation: 1}, buf.DiscardBytes, noOpCloser{}, &Config{
++		Mtu:              1350,
++		Tti:              50,
++		UplinkCapacity:   5,
++		DownlinkCapacity: 20,
++		CwndMultiplier:   20,
++		MaxSendingWindow: 2 * 1024 * 1024,
++	})
++	defer conn.Terminate()
++	w := conn.receivingWorker
++	var wg sync.WaitGroup
++	wg.Add(2)
++	go func() {
++		defer wg.Done()
++		for i := 0; i < 2000; i++ {
++			w.Lock()
++			w.leftOver = buf.MultiBuffer{buf.New()}
++			w.Unlock()
++			if i%2 == 0 {
++				buf.ReleaseMulti(w.ReadMultiBuffer())
++			} else {
++				w.Read(make([]byte, 1))
++			}
++		}
++	}()
++	go func() {
++		defer wg.Done()
++		for i := 0; i < 2000; i++ {
++			w.Release()
++		}
++	}()
++	wg.Wait()
++}
+diff --git a/transport/internet/grpc/encoding/hunkconn.go b/transport/internet/grpc/encoding/hunkconn.go
+--- a/transport/internet/grpc/encoding/hunkconn.go
++++ b/transport/internet/grpc/encoding/hunkconn.go
+@@ -3,6 +3,7 @@ package encoding
+ import (
+ 	"context"
+ 	"io"
++	"sync"
+ 
+ 	"github.com/xtls/xray-core/common/buf"
+ 	"github.com/xtls/xray-core/common/errors"
+@@ -27,13 +28,17 @@ type HunkReaderWriter struct {
+ 	hc     HunkConn
+ 	cancel context.CancelFunc
+ 	done   *done.Instance
++	// sendMu keeps CloseSend from running during a Send, which a gRPC client
++	// stream does not allow: closing a connection while it was writing was
++	// a data race.
++	sendMu sync.Mutex
+ 
+ 	buf   []byte
+ 	index int
+ }
+ 
+ func NewHunkReadWriter(hc HunkConn, cancel context.CancelFunc) *HunkReaderWriter {
+-	return &HunkReaderWriter{hc, cancel, done.New(), nil, 0}
++	return &HunkReaderWriter{hc: hc, cancel: cancel, done: done.New()}
+ }
+ 
+ func NewHunkConn(hc HunkConn, cancel context.CancelFunc, trustedXForwardedFor []string) net.Conn {
+@@ -110,7 +115,9 @@ func (h *HunkReaderWriter) Write(buf []byte) (int, error) {
+ 		return 0, io.ErrClosedPipe
+ 	}
+ 
++	h.sendMu.Lock()
+ 	err := h.hc.Send(&Hunk{Data: buf[:]})
++	h.sendMu.Unlock()
+ 	if err != nil {
+ 		return 0, errors.New("failed to send data over gRPC tunnel").Base(err)
+ 	}
+@@ -118,10 +125,13 @@ func (h *HunkReaderWriter) Write(buf []byte) (int, error) {
+ }
+ 
+ func (h *HunkReaderWriter) Close() error {
++	// Cancelled first, so that a Send held up by flow control returns.
+ 	if h.cancel != nil {
+ 		h.cancel()
+ 	}
+ 	if sc, match := h.hc.(StreamCloser); match {
++		h.sendMu.Lock()
++		defer h.sendMu.Unlock()
+ 		return sc.CloseSend()
+ 	}
+ 
+diff --git a/transport/internet/grpc/encoding/multiconn.go b/transport/internet/grpc/encoding/multiconn.go
+--- a/transport/internet/grpc/encoding/multiconn.go
++++ b/transport/internet/grpc/encoding/multiconn.go
+@@ -3,6 +3,7 @@ package encoding
+ import (
+ 	"context"
+ 	"io"
++	"sync"
+ 
+ 	"github.com/xtls/xray-core/common/buf"
+ 	"github.com/xtls/xray-core/common/errors"
+@@ -23,12 +24,14 @@ type MultiHunkReaderWriter struct {
+ 	hc     MultiHunkConn
+ 	cancel context.CancelFunc
+ 	done   *done.Instance
++	// sendMu: as for HunkReaderWriter.
++	sendMu sync.Mutex
+ 
+ 	buf [][]byte
+ }
+ 
+ func NewMultiHunkReadWriter(hc MultiHunkConn, cancel context.CancelFunc) *MultiHunkReaderWriter {
+-	return &MultiHunkReaderWriter{hc, cancel, done.New(), nil}
++	return &MultiHunkReaderWriter{hc: hc, cancel: cancel, done: done.New()}
+ }
+ 
+ func NewMultiHunkConn(hc MultiHunkConn, cancel context.CancelFunc, trustedXForwardedFor []string) net.Conn {
+@@ -102,7 +105,9 @@ func (h *MultiHunkReaderWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
+ 		}
+ 	}
+ 
++	h.sendMu.Lock()
+ 	err := h.hc.Send(&MultiHunk{Data: hunks})
++	h.sendMu.Unlock()
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -114,6 +119,8 @@ func (h *MultiHunkReaderWriter) Close() error {
+ 		h.cancel()
+ 	}
+ 	if sc, match := h.hc.(StreamCloser); match {
++		h.sendMu.Lock()
++		defer h.sendMu.Unlock()
+ 		return sc.CloseSend()
+ 	}
+ 
+diff --git a/transport/internet/grpc/encoding/closesend_test.go b/transport/internet/grpc/encoding/closesend_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/internet/grpc/encoding/closesend_test.go
+@@ -0,0 +1,59 @@
++package encoding
++
++import (
++	"context"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/xtls/xray-core/common/buf"
++)
++
++// stream records a CloseSend that runs while a Send is in progress, which a
++// gRPC client stream does not allow.
++type stream struct {
++	sending atomic.Bool
++	overlap atomic.Bool
++}
++
++func (s *stream) Context() context.Context { return context.Background() }
++func (s *stream) send() error {
++	s.sending.Store(true)
++	time.Sleep(time.Millisecond)
++	s.sending.Store(false)
++	return nil
++}
++func (s *stream) Send(*Hunk) error            { return s.send() }
++func (s *stream) Recv() (*Hunk, error)        { select {} }
++func (s *stream) SendMsg(m interface{}) error { return nil }
++func (s *stream) RecvMsg(m interface{}) error { return nil }
++func (s *stream) CloseSend() error {
++	if s.sending.Load() {
++		s.overlap.Store(true)
++	}
++	return nil
++}
++
++type multiStream struct{ stream }
++
++func (s *multiStream) Send(*MultiHunk) error     { return s.send() }
++func (s *multiStream) Recv() (*MultiHunk, error) { select {} }
++
++// 🔴 Regression: closing a gRPC connection while it writes. Close called
++// CloseSend during a Send, a data race in the gRPC client.
++func TestCloseSendWaitsForSend(t *testing.T) {
++	for i := 0; i < 20; i++ {
++		s := &stream{}
++		h := NewHunkReadWriter(s, func() {})
++		go h.Write([]byte("x"))
++		m := &multiStream{}
++		mh := NewMultiHunkReadWriter(m, func() {})
++		go mh.WriteMultiBuffer(buf.MultiBuffer{buf.New()})
++		time.Sleep(200 * time.Microsecond)
++		h.Close()
++		mh.Close()
++		if s.overlap.Load() || m.overlap.Load() {
++			t.Fatal("CloseSend ran during a Send")
++		}
++	}
++}

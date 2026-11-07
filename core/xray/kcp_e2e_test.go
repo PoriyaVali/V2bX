@@ -49,11 +49,10 @@ func TestVMessOverKCPWithTheFormsSettings(t *testing.T) {
 			if err := x.Start(); err != nil {
 				t.Fatal(err)
 			}
-			// Not closed: closing xray-core's mKCP listener while a session is
-			// still being read is a data race in xray-core itself (kcp
-			// ReceivingWorker.Release against ReadMultiBuffer, which reads
-			// leftOver unlocked), and the race detector fails the test on it.
-			// The instance ends with the test binary.
+			// Closed with a session still being read, which raced in xray-core
+			// until patches/xray-tls-lifecycle.patch put the receive buffer
+			// under its lock.
+			t.Cleanup(func() { _ = x.Close() })
 
 			port, echo := freeUDPPort(t), echoServer(t)
 			v := &panel.VAllssNode{Network: "kcp", NetworkSettings: json.RawMessage(settings)}

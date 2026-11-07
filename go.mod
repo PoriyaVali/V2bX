@@ -477,6 +477,10 @@ replace github.com/sagernet/sing-shadowsocks => ./third_party/sing-shadowsocks
 
 replace github.com/sagernet/sing-quic => ./third_party/sing-quic
 
+// The fork's VLESS inbound uses this module; its Vision did not know the REALITY
+// connections sing-box 1.13 makes. See third_party/README.md.
+replace github.com/wyx2685/sing-vmess => ./third_party/sing-vmess
+
 replace github.com/metacubex/mihomo => github.com/PoriyaVali/mihomo v1.19.32-dm5.0.20261030192231-3de39671cc05
 
 replace github.com/metacubex/smux => github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030192231-3de39671cc05

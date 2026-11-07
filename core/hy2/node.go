@@ -29,6 +29,8 @@ type Hysteria2node struct {
 	// masq is the node's TCP masquerade server, if it runs one.
 	masq  *masqTCP
 	cover *decoy.Site
+	// allowPrivate lets the node's users reach private addresses.
+	allowPrivate bool
 }
 
 func (n *Hysteria2node) close() error {
@@ -100,6 +102,7 @@ func (h *Hysteria2) AddNode(tag string, info *panel.NodeInfo, config *conf.Optio
 		},
 		TrafficLogger: hook,
 		Auth:          &V2bX{usersMap: make(map[string]int)},
+		allowPrivate:  h.allowPrivate,
 	}
 	hyconfig, err := n.getHyConfig(info, config, &c)
 	if err != nil {

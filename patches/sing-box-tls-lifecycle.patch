@@ -206,3 +206,215 @@ diff --git a/common/tls/std_server.go b/common/tls/std_server.go
  		serverConfig.access.Lock()
  		defer serverConfig.access.Unlock()
  		return serverConfig.config, nil
+diff --git a/common/listener/proxyproto.go b/common/listener/proxyproto.go
+--- a/common/listener/proxyproto.go
++++ b/common/listener/proxyproto.go
+@@ -11,6 +11,19 @@ import (
+ // How long a peer gets to produce a header before we stop waiting for one.
+ const proxyHeaderTimeout = 5 * time.Second
+ 
++// proxyReadAhead is how much sniffing for a header may read: whatever arrived
++// first, header and protocol bytes together, as one read of the socket itself
++// would have returned it.
++//
++// The protocol above may take its first request from a single Read, as a raw
++// socket gives it. Shadowsocks 2022 does, and refuses a request header that
++// does not arrive whole ("bad header"). That header is 59 or 75 bytes after
++// the salt, and this buffer used to hold 52 (a v2 header and no more), so
++// every Shadowsocks 2022 connection from loopback failed: a local tunnel's
++// with no header, and the relay's own when its header and the client's first
++// bytes arrived in one segment.
++const proxyReadAhead = 4096
++
+ // HAProxy PROXY protocol v2, enough of it to recover the real client address of
+ // a connection that reached us through a local relay.
+ //
+@@ -51,15 +64,31 @@ const (
+ // address, so everything downstream - routing, the traffic hooks, device
+ // counting - sees the real client without knowing a relay exists.
+ //
+-// Reads go through the buffered reader used to sniff the header, because
+-// sniffing may have pulled in bytes that belong to the protocol above.
++// Reads first hand over what sniffing read ahead, which belongs to the
++// protocol above, and then go to the connection itself.
+ type proxyProtoConn struct {
+ 	net.Conn
+ 	reader *bufio.Reader
+ 	source net.Addr
+ }
+ 
+-func (c *proxyProtoConn) Read(b []byte) (int, error) { return c.reader.Read(b) }
++// Read returns the bytes read ahead, in one piece where the caller's buffer
++// takes them, and reads the connection itself after that. The read-ahead
++// buffer is let go once drained, so a relayed connection holds it only until
++// its first request has been read.
++func (c *proxyProtoConn) Read(b []byte) (int, error) {
++	if c.reader != nil {
++		if c.reader.Buffered() > 0 {
++			n, err := c.reader.Read(b)
++			if c.reader.Buffered() == 0 {
++				c.reader = nil
++			}
++			return n, err
++		}
++		c.reader = nil
++	}
++	return c.Conn.Read(b)
++}
+ 
+ func (c *proxyProtoConn) RemoteAddr() net.Addr {
+ 	if c.source != nil {
+@@ -100,9 +129,9 @@ func readProxyHeader(conn net.Conn) net.Conn {
+ 	if !peerIsLoopback(conn) {
+ 		return conn
+ 	}
+-	// Sized for the largest header we accept (16 + IPv6 address block), so a
+-	// well-formed header never spills into a second fill.
+-	reader := bufio.NewReaderSize(conn, proxyV2HeaderLen+36)
++	// Larger than the largest header we accept (16 + IPv6 address block), so
++	// a well-formed header never spills into a second fill.
++	reader := bufio.NewReaderSize(conn, proxyReadAhead)
+ 	wrapped := &proxyProtoConn{Conn: conn, reader: reader}
+ 
+ 	// A relay writes the header the instant it dials, so waiting seconds for one
+diff --git a/common/listener/proxyproto_test.go b/common/listener/proxyproto_test.go
+--- a/common/listener/proxyproto_test.go
++++ b/common/listener/proxyproto_test.go
+@@ -190,3 +190,25 @@ func TestWrapperDoesNotExposeTheRawConn(t *testing.T) {
+ 		t.Errorf("payload after the header was corrupted: got %d of %d bytes", len(got), len(body))
+ 	}
+ }
++
++// 🔴 Regression: a protocol's first Read gets its whole first request, as from
++// the socket itself. Shadowsocks 2022 takes its request header (75 bytes with
++// AES-256) from one Read and refuses it split ("bad header"); the read-ahead
++// buffer held 52 bytes, so every Shadowsocks 2022 connection from loopback
++// failed, with a header in front of the data and without one.
++func TestFirstReadGetsTheWholeFirstRequest(t *testing.T) {
++	request := bytes.Repeat([]byte{0xA5}, 75)
++	client := netip.MustParseAddr("5.127.1.1")
++	for name, payload := range map[string][]byte{
++		"no header":   append([]byte(nil), request...),
++		"IPv4 header": append(v2Header(proxyFamilyINET, client, 1234, proxyCmdProxy), request...),
++		"IPv6 header": append(v2Header(proxyFamilyINET6, netip.MustParseAddr("2001:db8::1"), 1234, proxyCmdProxy), request...),
++	} {
++		out := readProxyHeader(mkConn("127.0.0.1:40000", payload))
++		first := make([]byte, len(request))
++		n, err := out.Read(first)
++		if err != nil || n != len(request) || !bytes.Equal(first, request) {
++			t.Errorf("%s: first Read = %d bytes, %v; want the whole %d-byte request", name, n, err, len(request))
++		}
++	}
++}
+diff --git a/transport/v2rayhttp/conn.go b/transport/v2rayhttp/conn.go
+--- a/transport/v2rayhttp/conn.go
++++ b/transport/v2rayhttp/conn.go
+@@ -11,7 +11,6 @@ import (
+ 	"sync"
+ 	"time"
+ 
+-	"github.com/sagernet/sing-box/log"
+ 	"github.com/sagernet/sing/common"
+ 	"github.com/sagernet/sing/common/baderror"
+ 	"github.com/sagernet/sing/common/buf"
+@@ -258,10 +257,15 @@ func (w *HTTP2ConnWrapper) Upstream() any {
+ 	return w.ExtendedConn
+ }
+ 
++// DupContext is the context for a connection taken over from an HTTP request:
++// the request's values, the inbound's among them, without its cancellation,
++// which comes when the handler returns while the connection lives on.
++//
++// It used to start again from context.Background() with only the log ID, so
++// every value the inbound had set was lost to the WebSocket, HTTPUpgrade and
++// HTTP transports alone. V2bX marks each listener's connections with the node
++// generation they belong to, and refuses a connection without one: on those
++// three transports every user was refused, while TCP and gRPC nodes worked.
+ func DupContext(ctx context.Context) context.Context {
+-	id, loaded := log.IDFromContext(ctx)
+-	if !loaded {
+-		return context.Background()
+-	}
+-	return log.ContextWithID(context.Background(), id)
++	return context.WithoutCancel(ctx)
+ }
+diff --git a/transport/v2rayhttp/conn_context_test.go b/transport/v2rayhttp/conn_context_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/v2rayhttp/conn_context_test.go
+@@ -0,0 +1,31 @@
++package v2rayhttp
++
++import (
++	"context"
++	"testing"
++
++	"github.com/sagernet/sing-box/log"
++)
++
++type inboundValue struct{}
++
++// 🔴 Regression: a connection taken over from an HTTP request keeps the
++// inbound's context values and outlives the request. DupContext rebuilt it
++// from context.Background(), so V2bX, which refuses a connection without its
++// node-generation value, refused every user of a WebSocket, HTTPUpgrade or
++// HTTP node.
++func TestDupContextKeepsValuesAndDropsCancellation(t *testing.T) {
++	inbound := context.WithValue(context.Background(), inboundValue{}, "generation")
++	request, cancel := context.WithCancel(log.ContextWithNewID(inbound))
++	dup := DupContext(request)
++	cancel()
++	if dup.Value(inboundValue{}) != "generation" {
++		t.Fatal("the inbound's context value was dropped")
++	}
++	if _, loaded := log.IDFromContext(dup); !loaded {
++		t.Fatal("the log ID was dropped")
++	}
++	if dup.Err() != nil {
++		t.Fatal("the connection's context ends with the request")
++	}
++}
+diff --git a/transport/v2raygrpclite/conn.go b/transport/v2raygrpclite/conn.go
+--- a/transport/v2raygrpclite/conn.go
++++ b/transport/v2raygrpclite/conn.go
+@@ -61,7 +61,11 @@ func (c *GunConn) Read(b []byte) (n int, err error) {
+ }
+ 
+ func (c *GunConn) read(b []byte) (n int, err error) {
+-	if c.reader == nil {
++	// A client's connection learns its reader when the response arrives, on
++	// another goroutine. Testing c.reader for nil raced that write; the
++	// channel, set when the connection is made and closed by setup, orders
++	// the read after it.
++	if c.create != nil {
+ 		<-c.create
+ 		if c.err != nil {
+ 			return 0, c.err
+diff --git a/transport/v2raygrpclite/conn_setup_test.go b/transport/v2raygrpclite/conn_setup_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/v2raygrpclite/conn_setup_test.go
+@@ -0,0 +1,23 @@
++package v2raygrpclite
++
++import (
++	"bytes"
++	"io"
++	"testing"
++)
++
++// 🔴 Regression: a client's read waits for the response that gives it its
++// reader. It tested the reader for nil while the response's goroutine set
++// it, which the race detector reported for every gRPC connection.
++func TestLateConnReadWaitsForTheResponse(t *testing.T) {
++	conn := newLateGunConn(io.Discard)
++	done := make(chan error, 1)
++	go func() {
++		_, err := conn.Read(make([]byte, 16))
++		done <- err
++	}()
++	conn.setup(bytes.NewReader(nil), nil)
++	if err := <-done; err == nil {
++		t.Fatal("read an empty response without an error")
++	}
++}

@@ -22,6 +22,54 @@ The earlier hypothesis that QUIC kept a stale config was disproved: its
 Hysteria2 and TUIC QUIC rotation passed on the original source. That hypothesis
 is not a confirmed defect.
 
+## PROXY-protocol reader and Shadowsocks 2022
+
+The fork's PROXY-protocol reader (`common/listener/proxyproto.go`) sniffs every
+connection from a loopback peer for a v2 header. It read ahead into a 52-byte
+buffer and served the protocol above from that buffer first. Shadowsocks 2022
+takes its whole request header, 59 or 75 bytes after the salt, from its first
+read, and answers a split one with "bad header". So with `ProxyProtocol` on,
+the node default, every Shadowsocks 2022 connection from loopback was refused:
+a local tunnel's, which sends no header, and the relay's, whenever its header
+and the client's first bytes arrived in one segment. Legacy AEAD ciphers,
+VMess, VLESS, Trojan and the TLS-based protocols read their headers in full and
+were unaffected.
+
+The reader now reads ahead up to 4 KiB, which is whatever arrived first, as one
+read of the socket would return it. Once the read-ahead is drained it reads the
+connection directly and releases the buffer. `proxyproto_test.go` gains the
+fork-level regression. V2bX's `core/sing/ss2022_proxy_protocol_test.go` runs
+real Shadowsocks 2022 clients from loopback, with and without a header; both
+failed before.
+
+## Context of connections taken over from HTTP
+
+`transport/v2rayhttp.DupContext` gives the WebSocket, HTTPUpgrade and HTTP
+transports the context of each connection they take over from an HTTP request.
+It started again from `context.Background()` and kept only the log ID, so every
+value the inbound had set was lost on these transports, while TCP and gRPC
+kept them. V2bX marks each listener's connections with the node generation
+they belong to (`core/sing/retirement.go`), and since v1.10.0 the hook has
+refused a connection without one. So every user of a VLESS, VMess or Trojan
+node over WebSocket, HTTPUpgrade or HTTP was refused, and nothing reached the
+log.
+
+`DupContext` now returns `context.WithoutCancel(ctx)`: the request's values,
+without the cancellation that comes when the handler returns.
+`conn_context_test.go` is the fork-level regression.
+`core/sing/http_transports_test.go` runs real clients through V2bX's sing core
+over each transport; all of them failed before. The hook now logs a
+connection it refuses for a missing generation.
+
+## gRPC client reader
+
+`transport/v2raygrpclite/conn.go`: a gRPC client connection gets its reader
+when the response arrives, on another goroutine, and `read` tested the reader
+for nil while that goroutine set it. That was a data race on every gRPC
+connection a sing-box client made. `read` now waits on the connection's
+`create` channel, which is set when the connection is made and closed by
+`setup` (`conn_setup_test.go`).
+
 Use `scripts/prepare_tls_dependencies.py` to verify the complete pinned source
 and apply the patch into an isolated directory. Test and release workflows
 explicitly select the resulting alternate modfile. Standard `go.mod`/`go.sum`

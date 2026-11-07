@@ -125,10 +125,17 @@ jobs:
           GOEXPERIMENT: jsonv2
         run: |
           go test -race -count=3 -timeout 2m -tags "with_quic" \
+            github.com/sagernet/sing-box/common/listener \
+            github.com/sagernet/sing-box/transport/v2rayhttp \
+            github.com/sagernet/sing-box/transport/v2raygrpclite \
+            github.com/xtls/xray-core/transport/internet/grpc/encoding \
             github.com/sagernet/sing-box/protocol/anytls \
             github.com/sagernet/sing-box/protocol/tuic \
             github.com/sagernet/sing-quic/tuic \
             github.com/xtls/xray-core/proxy/shadowsocks_2022
+          go test -race -count=3 -timeout 2m -tags "with_utls" github.com/wyx2685/sing-vmess/vless
+          # The package's own dial test takes about 40 s under the race detector.
+          go test -race -count=3 -timeout 2m github.com/xtls/xray-core/transport/internet/kcp -run '^TestReceivingWorkerReleaseDuringRead$'
 
       # api/ and core/ are included for their regression tests: the cores run
       # for real there (a sing-box and an xray instance with live connections,
@@ -165,6 +172,21 @@ jobs:
         run: |
           go test -race -tags with_quic -count=1 -timeout 2m ./common/decoy ./core/sing ./core/hy2 -run 'TestCover|TestPublicRoot|TestInvalidPublicRoot|TestTCPCompanion|TestSing_Hysteria2ProberSeesDecoySite|TestSing_TUICHasOwnedHTTPSCompanion|TestHy2_DefaultCoverOwnsTCPAndRetiresWithUDP|TestHy2_CoverTCP'
           go test -count=1 -timeout 1m ./core/xray -run '^TestXray_(TLSProberSeesDecoySite|DecoyNodeStillCarriesUsers)$'
+
+      # Every node Irboard's forms make, as Irboard serves it, on every core
+      # that can serve it, reached by mihomo, sing-box and Xray clients
+      # (cmd/irboard_served_test.go). The race step above runs it without the
+      # release tags, which skips QUIC and uTLS. Here it runs with them, and
+      # without the race detector: sing-box's own VLESS client turns a uintptr
+      # back into a pointer in Vision, which the race build's pointer checks
+      # end the process for.
+      - name: Irboard-served nodes on every core (release tags)
+        env:
+          GOEXPERIMENT: jsonv2
+        run: |
+          go test -count=1 -timeout 10m \
+            -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" \
+            ./cmd -run '^TestIrboardServedNodesOnEveryCore$'
 
       - name: Go formatting (changed files)
         if: always()

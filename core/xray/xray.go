@@ -45,6 +45,8 @@ type Xray struct {
 	// Each TLS node's own decoy site (common/decoy), by node tag.
 	decoysMu sync.Mutex
 	decoys   map[string]*decoy.Site
+	// allowPrivate is the core's AllowPrivateDestinations.
+	allowPrivate bool
 }
 
 type UserMap struct {
@@ -68,6 +70,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		nodeReportMinTrafficBytes: make(map[string]int64),
 		routeTags:                 make(map[string][]string),
 		decoys:                    make(map[string]*decoy.Site),
+		allowPrivate:              c.XrayConfig.AllowPrivateDestinations,
 	}, nil
 }
 
