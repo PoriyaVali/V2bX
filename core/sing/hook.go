@@ -46,6 +46,11 @@ type HookServer struct {
 	// would be quietly erased on the first cycle and this would always read zero.
 	deviceCounter sync.Map //map[string]*counter.TrafficCounter, keyed by inbound tag; inner key: uuid|ip
 	deviceIdle    sync.Map //map[string]int, consecutive silent cycles per tag|uuid|ip
+
+	// allowPrivate is the core's AllowPrivateDestinations: off, each
+	// datagram of a UDP session is kept from private addresses, as the
+	// route rules keep the session's first.
+	allowPrivate bool
 }
 
 // deviceKey is the inner key of deviceCounter: one entry per (user, source
@@ -251,6 +256,7 @@ func (c *trackedConn) WriteBuffer(buffer *buf.Buffer) error {
 
 type trackedPacketConn struct {
 	N.PacketConn
+	guard    *datagramGuard // nil: every datagram goes on
 	release  func()
 	mu       sync.Mutex
 	once     sync.Once
@@ -279,12 +285,21 @@ func (c *trackedPacketConn) ReaderReplaceable() bool { return false }
 
 func (c *trackedPacketConn) WriterReplaceable() bool { return false }
 
+// ReadPacket reads the client's next datagram the guard lets go on.
 func (c *trackedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	if !c.lifetime.begin() {
 		return M.Socksaddr{}, net.ErrClosed
 	}
 	defer c.lifetime.end()
-	return c.PacketConn.ReadPacket(buffer)
+	start := buffer.Start()
+	for {
+		destination, err := c.PacketConn.ReadPacket(buffer)
+		if err != nil || c.guard == nil || c.guard.permits(destination) {
+			return destination, err
+		}
+		// Refused: read the next one into the same buffer, headroom kept.
+		buffer.Resize(start, 0)
+	}
 }
 
 func (c *trackedPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
@@ -645,7 +660,7 @@ func (h *HookServer) RoutedPacketConnection(ctx context.Context, conn N.PacketCo
 		return conn
 	}
 	conn = counter.NewPacketConnCounter(conn, h.trafficStorages(m.Inbound, m.User, ip, countDevice)...)
-	pc := &trackedPacketConn{PacketConn: conn}
+	pc := &trackedPacketConn{PacketConn: conn, guard: newDatagramGuard(l, h.allowPrivate, m.Inbound, m.User, m.Destination)}
 	deviceIP := ""
 	if countDevice {
 		deviceIP = ip

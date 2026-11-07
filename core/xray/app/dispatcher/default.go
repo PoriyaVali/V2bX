@@ -601,6 +601,11 @@ func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.
 					return
 				}
 			}
+			// The rules above judged the session's first destination; each
+			// datagram of a full-cone UDP session names its own.
+			if destination.Network == net.Network_UDP {
+				link.Reader = newUDPRuleReader(ctx, link.Reader, l, sessionInbound.User.Email, ob.OriginalTarget, destination)
+			}
 		}
 	}
 

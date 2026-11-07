@@ -481,6 +481,10 @@ replace github.com/sagernet/sing-quic => ./third_party/sing-quic
 // connections sing-box 1.13 makes. See third_party/README.md.
 replace github.com/wyx2685/sing-vmess => ./third_party/sing-vmess
 
+// mihomo's Hysteria2 sessions time out through this module's canceler, whose
+// activity time two goroutines wrote with no lock. See third_party/README.md.
+replace github.com/metacubex/sing => ./third_party/metacubex-sing
+
 replace github.com/metacubex/mihomo => github.com/PoriyaVali/mihomo v1.19.32-dm5.0.20261030192231-3de39671cc05
 
 replace github.com/metacubex/smux => github.com/PoriyaVali/mihomo/third_party/smux v0.0.0-20261030192231-3de39671cc05

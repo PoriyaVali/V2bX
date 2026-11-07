@@ -9,13 +9,14 @@ They carry small concurrency repairs without requiring a dependency upgrade.
 | `sing-shadowsocks` | [`github.com/sagernet/sing-shadowsocks@v0.2.8`](https://github.com/SagerNet/sing-shadowsocks/tree/v0.2.8) | `shadowaead_2022/service_multi.go`: publish PSK, identity and cipher tables as one immutable generation |
 | `sing-quic` | [`github.com/sagernet/sing-quic@v0.6.5`](https://github.com/SagerNet/sing-quic/tree/v0.6.5) | `tuic/service.go`: publish paired user/password tables atomically and admit one authentication stream per session |
 | `sing-vmess` | [`github.com/wyx2685/sing-vmess@v0.0.0-20250723121437-95d5ab59ff92`](https://github.com/wyx2685/sing-vmess/tree/95d5ab59ff92) | `vless/vision_utls.go`: Vision takes the metacubex/utls connections sing-box 1.13's REALITY server makes. `vless/vision.go`: the TLS connection's address is carried as a pointer, not a uintptr; a connection type without input buffers is refused. `go.mod`, `go.sum`: require metacubex/utls |
+| `metacubex-sing` | [`github.com/metacubex/sing@v0.5.8`](https://github.com/MetaCubeX/sing/tree/v0.5.8) | `common/canceler/packet_timeout.go`, `common/canceler/packet_wait.go`: a UDP session's activity time and timeout behind a lock, as upstream sing has them |
 
 Original licenses, module manifests and all other upstream files are retained.
 `upstream-manifest.json` records every original file and both its upstream and
-patched SHA256 for all 166 original files. The declared source files, and
+patched SHA256 for all 457 original files. The declared source files, and
 sing-vmess's `go.mod` and `go.sum`, are the only changes to upstream files; the
-added TUIC, AnyTLS and Vision regression tests are recorded separately with
-their hashes.
+added TUIC, AnyTLS, Vision and canceler regression tests are recorded
+separately with their hashes.
 `go.mod` in the repository root selects these modules with relative replacements;
 the upstream version requirements remain unchanged.
 
@@ -38,6 +39,17 @@ back into pointers to the connection's buffers, which Go's pointer checks, on
 under the race detector, end the process for. `vless/vision_utls_test.go` and
 `vless/vision_test.go` are the regressions; `cmd/irboard_served_test.go` dials
 real REALITY Vision nodes on every core.
+
+metacubex/sing is the sing library mihomo is built on. sing-quic's Hysteria2
+server times out each UDP session with its `canceler.TimeoutPacketConn`, which
+notes activity when a packet is read and when one is written. mihomo's
+listener reads a session on one goroutine while its tunnel, V2bX's Mihomo core
+here, writes the replies on another, and both wrote the activity time with no
+lock: a data race on every Hysteria2 node's UDP on the Mihomo core, found by
+the race detector once `cmd/irboard_served_test.go` sent UDP. Upstream sing
+(`github.com/sagernet/sing`) guards it with a lock; metacubex/sing has not
+taken that change, v0.5.9 included. The copy takes upstream's version of the
+two files; `common/canceler/packet_timeout_race_test.go` is the regression.
 
 The AnyTLS weak-link repairs: a v2 client closes a reused session unless the
 server acknowledges a new stream within three seconds, and the acknowledgement

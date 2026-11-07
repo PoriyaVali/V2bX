@@ -70,6 +70,21 @@ connection a sing-box client made. `read` now waits on the connection's
 `create` channel, which is set when the connection is made and closed by
 `setup` (`conn_setup_test.go`).
 
+## What follows an HTTPUpgrade request
+
+`transport/v2rayhttpupgrade/server.go`: the server answered 101 and took the
+connection over with `Hijack`, dropping the reader it returns. Go's HTTP server
+reads the request through a buffer, and reads ahead while the handler runs, so
+whatever the client sent right behind its request was in that reader. Xray's
+client (v2rayN, v2rayNG) writes the proxy protocol's header right behind the
+request and reads the 101 later; mihomo sends right after the 101, which can
+still arrive before the hijack. Those bytes were lost: the tunnel began
+mid-stream, VMess answered "bad request" and closed the connection. The server
+now hands them to the handler first, as `v2rayhttp`'s server does
+(`server_buffered_test.go`). `cmd/irboard_served_test.go` failed on it about
+once in thirty runs under the race detector; over a real network, where the
+request and the header arrive together, it is the common case.
+
 Use `scripts/prepare_tls_dependencies.py` to verify the complete pinned source
 and apply the patch into an isolated directory. Test and release workflows
 explicitly select the resulting alternate modfile. Standard `go.mod`/`go.sum`

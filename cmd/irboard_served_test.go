@@ -1,7 +1,8 @@
 package cmd
 
 // Every node Irboard's admin forms make, as Irboard serves it, on every V2bX
-// core that can serve it, reached the way Irboard's subscribers reach it.
+// core that can serve it, reached the way Irboard's subscribers reach it, over
+// TCP and over UDP.
 //
 // api/panel/testdata/irboard/served.json is exported by Irboard's
 // tests/Feature/ServedNodeContractTest.php. For each node it holds the config
@@ -13,6 +14,10 @@ package cmd
 //   - mihomo, from the Clash Meta proxy (core/xray/testdata/mihomoclient);
 //   - sing-box, from the outbound;
 //   - Xray, from the share link, read the way v2rayN and v2rayNG read one.
+//
+// Each client sends TCP to an echo server and, as internal/udpecho checks, UDP
+// to two: a short datagram, one as large as QUIC's, and one to the second
+// server over the same session, as full-cone clients send.
 //
 // The test changes only what a test cannot have. The node listens on a free
 // local port, and every client is pointed at it. A REALITY node borrows a
@@ -44,10 +49,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,11 +68,14 @@ import (
 	_ "github.com/PoriyaVali/V2bX/core/mihomo"
 	_ "github.com/PoriyaVali/V2bX/core/sing"
 	_ "github.com/PoriyaVali/V2bX/core/xray"
+	"github.com/PoriyaVali/V2bX/internal/udpecho"
 	"github.com/PoriyaVali/V2bX/node"
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	sjson "github.com/sagernet/sing/common/json"
+	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	xnet "github.com/xtls/xray-core/common/net"
 	xcore "github.com/xtls/xray-core/core"
 	coreConf "github.com/xtls/xray-core/infra/conf"
@@ -127,7 +137,7 @@ func TestIrboardServedNodesOnEveryCore(t *testing.T) {
 	}
 	sort.Strings(names)
 	cert := servedCertificate(t)
-	echo := servedEcho(t)
+	echo, udp := servedEcho(t), servedUDPEchoes(t)
 	mihomo := buildMihomoClient(t)
 	for _, name := range names {
 		n := served.Nodes[name]
@@ -160,28 +170,141 @@ func TestIrboardServedNodesOnEveryCore(t *testing.T) {
 						t.Fatalf("the node did not start: %v", err)
 					}
 					if n.Clash != nil {
-						if err := dialClash(t, mihomo, n.Clash, port, echo); err != nil {
+						profile := clashProfile(t, n.Clash, port)
+						if err := runClash(t, mihomo, profile, echo); err != nil {
 							t.Errorf("mihomo, with the Clash Meta proxy: %v", err)
+						}
+						if err := runClash(t, mihomo, profile, udp[0].String(), "udp", udp[1].String()); err != nil {
+							t.Errorf("mihomo, with the Clash Meta proxy, UDP: %v", err)
 						}
 					}
 					if n.Singbox != nil {
-						err := dialSingbox(t, n.Singbox, port, echo)
+						client, socks, err := singboxClient(t, n.Singbox, port)
 						if notInThisBuild(err) {
 							t.Logf("sing-box client skipped: %v", err)
 						} else if err != nil {
 							t.Errorf("sing-box, with the outbound: %v", err)
+						} else {
+							if err := dialSingbox(socks, echo); err != nil {
+								t.Errorf("sing-box, with the outbound: %v", err)
+							}
+							if err := datagramSingbox(t, client, udp); err != nil {
+								t.Errorf("sing-box, with the outbound, UDP: %v", err)
+							}
 						}
 					}
-					err = dialLink(n.Link, port, echo, cert.sha256)
+					client, err := xrayClient(n.Link, port, cert.sha256)
 					if errors.Is(err, errNotAnXrayLink) {
 						return
 					}
 					if err != nil {
 						t.Errorf("Xray, with the share link: %v", err)
+						return
+					}
+					defer client.Close()
+					if err := dialXray(client, echo); err != nil {
+						t.Errorf("Xray, with the share link: %v", err)
+					}
+					if err := datagramXray(t, client, udp); err != nil {
+						t.Errorf("Xray, with the share link, UDP: %v", err)
 					}
 				})
 			}
 		})
+	}
+}
+
+// servedUDPKinds are a node of each way the node types carry UDP: XUDP for
+// VLESS (with and without Vision) and VMess, Trojan's, Shadowsocks' and
+// Shadowsocks 2022's, Hysteria's, Hysteria2's, TUIC's and AnyTLS's UDP over
+// TCP. The transport under them does not change how a core relays UDP.
+var servedUDPKinds = []string{
+	"vless/tcp-tls", "vless/tcp-reality-vision", "vmess/tcp", "trojan/tcp",
+	"shadowsocks/aes-128-gcm", "shadowsocks/2022-blake3-aes-128-gcm",
+	"hysteria/v1", "hysteria2/plain", "tuic/bbr", "anytls/tls",
+}
+
+// TestIrboardServedNodesRefuseBlockedDatagrams applies a node's rules to each
+// datagram of a UDP session. A full-cone session names each datagram's
+// destination, and the sing and xray cores checked the rules, and on the
+// sing core the private-address block, against the session's first only: a
+// user reached a blocked port, or the node's own services on 127.0.0.1, by
+// sending one datagram somewhere allowed first. Here a panel rule blocks the
+// second echo server's port; every client opens a session at the first, and
+// the node must drop what it sends to the second and keep the session.
+func TestIrboardServedNodesRefuseBlockedDatagrams(t *testing.T) {
+	raw, err := os.ReadFile("../api/panel/testdata/irboard/served.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var served struct {
+		Nodes map[string]servedNode `json:"nodes"`
+	}
+	if err := json.Unmarshal(raw, &served); err != nil {
+		t.Fatal(err)
+	}
+	cert := servedCertificate(t)
+	udp := servedUDPEchoes(t)
+	mihomo := buildMihomoClient(t)
+	for _, name := range servedUDPKinds {
+		n, ok := served.Nodes[name]
+		if !ok {
+			t.Fatalf("served.json has no %s node", name)
+		}
+		var config map[string]any
+		if err := json.Unmarshal(n.Config.Body, &config); err != nil {
+			t.Fatal(err)
+		}
+		config["routes"] = []any{map[string]any{"id": 1, "match": []any{strconv.Itoa(int(udp[1].Port()))}, "action": "block_port"}}
+		if n.Config.Body, err = json.Marshal(config); err != nil {
+			t.Fatal(err)
+		}
+		n.Config.ETag = ""
+		info := servedNodeInfo(t, n)
+		for _, core := range servedCores {
+			if validateSetupCore(core, info) != nil {
+				continue
+			}
+			t.Run(name+"/"+core, func(t *testing.T) {
+				port, err := startServedNode(t, n, core, cert)
+				if notInThisBuild(err) {
+					t.Skip(err)
+				}
+				if err != nil {
+					t.Fatalf("the node did not start: %v", err)
+				}
+				if n.Clash != nil {
+					if err := runClash(t, mihomo, clashProfile(t, n.Clash, port), udp[0].String(), "udp-refused", udp[1].String()); err != nil {
+						t.Errorf("mihomo: %v", err)
+					}
+				}
+				if n.Singbox != nil {
+					client, _, err := singboxClient(t, n.Singbox, port)
+					if notInThisBuild(err) {
+						t.Logf("sing-box client skipped: %v", err)
+					} else if err != nil {
+						t.Errorf("sing-box: %v", err)
+					} else if pc, err := singboxPacketConn(client, udp[0]); err != nil {
+						t.Errorf("sing-box: %v", err)
+					} else if err := udpecho.Refused(pc, udp[0], udp[1]); err != nil {
+						t.Errorf("sing-box: %v", err)
+					}
+				}
+				client, err := xrayClient(n.Link, port, cert.sha256)
+				if errors.Is(err, errNotAnXrayLink) {
+					return
+				}
+				if err != nil {
+					t.Fatalf("Xray: %v", err)
+				}
+				defer client.Close()
+				if pc, err := xcore.DialUDP(context.Background(), client); err != nil {
+					t.Errorf("Xray: %v", err)
+				} else if err := udpecho.Refused(pc, udp[0], udp[1]); err != nil {
+					t.Errorf("Xray: %v", err)
+				}
+			})
+		}
 	}
 }
 
@@ -280,7 +403,9 @@ func startServedNode(t *testing.T, n servedNode, core string, cert servedCert) (
 		cc.XrayConfig.AllowPrivateDestinations = true
 	case "sing":
 		cc.SingConfig = conf.NewSingConfig()
-		cc.SingConfig.LogConfig.Disabled = true
+		// SERVED_SING_LOG=1 shows the node's own log: why it refused a client.
+		cc.SingConfig.LogConfig.Disabled = os.Getenv("SERVED_SING_LOG") == ""
+		cc.SingConfig.LogConfig.Level = "debug"
 		cc.SingConfig.AllowPrivateDestinations = true
 	case "mihomo":
 		cc.MihomoConfig = conf.NewMihomoConfig()
@@ -431,6 +556,22 @@ func servedEcho(t *testing.T) string {
 	return ln.Addr().String()
 }
 
+// servedUDPEchoes are two UDP echo servers: a full-cone client reaches both
+// over one session.
+func servedUDPEchoes(t *testing.T) [2]netip.AddrPort {
+	t.Helper()
+	var servers [2]netip.AddrPort
+	for i := range servers {
+		pc, err := udpecho.Listen()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = pc.Close() })
+		servers[i] = pc.LocalAddr().(*net.UDPAddr).AddrPort()
+	}
+	return servers
+}
+
 // echoes writes through conn and wants it back. A connection the node keeps
 // open but silent is closed after 15 seconds: an Xray client's connection
 // does not honour deadlines.
@@ -463,6 +604,17 @@ func echoes(conn net.Conn) error {
 	}
 }
 
+// datagrams runs udpecho's checks through pc, logging what was answered
+// only once resent.
+func datagrams(t *testing.T, pc net.PacketConn, servers [2]netip.AddrPort) error {
+	t.Helper()
+	notes, err := udpecho.Check(pc, servers[0], servers[1])
+	for _, note := range notes {
+		t.Log(note)
+	}
+	return err
+}
+
 // clone copies a profile entry, so that pointing it at the test node leaves
 // the fixture as Irboard made it.
 func clone(v map[string]any) map[string]any {
@@ -483,9 +635,9 @@ func buildMihomoClient(t *testing.T) string {
 	return path
 }
 
-// dialClash connects through the node with the mihomo client, from the
-// Clash Meta proxy, pointed at the test node and trusting its certificate.
-func dialClash(t *testing.T, client string, proxy map[string]any, port int, echo string) error {
+// clashProfile is the Clash Meta proxy, pointed at the test node and trusting
+// its certificate, in a file for the mihomo client.
+func clashProfile(t *testing.T, proxy map[string]any, port int) string {
 	t.Helper()
 	p := clone(proxy)
 	p["server"], p["port"] = "127.0.0.1", port
@@ -494,22 +646,33 @@ func dialClash(t *testing.T, client string, proxy map[string]any, port int, echo
 	}
 	raw, err := json.Marshal(p)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	profile := filepath.Join(t.TempDir(), "proxy.json")
 	if err := os.WriteFile(profile, raw, 0o600); err != nil {
-		return err
+		t.Fatal(err)
 	}
-	out, err := exec.Command(client, profile, echo).CombinedOutput()
+	return profile
+}
+
+// runClash connects through the node with the mihomo client: over TCP to
+// target, or with "udp" over UDP.
+func runClash(t *testing.T, client, profile string, args ...string) error {
+	t.Helper()
+	out, err := exec.Command(client, append([]string{profile}, args...)...).CombinedOutput()
+	result := strings.TrimSpace(string(out))
 	if err != nil {
-		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("%s", result)
+	}
+	if result != "ok" {
+		t.Logf("mihomo: %s", result)
 	}
 	return nil
 }
 
-// dialSingbox connects through the node with sing-box, from the outbound,
-// pointed at the test node and trusting its certificate.
-func dialSingbox(t *testing.T, outbound map[string]any, port int, echo string) error {
+// singboxClient starts sing-box with the outbound, pointed at the test node
+// and trusting its certificate, behind a SOCKS inbound on the port returned.
+func singboxClient(t *testing.T, outbound map[string]any, port int) (*box.Box, int, error) {
 	t.Helper()
 	o := clone(outbound)
 	o["tag"], o["server"], o["server_port"] = "proxy", "127.0.0.1", port
@@ -527,29 +690,92 @@ func dialSingbox(t *testing.T, outbound map[string]any, port int, echo string) e
 		"route":     map[string]any{"final": "proxy"},
 	})
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	ctx := box.Context(context.Background(), include.InboundRegistry(), include.OutboundRegistry(),
 		include.EndpointRegistry(), include.DNSTransportRegistry(), include.ServiceRegistry())
 	options, err := sjson.UnmarshalExtendedContext[option.Options](ctx, config)
 	if err != nil {
-		return fmt.Errorf("profile: %w", err)
+		return nil, 0, fmt.Errorf("profile: %w", err)
 	}
 	client, err := box.New(box.Options{Context: ctx, Options: options})
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	if err := client.Start(); err != nil {
 		_ = client.Close()
-		return err
+		return nil, 0, err
 	}
-	defer client.Close()
+	t.Cleanup(func() { _ = client.Close() })
+	return client, socks, nil
+}
+
+// dialSingbox connects through sing-box's SOCKS inbound to the echo server.
+func dialSingbox(socks int, echo string) error {
 	conn, err := socksConnect(socks, echo)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 	return echoes(conn)
+}
+
+// singboxPacketConn opens a UDP session through sing-box's outbound, as its
+// router relays one, starting at to.
+func singboxPacketConn(client *box.Box, to netip.AddrPort) (net.PacketConn, error) {
+	out, ok := client.Outbound().Outbound("proxy")
+	if !ok {
+		return nil, errors.New("no proxy outbound")
+	}
+	if !slices.Contains(out.Network(), N.NetworkUDP) {
+		return nil, udpecho.ErrNoUDP
+	}
+	// The session may live as long as the context it was opened with, so the
+	// context ends when the session is closed. sing-box's gRPC client
+	// (with_grpc) dials on the outbound's own context instead, and never
+	// gives up on a node that does not answer.
+	ctx, cancel := context.WithCancel(context.Background())
+	type listened struct {
+		pc  net.PacketConn
+		err error
+	}
+	result := make(chan listened, 1)
+	go func() {
+		pc, err := out.ListenPacket(ctx, M.SocksaddrFromNetIP(to))
+		result <- listened{pc, err}
+	}()
+	select {
+	case r := <-result:
+		if r.err != nil {
+			cancel()
+			return nil, r.err
+		}
+		return cancelOnClose{r.pc, cancel}, nil
+	case <-time.After(15 * time.Second):
+		cancel()
+		return nil, errors.New("the outbound did not connect in 15 seconds")
+	}
+}
+
+// cancelOnClose ends a session's context with the session.
+type cancelOnClose struct {
+	net.PacketConn
+	cancel context.CancelFunc
+}
+
+func (c cancelOnClose) Close() error {
+	defer c.cancel()
+	return c.PacketConn.Close()
+}
+
+// datagramSingbox checks UDP through sing-box's outbound.
+func datagramSingbox(t *testing.T, client *box.Box, servers [2]netip.AddrPort) error {
+	t.Helper()
+	pc, err := singboxPacketConn(client, servers[0])
+	if err != nil {
+		return err
+	}
+	return datagrams(t, pc, servers)
 }
 
 // socksConnect opens a CONNECT to target through a SOCKS5 inbound.
@@ -598,34 +824,39 @@ func socksConnect(port int, target string) (net.Conn, error) {
 
 var errNotAnXrayLink = errors.New("not a protocol Xray clients import")
 
-// dialLink connects through the node with Xray, from the share link, pointed
-// at the test node and pinning its certificate: Xray 26 clients cannot skip
+// xrayClient starts Xray with the outbound the share link gives, pointed at
+// the test node and pinning its certificate: Xray 26 clients cannot skip
 // verification.
-func dialLink(link string, port int, echo, pin string) error {
+func xrayClient(link string, port int, pin string) (*xcore.Instance, error) {
 	outbound, err := linkOutbound(link, port, pin)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	raw, err := json.Marshal(map[string]any{"log": map[string]any{"loglevel": "none"}, "outbounds": []any{outbound}})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var cfg coreConf.Config
 	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return fmt.Errorf("client config: %w", err)
+		return nil, fmt.Errorf("client config: %w", err)
 	}
 	pb, err := cfg.Build()
 	if err != nil {
-		return fmt.Errorf("client config: %w", err)
+		return nil, fmt.Errorf("client config: %w", err)
 	}
 	inst, err := xcore.New(pb)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := inst.Start(); err != nil {
-		return err
+		_ = inst.Close()
+		return nil, err
 	}
-	defer inst.Close()
+	return inst, nil
+}
+
+// dialXray connects through the Xray client to the echo server.
+func dialXray(inst *xcore.Instance, echo string) error {
 	host, ps, _ := net.SplitHostPort(echo)
 	p, _ := strconv.Atoi(ps)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -636,6 +867,17 @@ func dialLink(link string, port int, echo, pin string) error {
 	}
 	defer conn.Close()
 	return echoes(conn)
+}
+
+// datagramXray checks UDP through the Xray client, as it relays a UDP
+// session.
+func datagramXray(t *testing.T, inst *xcore.Instance, servers [2]netip.AddrPort) error {
+	t.Helper()
+	pc, err := xcore.DialUDP(context.Background(), inst)
+	if err != nil {
+		return err
+	}
+	return datagrams(t, pc, servers)
 }
 
 // linkParams are a share link's transport and security parameters.

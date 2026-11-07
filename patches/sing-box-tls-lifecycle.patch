@@ -418,3 +418,110 @@ new file mode 100644
 +		t.Fatal("read an empty response without an error")
 +	}
 +}
+diff --git a/transport/v2rayhttpupgrade/server.go b/transport/v2rayhttpupgrade/server.go
+--- a/transport/v2rayhttpupgrade/server.go
++++ b/transport/v2rayhttpupgrade/server.go
+@@ -14,6 +14,8 @@
+ 	"github.com/sagernet/sing-box/option"
+ 	"github.com/sagernet/sing-box/transport/v2rayhttp"
+ 	"github.com/sagernet/sing/common"
++	"github.com/sagernet/sing/common/buf"
++	"github.com/sagernet/sing/common/bufio"
+ 	E "github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/logger"
+ 	M "github.com/sagernet/sing/common/metadata"
+@@ -107,11 +109,25 @@
+ 		s.invalidRequest(writer, request, http.StatusInternalServerError, E.New("invalid connection, maybe HTTP/2"))
+ 		return
+ 	}
+-	conn, _, err := hijacker.Hijack()
++	conn, reader, err := hijacker.Hijack()
+ 	if err != nil {
+ 		s.invalidRequest(writer, request, http.StatusInternalServerError, E.Cause(err, "hijack failed"))
+ 		return
+ 	}
++	// What the client sent behind its request is in the HTTP server's reader:
++	// a client that does not wait for the 101, as Xray's does not, sends the
++	// proxy protocol's header right behind it. The handler reads it first, as
++	// v2rayhttp's does; it was dropped, and the tunnel began mid-stream.
++	if cacheLen := reader.Reader.Buffered(); cacheLen > 0 {
++		cache := buf.NewSize(cacheLen)
++		_, err = cache.ReadFullFrom(reader.Reader, cacheLen)
++		if err != nil {
++			conn.Close()
++			s.invalidRequest(writer, request, 0, E.Cause(err, "read cache"))
++			return
++		}
++		conn = bufio.NewCachedConn(conn, cache)
++	}
+ 	s.handler.NewConnectionEx(v2rayhttp.DupContext(request.Context()), conn, sHttp.SourceAddress(request), M.Socksaddr{}, nil)
+ }
+ 
+diff --git a/transport/v2rayhttpupgrade/server_buffered_test.go b/transport/v2rayhttpupgrade/server_buffered_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/v2rayhttpupgrade/server_buffered_test.go
+@@ -0,0 +1,63 @@
++package v2rayhttpupgrade
++
++import (
++	"context"
++	"io"
++	"net"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++)
++
++type firstBytes chan string
++
++func (f firstBytes) NewConnectionEx(_ context.Context, conn net.Conn, _ M.Socksaddr, _ M.Socksaddr, _ N.CloseHandlerFunc) {
++	defer conn.Close()
++	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
++	b := make([]byte, len("header"))
++	if _, err := io.ReadFull(conn, b); err != nil {
++		f <- "read: " + err.Error()
++		return
++	}
++	f <- string(b)
++}
++
++// What a client sends right behind its upgrade request reaches the handler.
++// Xray's client writes the request and its proxy protocol's header back to
++// back, and reads the 101 when it first reads. The HTTP server had read the
++// header into its buffer, which the hijack dropped: the tunnel began
++// mid-stream, and VMess answered "bad request".
++func TestServerKeepsWhatFollowsTheRequest(t *testing.T) {
++	got := make(firstBytes, 1)
++	server, err := NewServer(context.Background(), log.NewNOPFactory().Logger(), option.V2RayHTTPUpgradeOptions{Path: "/up"}, nil, got)
++	if err != nil {
++		t.Fatal(err)
++	}
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	go func() { _ = server.Serve(listener) }()
++	defer server.Close()
++	conn, err := net.Dial("tcp", listener.Addr().String())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer conn.Close()
++	request := "GET /up HTTP/1.1\r\nHost: node.example\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
++	if _, err := conn.Write([]byte(request + "header")); err != nil {
++		t.Fatal(err)
++	}
++	select {
++	case first := <-got:
++		if first != "header" {
++			t.Fatalf("the handler read %q, want %q", first, "header")
++		}
++	case <-time.After(5 * time.Second):
++		t.Fatal("the upgrade was not handed over")
++	}
++}

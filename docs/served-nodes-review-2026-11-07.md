@@ -29,7 +29,20 @@ xray, sing, mihomo and hysteria2. Three clients then connect through each one:
 - sing-box, with the outbound;
 - Xray, with the share link.
 
-CI runs it without build tags under the race detector, and again with the
+Each client sends TCP to an echo server, and UDP to two (`internal/udpecho`):
+a short datagram, one of 1350 bytes as QUIC sends, and one to the second
+server over the same session, as full-cone clients (STUN, games) send. A
+control run pointing every client at a port with no node behind it failed all
+of them, so the datagrams do go through the node.
+
+`TestIrboardServedNodesRefuseBlockedDatagrams` then gives a node of each UDP
+encoding (XUDP for VLESS, with and without Vision, and VMess; Trojan;
+Shadowsocks and Shadowsocks 2022; Hysteria; Hysteria2; TUIC; AnyTLS's UDP over
+TCP) a panel rule blocking the second echo server's port. Every client opens a
+session at the first server, sends to the second, and must get no answer while
+the session keeps working.
+
+CI runs both without build tags under the race detector, and again with the
 release tags.
 
 ## Bugs found and fixed
@@ -76,34 +89,73 @@ In V2bX:
    - The gRPC client could run `CloseSend` during a `Send`.
 6. **sing-box's gRPC client** read its response reader while another goroutine
    set it (sing-box patch).
+7. **The sing and xray cores checked a UDP session's first destination only.**
+   - A full-cone session (XUDP, Trojan, Shadowsocks, Hysteria, Hysteria2, TUIC,
+     AnyTLS) names each datagram's destination, and the core sends it there.
+     The panel's rules, and on the sing core the private-address block,
+     judged the destination the session opened with.
+   - Effect: a user blocked from a port or an address reached it by sending
+     one datagram somewhere allowed first. On the sing core the same reached
+     the node's own UDP services on 127.0.0.1 and its private network.
+   - Fix: the sing hook checks each datagram the client sends
+     (`core/sing/datagram_guard.go`); the xray dispatcher drops each datagram
+     whose own destination the rules refuse (`udprules.go`), freedom already
+     applying the private-address block per datagram. A refused datagram is
+     dropped and the session goes on. The mihomo and hysteria2 cores already
+     checked each destination.
+8. **HTTPUpgrade nodes on the sing core lost what clients send right behind
+   the upgrade request** (sing-box patch).
+   - Cause: the server took the connection over with `Hijack` and dropped the
+     reader it returns, which holds what Go's HTTP server had read ahead.
+   - Who: Xray's client (v2rayN, v2rayNG) sends its protocol header right
+     behind the request; over a real network the two arrive together. mihomo
+     sends right after the 101 and was hit when its bytes arrived before the
+     hijack. VMess answered "bad request" and closed the connection.
+   - Fix: the server hands those bytes to the handler first, as its HTTP
+     transport already did.
+9. **A data race on every Hysteria2 node's UDP on the mihomo core.** sing-quic
+   times out each UDP session with metacubex/sing's canceler, whose activity
+   time the session's reader and V2bX's reply writer both wrote with no lock.
+   A pinned copy (`third_party/metacubex-sing`) takes upstream sing's fix.
 
 In Irboard:
 
-7. **HTTPUpgrade nodes went to mihomo-based clients and sing-box as plain
+10. **HTTPUpgrade nodes went to mihomo-based clients and sing-box as plain
    TCP**, which the node refuses. They are now WebSocket with
    `v2ray-http-upgrade` for mihomo, and sing-box's `httpupgrade` transport.
    Stash, which has no HTTPUpgrade, leaves them out.
-8. **mKCP nodes**, VMess and VLESS, went to mihomo, Stash and sing-box as plain
+11. **mKCP nodes**, VMess and VLESS, went to mihomo, Stash and sing-box as plain
    TCP to a UDP port. None of them has mKCP, so these nodes are now left out.
    Sing-box also no longer gets VLESS encryption nodes, which it cannot speak.
-9. **sing-box and Hiddify could not use VMess TLS nodes on the Xray core.**
+12. **sing-box and Hiddify could not use VMess TLS nodes on the Xray core.**
    - Cause: sing-box reads the cipher `auto` as `zero` over TLS, and Xray 26
      accepts only `aes-128-gcm` and `chacha20-poly1305`.
    - Fix: profiles and share links now name `aes-128-gcm` for a TLS node, or
      the cipher the admin chose.
-10. **XHTTP nodes with padding obfuscation refused every mihomo client (400).**
+13. **XHTTP nodes with padding obfuscation refused every mihomo client (400).**
     - Cause: mihomo has no defaults for where the padding goes, and sent none.
     - Fix: the profile now names Xray's defaults (`x_padding`, `X-Padding`,
       `queryInHeader`, `repeat-x`) unless the node sets its own.
-11. **Clash Verge and Nyanpasu** built a node's VLESS encryption string with an
+14. **Clash Verge and Nyanpasu** built a node's VLESS encryption string with an
     operator-precedence error. It only showed where a setting was missing.
+15. **VMess UDP from mihomo-based clients and sing-box was bound to its first
+    destination.** Their profiles left XUDP off, so a second destination
+    (STUN, games) over the same socket never answered, on every core. The
+    profiles now name XUDP, which every V2bX core serves, as Xray clients and
+    the VLESS profiles already used.
 
 ## Not covered
 
 - Clients other than mihomo, sing-box and Xray, such as Stash, Shadowrocket,
   Surge, Loon and Quantumult X. For Stash, only what its profile leaves out
   is checked.
-- UDP through the nodes: each client sends TCP to an echo server.
+- The sing core's per-datagram private-address block is checked by a unit
+  test only (`core/sing/datagram_guard_test.go`): a test has no public address
+  to open a UDP session at. The panel-rule path runs end to end.
+- sing-box's full gRPC client (`with_grpc`, which the test links) never gives
+  up on a node that does not answer. That is a client's own problem, not a
+  node's: V2bX serves gRPC and does not dial it, and sing-box's own builds use
+  the lite gRPC client.
 - The Hysteria2 core applies no per-user speed limit. The wizard places
   Hysteria2 nodes on the sing core, which does.
 - sing-box's own VLESS client fails Go's pointer checks in Vision, so the run

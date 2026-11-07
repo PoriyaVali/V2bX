@@ -149,8 +149,9 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	}
 	users := &UserMap{uidMap: make(map[string]int)}
 	hs := &HookServer{
-		users:   users,
-		counter: sync.Map{},
+		users:        users,
+		counter:      sync.Map{},
+		allowPrivate: c.SingConfig.AllowPrivateDestinations,
 	}
 	b.Router().AppendTracker(hs)
 	return &Sing{

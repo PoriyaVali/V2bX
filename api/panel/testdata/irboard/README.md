@@ -44,10 +44,13 @@ sing-box outbound and the share link.
 `cmd/irboard_served_test.go` starts each node through V2bX's own node
 controller on every core `validateSetupCore` accepts for it. Each core is fed
 that config and user list, and each client connects through it to an echo
-server: mihomo with the Clash Meta proxy, sing-box with the outbound, and Xray
-with the share link. It also checks that the wizard's automatic core can
-serve the node, and that a client is given no profile only where it cannot
-reach the node at all.
+server over TCP, and to two over UDP: mihomo with the Clash Meta proxy, sing-box
+with the outbound, and Xray with the share link. It also checks that the
+wizard's automatic core can serve the node, and that a client is given no
+profile only where it cannot reach the node at all.
+`TestIrboardServedNodesRefuseBlockedDatagrams` gives a node of each UDP
+encoding a panel rule, and checks that it is applied to each datagram of a
+session, not only to its first.
 
 To regenerate:
 
@@ -57,7 +60,7 @@ IRBOARD_NODE_CONTRACT_DIR=../V2bX/api/panel/testdata/irboard \
   php vendor/bin/phpunit tests/Feature/ServedNodeContractTest.php
 cd ../V2bX
 GOEXPERIMENT=jsonv2 go test -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" \
-  ./cmd -run TestIrboardServedNodesOnEveryCore
+  ./cmd -run TestIrboardServedNodes
 ```
 
 Without the release tags, sing-box has no QUIC (Hysteria, TUIC) and no uTLS
