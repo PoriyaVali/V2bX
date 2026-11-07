@@ -707,5 +707,193 @@
         "patched_sha256": "1971ab162a3d3a76fd10cb593fa934cc43691dd8f1ddc90308798a662850685a"
       }
     ]
+  },
+  {
+    "module": "github.com/wyx2685/sing-vmess",
+    "version": "v0.0.0-20250723121437-95d5ab59ff92",
+    "directory": "sing-vmess",
+    "modified_files": [
+      "go.mod",
+      "go.sum",
+      "vless/vision.go",
+      "vless/vision_utls.go"
+    ],
+    "added_files": [
+      {
+        "path": "vless/vision_test.go",
+        "patched_sha256": "56131ba6e662e18aa3082419aa73ed29c506cc0956246d2f66e7451f6a6bcd2f"
+      },
+      {
+        "path": "vless/vision_utls_test.go",
+        "patched_sha256": "a73a1f96b738c59999556d25998df53c433ed8871098cda0b2c0e5171b8e5c7f"
+      }
+    ],
+    "files": [
+      {
+        "path": ".github/renovate.json",
+        "upstream_sha256": "93a1651c9727c22d2301f0934605a2235bc9a4126038a4585cfdf923e121d4ea",
+        "patched_sha256": "93a1651c9727c22d2301f0934605a2235bc9a4126038a4585cfdf923e121d4ea"
+      },
+      {
+        "path": ".github/update_dependencies.sh",
+        "upstream_sha256": "c4c5f89f2fd7bfcbb33ed0bd674d23f6b06a3d0f7ade26f9f7601174c4bf1c0f",
+        "patched_sha256": "c4c5f89f2fd7bfcbb33ed0bd674d23f6b06a3d0f7ade26f9f7601174c4bf1c0f"
+      },
+      {
+        "path": ".github/workflows/lint.yml",
+        "upstream_sha256": "d7c7b085849abb14ac9329d1b9d99800e320a932d8e8b6a9882b870402b9f918",
+        "patched_sha256": "d7c7b085849abb14ac9329d1b9d99800e320a932d8e8b6a9882b870402b9f918"
+      },
+      {
+        "path": ".github/workflows/test.yml",
+        "upstream_sha256": "202d7fa6130fc083493b017dc92a003d7a2e8e36f921b708b06078812837f900",
+        "patched_sha256": "202d7fa6130fc083493b017dc92a003d7a2e8e36f921b708b06078812837f900"
+      },
+      {
+        "path": ".gitignore",
+        "upstream_sha256": "619a754b37b7bf159791d2f3af67800e2654d2c211a4706842604b0cbbf15a48",
+        "patched_sha256": "619a754b37b7bf159791d2f3af67800e2654d2c211a4706842604b0cbbf15a48"
+      },
+      {
+        "path": ".golangci.yml",
+        "upstream_sha256": "6a2b6fe0867c925adf34fc14ca6f39d6eed459ed6161a8c1d259aa005b07e146",
+        "patched_sha256": "6a2b6fe0867c925adf34fc14ca6f39d6eed459ed6161a8c1d259aa005b07e146"
+      },
+      {
+        "path": "chunk_aead.go",
+        "upstream_sha256": "3fc8f03d391ce7f2ad1ee5f2b103d1a52171862c24997492a97415d1f994ba1f",
+        "patched_sha256": "3fc8f03d391ce7f2ad1ee5f2b103d1a52171862c24997492a97415d1f994ba1f"
+      },
+      {
+        "path": "chunk_length_aead.go",
+        "upstream_sha256": "c106029ba6bb0a304713b7a7b66b27e792e3717ff114f8963e993b6d0bf18e66",
+        "patched_sha256": "c106029ba6bb0a304713b7a7b66b27e792e3717ff114f8963e993b6d0bf18e66"
+      },
+      {
+        "path": "chunk_length_stream.go",
+        "upstream_sha256": "de6d2412041e7e75af8a995532dc71fcb0222ae87c080fb121a613411211432a",
+        "patched_sha256": "de6d2412041e7e75af8a995532dc71fcb0222ae87c080fb121a613411211432a"
+      },
+      {
+        "path": "chunk_stream.go",
+        "upstream_sha256": "1bd41234e826e7d55cd175e6da0a3010e5d3f0118fcf5e39e31aebb76ba31223",
+        "patched_sha256": "1bd41234e826e7d55cd175e6da0a3010e5d3f0118fcf5e39e31aebb76ba31223"
+      },
+      {
+        "path": "chunk_stream_checksum.go",
+        "upstream_sha256": "1be91d425da231a8a4cb71ab9cdb69fc3d04f1d227071ea882113b8d3d2ff031",
+        "patched_sha256": "1be91d425da231a8a4cb71ab9cdb69fc3d04f1d227071ea882113b8d3d2ff031"
+      },
+      {
+        "path": "client.go",
+        "upstream_sha256": "509a7bd3e1c7d31aedd1e8d8f3300943f708f67313e484d0919cd951f544bf3a",
+        "patched_sha256": "509a7bd3e1c7d31aedd1e8d8f3300943f708f67313e484d0919cd951f544bf3a"
+      },
+      {
+        "path": "client_option.go",
+        "upstream_sha256": "628ead967d72de587034a7129c9b38bfdb1940a1b240f905ba754758bfeb5033",
+        "patched_sha256": "628ead967d72de587034a7129c9b38bfdb1940a1b240f905ba754758bfeb5033"
+      },
+      {
+        "path": "go.mod",
+        "upstream_sha256": "8e848e285ab8e95aadef64a0c0c1fbe143a033b2ab874e141e5652605e198028",
+        "patched_sha256": "67edcf3215d2dec71aa4af63447e3848d13932175988f112f279a3f7897338c8"
+      },
+      {
+        "path": "go.sum",
+        "upstream_sha256": "3500a7f3d3567e7a242ce0faf27917ff2828c8c3c9db7c48da92e1a2b48b1894",
+        "patched_sha256": "54298005505bcf67d24a7df4bf32bd3552d6981b0d05797d4dd728eadb3ae31d"
+      },
+      {
+        "path": "kdf.go",
+        "upstream_sha256": "9703b679a50e609223ac46c15723eea987e1188e370dcce1ecd237d597c1be2a",
+        "patched_sha256": "9703b679a50e609223ac46c15723eea987e1188e370dcce1ecd237d597c1be2a"
+      },
+      {
+        "path": "LICENSE",
+        "upstream_sha256": "2f02b7486bcfa90d115c71a20437f3906b6fd5bef81c5dc0efd341399e89d0fd",
+        "patched_sha256": "2f02b7486bcfa90d115c71a20437f3906b6fd5bef81c5dc0efd341399e89d0fd"
+      },
+      {
+        "path": "Makefile",
+        "upstream_sha256": "7bb06130de435e7bcb71c2ce2f56003f7a6fee8e6197573c114ee58c80475385",
+        "patched_sha256": "7bb06130de435e7bcb71c2ce2f56003f7a6fee8e6197573c114ee58c80475385"
+      },
+      {
+        "path": "mux.go",
+        "upstream_sha256": "7061ce5af54ea04c212fb9184733a0f80d7bbcd541d25d097df2611bd02d4e9c",
+        "patched_sha256": "7061ce5af54ea04c212fb9184733a0f80d7bbcd541d25d097df2611bd02d4e9c"
+      },
+      {
+        "path": "mux_wrapper.go",
+        "upstream_sha256": "bfb94507941940e19c8b232b00a535dcf07c313e3a4f84059eb37565791cf25b",
+        "patched_sha256": "bfb94507941940e19c8b232b00a535dcf07c313e3a4f84059eb37565791cf25b"
+      },
+      {
+        "path": "packetaddr/conn.go",
+        "upstream_sha256": "6d7f6bc659a8cab8c4023aa8aef89420fe4eb9aebad66517f8d128f21d43c7a4",
+        "patched_sha256": "6d7f6bc659a8cab8c4023aa8aef89420fe4eb9aebad66517f8d128f21d43c7a4"
+      },
+      {
+        "path": "packetaddr/packetaddr.go",
+        "upstream_sha256": "8f0b7b31c692a1a257e607785b50b1191c3b6fd8211ad946805aa3136d3b770c",
+        "patched_sha256": "8f0b7b31c692a1a257e607785b50b1191c3b6fd8211ad946805aa3136d3b770c"
+      },
+      {
+        "path": "protocol.go",
+        "upstream_sha256": "d2d41075d1f1d4e5e3206395d877138bc665b09a39c1fab42670fee45fae9224",
+        "patched_sha256": "d2d41075d1f1d4e5e3206395d877138bc665b09a39c1fab42670fee45fae9224"
+      },
+      {
+        "path": "README.md",
+        "upstream_sha256": "c6f7cf4e328c662379465617fbd3fa2326827e02ce24b62f446545c5fee49139",
+        "patched_sha256": "c6f7cf4e328c662379465617fbd3fa2326827e02ce24b62f446545c5fee49139"
+      },
+      {
+        "path": "service.go",
+        "upstream_sha256": "0ddcf3e1f4e22e4ead52a8b5f2f2723e2b0733d1dd421f950aa583f67ceee57d",
+        "patched_sha256": "0ddcf3e1f4e22e4ead52a8b5f2f2723e2b0733d1dd421f950aa583f67ceee57d"
+      },
+      {
+        "path": "service_option.go",
+        "upstream_sha256": "4f4508e8f50842c9df55c95a76dc4bdbf11f0014ae59cdb2f43ff59a61b72b59",
+        "patched_sha256": "4f4508e8f50842c9df55c95a76dc4bdbf11f0014ae59cdb2f43ff59a61b72b59"
+      },
+      {
+        "path": "vless/client.go",
+        "upstream_sha256": "19f3ab9723c9fce43451fc11e4e9c18ca9e2d11c73e0e48e36064b3f97e4258d",
+        "patched_sha256": "19f3ab9723c9fce43451fc11e4e9c18ca9e2d11c73e0e48e36064b3f97e4258d"
+      },
+      {
+        "path": "vless/constant.go",
+        "upstream_sha256": "64517f068c6f54cab70c857890cc2cfd4ce1386e3ef5963efdb4081343e58316",
+        "patched_sha256": "64517f068c6f54cab70c857890cc2cfd4ce1386e3ef5963efdb4081343e58316"
+      },
+      {
+        "path": "vless/protocol.go",
+        "upstream_sha256": "175291e103a276d66e98fb6741e142bc6e5c9d031c128e1fc363ab3f953880b9",
+        "patched_sha256": "175291e103a276d66e98fb6741e142bc6e5c9d031c128e1fc363ab3f953880b9"
+      },
+      {
+        "path": "vless/service.go",
+        "upstream_sha256": "1e0183d67b4564c86f0c8405bdf109ec84db08a03d43d0e079276fb18875cdeb",
+        "patched_sha256": "1e0183d67b4564c86f0c8405bdf109ec84db08a03d43d0e079276fb18875cdeb"
+      },
+      {
+        "path": "vless/vision.go",
+        "upstream_sha256": "86ceebe88d3928810b78b74fae531433afa7e2199594263114f8bf0303569500",
+        "patched_sha256": "80c914c310e009a8ad98eea1ad4db7dc28ac0f0febf30b5e5db2e05892baf2e2"
+      },
+      {
+        "path": "vless/vision_utls.go",
+        "upstream_sha256": "576e56de905e4ebb1668b9690a7628a8be0564108747b12f4cf363e6cdac36e4",
+        "patched_sha256": "e33682208afe4c57563ba61b813dc850c0cda6eb529deded29512b76751cc63a"
+      },
+      {
+        "path": "xudp.go",
+        "upstream_sha256": "dffd48f9ec7b22408dec6f275f4929d20d93438370896c6a434ed3486126e20f",
+        "patched_sha256": "dffd48f9ec7b22408dec6f275f4929d20d93438370896c6a434ed3486126e20f"
+      }
+    ]
   }
 ]

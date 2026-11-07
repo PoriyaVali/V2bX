@@ -61,7 +61,7 @@ func (c *Xray) AddNode(tag string, info *panel.NodeInfo, config *conf.Options) e
 		c.setDecoy(tag, nil)
 		return fmt.Errorf("add inbound error: %s", err)
 	}
-	outBoundConfig, err := buildOutbound(config, tag)
+	outBoundConfig, err := buildOutbound(config, tag, c.allowPrivate)
 	if err != nil {
 		return fmt.Errorf("build outbound error: %s", err)
 	}

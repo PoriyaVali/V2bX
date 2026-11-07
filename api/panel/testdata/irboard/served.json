@@ -1,0 +1,1550 @@
+{
+    "uuid": "11111111-2222-3333-4444-555555555555",
+    "nodes": {
+        "vless/tcp-reality-vision": {
+            "node_type": "vless",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjoyLCJmbG93IjoieHRscy1ycHJ4LXZpc2lvbiIsInRsc19zZXR0aW5ncyI6eyJzZXJ2ZXJfbmFtZSI6ImNvdmVyLmV4YW1wbGUudGVzdCIsInNlcnZlcl9wb3J0IjoiNDQzIiwicHVibGljX2tleSI6Im11QWVVN3NjUWdNX0plU3dwSkhoMmRrcGZMYkg1aGVzR0x3N0dYVDNuR0kiLCJwcml2YXRlX2tleSI6IkM1bDFDUWw3TGZMeHEtT3lPTUV5Y2R1ZzFyS181N0k0UGYwUVJheUc5bzgiLCJzaG9ydF9pZCI6IjkzYzJiN2FkIn0sImVuY3J5cHRpb24iOm51bGwsImVuY3J5cHRpb25fc2V0dGluZ3MiOm51bGwsImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"f9f83aa7a44731acde75bf8a6f260c48957a41e9\""
+            },
+            "clash": {
+                "name": "vless/tcp-reality-vision",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20001,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "flow": "xtls-rprx-vision",
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "cover.example.test",
+                "reality-opts": {
+                    "public-key": "muAeU7scQgM_JeSwpJHh2dkpfLbH5hesGLw7GXT3nGI",
+                    "short-id": "93c2b7ad"
+                }
+            },
+            "singbox": {
+                "type": "vless",
+                "tag": "vless/tcp-reality-vision",
+                "server": "node.example.test",
+                "server_port": 20001,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "packet_encoding": "xudp",
+                "flow": "xtls-rprx-vision",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "cover.example.test",
+                    "reality": {
+                        "enabled": true,
+                        "public_key": "muAeU7scQgM_JeSwpJHh2dkpfLbH5hesGLw7GXT3nGI",
+                        "short_id": "93c2b7ad"
+                    },
+                    "utls": {
+                        "enabled": true,
+                        "fingerprint": "chrome"
+                    }
+                }
+            },
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20001?type=tcp&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=reality&flow=xtls-rprx-vision&fp=chrome&insecure=0&sni=cover.example.test&pbk=muAeU7scQgM_JeSwpJHh2dkpfLbH5hesGLw7GXT3nGI&sid=93c2b7ad#vless%2Ftcp-reality-vision",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/tcp-tls": {
+            "node_type": "vless",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjoxLCJmbG93IjpudWxsLCJ0bHNfc2V0dGluZ3MiOnsic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCJ9LCJlbmNyeXB0aW9uIjpudWxsLCJlbmNyeXB0aW9uX3NldHRpbmdzIjpudWxsLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"bbab41f5e3bdeb75353794cd39f3eef30bbf9299\""
+            },
+            "clash": {
+                "name": "vless/tcp-tls",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20002,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "node.example.test"
+            },
+            "singbox": {
+                "type": "vless",
+                "tag": "vless/tcp-tls",
+                "server": "node.example.test",
+                "server_port": 20002,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "packet_encoding": "xudp",
+                "flow": "",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test",
+                    "utls": {
+                        "enabled": true,
+                        "fingerprint": "chrome"
+                    }
+                }
+            },
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20002?type=tcp&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=tls&fp=chrome&insecure=0&sni=node.example.test#vless%2Ftcp-tls",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/tcp-tls-vision": {
+            "node_type": "vless",
+            "node_id": 3,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjoxLCJmbG93IjoieHRscy1ycHJ4LXZpc2lvbiIsInRsc19zZXR0aW5ncyI6eyJzZXJ2ZXJfbmFtZSI6Im5vZGUuZXhhbXBsZS50ZXN0In0sImVuY3J5cHRpb24iOm51bGwsImVuY3J5cHRpb25fc2V0dGluZ3MiOm51bGwsImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"a6eebcc65a3020ad6993c3ac7579a92bf7f5860a\""
+            },
+            "clash": {
+                "name": "vless/tcp-tls-vision",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20003,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "flow": "xtls-rprx-vision",
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "node.example.test"
+            },
+            "singbox": {
+                "type": "vless",
+                "tag": "vless/tcp-tls-vision",
+                "server": "node.example.test",
+                "server_port": 20003,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "packet_encoding": "xudp",
+                "flow": "xtls-rprx-vision",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test",
+                    "utls": {
+                        "enabled": true,
+                        "fingerprint": "chrome"
+                    }
+                }
+            },
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20003?type=tcp&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=tls&flow=xtls-rprx-vision&fp=chrome&insecure=0&sni=node.example.test#vless%2Ftcp-tls-vision",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/ws-tls": {
+            "node_type": "vless",
+            "node_id": 4,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6IndzIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3dzIiwiaGVhZGVycyI6eyJIb3N0Ijoibm9kZS5leGFtcGxlLnRlc3QifX0sInRscyI6MSwiZmxvdyI6bnVsbCwidGxzX3NldHRpbmdzIjp7InNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QifSwiZW5jcnlwdGlvbiI6bnVsbCwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6bnVsbCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"652ff46b8fb0dbf45c7c317224dd85f2d4a63e5a\""
+            },
+            "clash": {
+                "name": "vless/ws-tls",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20004,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "node.example.test",
+                "network": "ws",
+                "ws-opts": {
+                    "path": "/ws",
+                    "headers": {
+                        "Host": "node.example.test"
+                    }
+                }
+            },
+            "singbox": {
+                "type": "vless",
+                "tag": "vless/ws-tls",
+                "server": "node.example.test",
+                "server_port": 20004,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "packet_encoding": "xudp",
+                "flow": "",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test",
+                    "utls": {
+                        "enabled": true,
+                        "fingerprint": "chrome"
+                    }
+                },
+                "transport": {
+                    "type": "ws",
+                    "path": "/ws",
+                    "headers": {
+                        "Host": [
+                            "node.example.test"
+                        ]
+                    },
+                    "max_early_data": 2048,
+                    "early_data_header_name": "Sec-WebSocket-Protocol"
+                }
+            },
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20004?type=ws&encryption=none&host=node.example.test&path=%2Fws&headerType=none&quicSecurity=none&serviceName=&security=tls&fp=chrome&insecure=0&sni=node.example.test#vless%2Fws-tls",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/ws-none": {
+            "node_type": "vless",
+            "node_id": 5,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6IndzIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3dzIiwiaGVhZGVycyI6eyJIb3N0Ijoibm9kZS5leGFtcGxlLnRlc3QifX0sInRscyI6MCwiZmxvdyI6bnVsbCwidGxzX3NldHRpbmdzIjpudWxsLCJlbmNyeXB0aW9uIjpudWxsLCJlbmNyeXB0aW9uX3NldHRpbmdzIjpudWxsLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"d9e418bac1057f2b7e21169eb6dbe4264c957a9f\""
+            },
+            "clash": {
+                "name": "vless/ws-none",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20005,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "network": "ws",
+                "ws-opts": {
+                    "path": "/ws",
+                    "headers": {
+                        "Host": "node.example.test"
+                    }
+                }
+            },
+            "singbox": {
+                "type": "vless",
+                "tag": "vless/ws-none",
+                "server": "node.example.test",
+                "server_port": 20005,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "packet_encoding": "xudp",
+                "transport": {
+                    "type": "ws",
+                    "path": "/ws",
+                    "headers": {
+                        "Host": [
+                            "node.example.test"
+                        ]
+                    },
+                    "max_early_data": 2048,
+                    "early_data_header_name": "Sec-WebSocket-Protocol"
+                }
+            },
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20005?type=ws&encryption=none&host=node.example.test&path=%2Fws&headerType=none&quicSecurity=none&serviceName=&security=&fp=chrome&insecure=0#vless%2Fws-none",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/grpc-reality": {
+            "node_type": "vless",
+            "node_id": 6,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6ImdycGMiLCJuZXR3b3JrU2V0dGluZ3MiOnsic2VydmljZU5hbWUiOiJHdW5TZXJ2aWNlIn0sInRscyI6MiwiZmxvdyI6bnVsbCwidGxzX3NldHRpbmdzIjp7InNlcnZlcl9uYW1lIjoiY292ZXIuZXhhbXBsZS50ZXN0Iiwic2VydmVyX3BvcnQiOiI0NDMiLCJwdWJsaWNfa2V5IjoibnRvWWIwY3JaTXJjQjFtODNLX241T2ZRQmxQNXVJTjBZRjctdURBUURGayIsInByaXZhdGVfa2V5IjoiTDFZdUstOG85ZDZCUjFyT01kdmhhVm5TZjIxdldHMWFkTzNyRXVNVXBJdyIsInNob3J0X2lkIjoiN2Q3OWM4M2IifSwiZW5jcnlwdGlvbiI6bnVsbCwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6bnVsbCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"2c4d99046b4c73f63b14f93f952b948aa08a0e33\""
+            },
+            "clash": {
+                "name": "vless/grpc-reality",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20006,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "cover.example.test",
+                "reality-opts": {
+                    "public-key": "ntoYb0crZMrcB1m83K_n5OfQBlP5uIN0YF7-uDAQDFk",
+                    "short-id": "7d79c83b"
+                },
+                "network": "grpc",
+                "grpc-opts": {
+                    "grpc-service-name": "GunService"
+                }
+            },
+            "singbox": {
+                "type": "vless",
+                "tag": "vless/grpc-reality",
+                "server": "node.example.test",
+                "server_port": 20006,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "packet_encoding": "xudp",
+                "flow": "",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "cover.example.test",
+                    "reality": {
+                        "enabled": true,
+                        "public_key": "ntoYb0crZMrcB1m83K_n5OfQBlP5uIN0YF7-uDAQDFk",
+                        "short_id": "7d79c83b"
+                    },
+                    "utls": {
+                        "enabled": true,
+                        "fingerprint": "chrome"
+                    }
+                },
+                "transport": {
+                    "type": "grpc",
+                    "service_name": "GunService"
+                }
+            },
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20006?type=grpc&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=GunService&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=ntoYb0crZMrcB1m83K_n5OfQBlP5uIN0YF7-uDAQDFk&sid=7d79c83b#vless%2Fgrpc-reality",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/grpc-tls": {
+            "node_type": "vless",
+            "node_id": 7,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6ImdycGMiLCJuZXR3b3JrU2V0dGluZ3MiOnsic2VydmljZU5hbWUiOiJHdW5TZXJ2aWNlIn0sInRscyI6MSwiZmxvdyI6bnVsbCwidGxzX3NldHRpbmdzIjp7InNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QifSwiZW5jcnlwdGlvbiI6bnVsbCwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6bnVsbCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"ac07ff40d1a425689b88aea4c43dc152ce4d8eac\""
+            },
+            "clash": {
+                "name": "vless/grpc-tls",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20007,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "node.example.test",
+                "network": "grpc",
+                "grpc-opts": {
+                    "grpc-service-name": "GunService"
+                }
+            },
+            "singbox": {
+                "type": "vless",
+                "tag": "vless/grpc-tls",
+                "server": "node.example.test",
+                "server_port": 20007,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "packet_encoding": "xudp",
+                "flow": "",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test",
+                    "utls": {
+                        "enabled": true,
+                        "fingerprint": "chrome"
+                    }
+                },
+                "transport": {
+                    "type": "grpc",
+                    "service_name": "GunService"
+                }
+            },
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20007?type=grpc&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=GunService&security=tls&fp=chrome&insecure=0&sni=node.example.test#vless%2Fgrpc-tls",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/httpupgrade-tls": {
+            "node_type": "vless",
+            "node_id": 8,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6Imh0dHB1cGdyYWRlIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3VwIiwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0In0sInRscyI6MSwiZmxvdyI6bnVsbCwidGxzX3NldHRpbmdzIjp7InNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QifSwiZW5jcnlwdGlvbiI6bnVsbCwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6bnVsbCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"6d0a8641048257a297cdc7fe3e5a6d1725950ee0\""
+            },
+            "clash": {
+                "name": "vless/httpupgrade-tls",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20008,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "node.example.test",
+                "network": "ws",
+                "ws-opts": {
+                    "v2ray-http-upgrade": true,
+                    "path": "/up",
+                    "headers": {
+                        "Host": "node.example.test"
+                    }
+                }
+            },
+            "singbox": {
+                "type": "vless",
+                "tag": "vless/httpupgrade-tls",
+                "server": "node.example.test",
+                "server_port": 20008,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "packet_encoding": "xudp",
+                "flow": "",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test",
+                    "utls": {
+                        "enabled": true,
+                        "fingerprint": "chrome"
+                    }
+                },
+                "transport": {
+                    "type": "httpupgrade",
+                    "path": "/up",
+                    "host": "node.example.test"
+                }
+            },
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20008?type=httpupgrade&encryption=none&host=node.example.test&path=%2Fup&headerType=none&quicSecurity=none&serviceName=&security=tls&fp=chrome&insecure=0&sni=node.example.test#vless%2Fhttpupgrade-tls",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/xhttp-reality": {
+            "node_type": "vless",
+            "node_id": 9,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InhodHRwIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3hoIiwiaG9zdCI6bnVsbCwibW9kZSI6ImF1dG8ifSwidGxzIjoyLCJmbG93IjpudWxsLCJ0bHNfc2V0dGluZ3MiOnsic2VydmVyX25hbWUiOiJjb3Zlci5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6IjQ0MyIsInB1YmxpY19rZXkiOiI0WUdHaUx4a25RME95bUwtcEpFaVdsYlNNeUJycFZIUjBMUVUyTVBSaVJFIiwicHJpdmF0ZV9rZXkiOiJVeGJTRHk3dW9vWHhOOF9IYkZzMVllSzdvN0s1MFFTU3IyVVR5T3FBaWZJIiwic2hvcnRfaWQiOiI3YTRlZjQ0OCJ9LCJlbmNyeXB0aW9uIjpudWxsLCJlbmNyeXB0aW9uX3NldHRpbmdzIjpudWxsLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"54ccbaaddc03d8ffb88aa626c3412acf2a7b8643\""
+            },
+            "clash": {
+                "name": "vless/xhttp-reality",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20009,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "cover.example.test",
+                "reality-opts": {
+                    "public-key": "4YGGiLxknQ0OymL-pJEiWlbSMyBrpVHR0LQU2MPRiRE",
+                    "short-id": "7a4ef448"
+                },
+                "network": "xhttp",
+                "xhttp-opts": {
+                    "path": "/xh",
+                    "mode": "auto"
+                }
+            },
+            "singbox": null,
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20009?type=xhttp&encryption=none&host=&path=%2Fxh&headerType=none&quicSecurity=none&serviceName=&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=4YGGiLxknQ0OymL-pJEiWlbSMyBrpVHR0LQU2MPRiRE&sid=7a4ef448&mode=auto#vless%2Fxhttp-reality",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/xhttp-tls-padding": {
+            "node_type": "vless",
+            "node_id": 10,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InhodHRwIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3hoIiwibW9kZSI6ImF1dG8iLCJleHRyYSI6eyJ4UGFkZGluZ0J5dGVzIjoiMjAwLTQwMCIsInhQYWRkaW5nT2Jmc01vZGUiOnRydWUsIm5vR1JQQ0hlYWRlciI6ZmFsc2V9fSwidGxzIjoxLCJmbG93IjpudWxsLCJ0bHNfc2V0dGluZ3MiOnsic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCJ9LCJlbmNyeXB0aW9uIjpudWxsLCJlbmNyeXB0aW9uX3NldHRpbmdzIjpudWxsLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"6a7e4283d5bc42da2042c7877de55984c7aca24b\""
+            },
+            "clash": {
+                "name": "vless/xhttp-tls-padding",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20010,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "node.example.test",
+                "network": "xhttp",
+                "xhttp-opts": {
+                    "path": "/xh",
+                    "mode": "auto",
+                    "no-grpc-header": false,
+                    "x-padding-bytes": "200-400",
+                    "x-padding-obfs-mode": true,
+                    "x-padding-key": "x_padding",
+                    "x-padding-header": "X-Padding",
+                    "x-padding-placement": "queryInHeader",
+                    "x-padding-method": "repeat-x"
+                }
+            },
+            "singbox": null,
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20010?type=xhttp&encryption=none&host=&path=%2Fxh&headerType=none&quicSecurity=none&serviceName=&security=tls&fp=chrome&insecure=0&sni=node.example.test&mode=auto&extra=%7B%22xPaddingBytes%22%3A%22200-400%22%2C%22xPaddingObfsMode%22%3Atrue%2C%22noGRPCHeader%22%3Afalse%7D#vless%2Fxhttp-tls-padding",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/tcp-reality-encryption": {
+            "node_type": "vless",
+            "node_id": 11,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjoyLCJmbG93IjpudWxsLCJ0bHNfc2V0dGluZ3MiOnsic2VydmVyX25hbWUiOiJjb3Zlci5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6IjQ0MyIsInB1YmxpY19rZXkiOiJ3ZjZVMHdFbmo0WVFVdTlRdzVsbVVXTzQ0eUxjRXRzRXpSMExLMVh5T1hFIiwicHJpdmF0ZV9rZXkiOiJBVFFCQWJ2cnFmdmhrU1M3X213ektwNUFQWjdaV1ZHbmJEeUVIcHJlaU5JIiwic2hvcnRfaWQiOiJlYmYxZmYzNCJ9LCJlbmNyeXB0aW9uIjoibWxrZW03Njh4MjU1MTlwbHVzIiwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6eyJtb2RlIjoibmF0aXZlIiwicnR0IjoiMXJ0dCIsInRpY2tldCI6IjBzIiwicHJpdmF0ZV9rZXkiOiJjTkdkQmJiYjc0N1JlaDhnOFRmRFZ1a0otUUVUbVdJR01iY1RlRzVJdTZJIiwicGFzc3dvcmQiOiJCWTRxRm9hVE5aMDg3d205c1ZkX1FaXy1OZGduR3hLS0ZnQm1uTkljMVg0In0sImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"02a83ab48cde7853403a05a3cc565824a45200b9\""
+            },
+            "clash": {
+                "name": "vless/tcp-reality-encryption",
+                "type": "vless",
+                "server": "node.example.test",
+                "port": 20011,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "tls": true,
+                "skip-cert-verify": false,
+                "client-fingerprint": "chrome",
+                "servername": "cover.example.test",
+                "reality-opts": {
+                    "public-key": "wf6U0wEnj4YQUu9Qw5lmUWO44yLcEtsEzR0LK1XyOXE",
+                    "short-id": "ebf1ff34"
+                },
+                "encryption": "mlkem768x25519plus.native.1rtt.BY4qFoaTNZ087wm9sVd_QZ_-NdgnGxKKFgBmnNIc1X4"
+            },
+            "singbox": null,
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20011?type=tcp&encryption=mlkem768x25519plus.native.1rtt.BY4qFoaTNZ087wm9sVd_QZ_-NdgnGxKKFgBmnNIc1X4&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=wf6U0wEnj4YQUu9Qw5lmUWO44yLcEtsEzR0LK1XyOXE&sid=ebf1ff34#vless%2Ftcp-reality-encryption",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vless/kcp": {
+            "node_type": "vless",
+            "node_id": 12,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6ImtjcCIsIm5ldHdvcmtTZXR0aW5ncyI6eyJoZWFkZXIiOnsidHlwZSI6Im5vbmUifSwic2VlZCI6bnVsbH0sInRscyI6MCwiZmxvdyI6bnVsbCwidGxzX3NldHRpbmdzIjpudWxsLCJlbmNyeXB0aW9uIjpudWxsLCJlbmNyeXB0aW9uX3NldHRpbmdzIjpudWxsLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"2e65cdf40bce98ecdeffdd62b20e79b3dbd8881f\""
+            },
+            "clash": null,
+            "singbox": null,
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20012?type=kcp&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=&fp=chrome&insecure=0#vless%2Fkcp",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vmess/tcp": {
+            "node_type": "vmess",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjowLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"21c45016d6138c10d3097ad8f6e351b9a5a5bfb6\""
+            },
+            "clash": {
+                "name": "vmess/tcp",
+                "type": "vmess",
+                "server": "node.example.test",
+                "port": 20013,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "alterId": 0,
+                "cipher": "auto",
+                "udp": true
+            },
+            "singbox": {
+                "tag": "vmess/tcp",
+                "type": "vmess",
+                "server": "node.example.test",
+                "server_port": 20013,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "security": "auto",
+                "alter_id": 0,
+                "domain_resolver": "local"
+            },
+            "link": "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3NcL3RjcCIsImFkZCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwicG9ydCI6IjIwMDEzIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6InRjcCIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIiLCJ0bHMiOiIiLCJmcCI6ImNocm9tZSJ9",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vmess/tcp-http": {
+            "node_type": "vmess",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6eyJoZWFkZXIiOnsidHlwZSI6Imh0dHAiLCJyZXF1ZXN0Ijp7InBhdGgiOlsiXC8iXSwiaGVhZGVycyI6eyJIb3N0IjpbInd3dy5iYWlkdS5jb20iLCJ3d3cuYmluZy5jb20iXX19fX0sInRscyI6MCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"5e7baac785bae36361c2744d902692940c321bf5\""
+            },
+            "clash": {
+                "name": "vmess/tcp-http",
+                "type": "vmess",
+                "server": "node.example.test",
+                "port": 20014,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "alterId": 0,
+                "cipher": "auto",
+                "udp": true,
+                "network": "http",
+                "http-opts": {
+                    "headers": {
+                        "Host": [
+                            "www.baidu.com",
+                            "www.bing.com"
+                        ]
+                    },
+                    "path": [
+                        "/"
+                    ]
+                }
+            },
+            "singbox": {
+                "tag": "vmess/tcp-http",
+                "type": "vmess",
+                "server": "node.example.test",
+                "server_port": 20014,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "security": "auto",
+                "alter_id": 0,
+                "transport": {
+                    "type": "http",
+                    "host": [
+                        "www.baidu.com",
+                        "www.bing.com"
+                    ],
+                    "path": "/"
+                },
+                "domain_resolver": "local"
+            },
+            "link": "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3NcL3RjcC1odHRwIiwiYWRkIjoibm9kZS5leGFtcGxlLnRlc3QiLCJwb3J0IjoiMjAwMTQiLCJpZCI6IjExMTExMTExLTIyMjItMzMzMy00NDQ0LTU1NTU1NTU1NTU1NSIsImFpZCI6IjAiLCJzY3kiOiJhdXRvIiwibmV0IjoidGNwIiwidHlwZSI6Imh0dHAiLCJob3N0Ijoid3d3LmJhaWR1LmNvbSIsInBhdGgiOiJcLyIsInRscyI6IiIsImZwIjoiY2hyb21lIn0=",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vmess/ws": {
+            "node_type": "vmess",
+            "node_id": 3,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6IndzIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3dzIiwiaGVhZGVycyI6eyJIb3N0Ijoibm9kZS5leGFtcGxlLnRlc3QifX0sInRscyI6MCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"b7528dbdfce913f8ccee6c69730bed4b402e2169\""
+            },
+            "clash": {
+                "name": "vmess/ws",
+                "type": "vmess",
+                "server": "node.example.test",
+                "port": 20015,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "alterId": 0,
+                "cipher": "auto",
+                "udp": true,
+                "network": "ws",
+                "ws-opts": {
+                    "path": "/ws",
+                    "headers": {
+                        "Host": "node.example.test"
+                    }
+                }
+            },
+            "singbox": {
+                "tag": "vmess/ws",
+                "type": "vmess",
+                "server": "node.example.test",
+                "server_port": 20015,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "security": "auto",
+                "alter_id": 0,
+                "transport": {
+                    "type": "ws",
+                    "path": "/ws",
+                    "headers": {
+                        "Host": [
+                            "node.example.test"
+                        ]
+                    },
+                    "max_early_data": 2048,
+                    "early_data_header_name": "Sec-WebSocket-Protocol"
+                },
+                "domain_resolver": "local"
+            },
+            "link": "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3NcL3dzIiwiYWRkIjoibm9kZS5leGFtcGxlLnRlc3QiLCJwb3J0IjoiMjAwMTUiLCJpZCI6IjExMTExMTExLTIyMjItMzMzMy00NDQ0LTU1NTU1NTU1NTU1NSIsImFpZCI6IjAiLCJzY3kiOiJhdXRvIiwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsInBhdGgiOiJcL3dzIiwidGxzIjoiIiwiZnAiOiJjaHJvbWUifQ==",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vmess/ws-tls": {
+            "node_type": "vmess",
+            "node_id": 4,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6IndzIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3dzIiwiaGVhZGVycyI6eyJIb3N0Ijoibm9kZS5leGFtcGxlLnRlc3QifX0sInRscyI6MSwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"29c8d713e0a243b408a6f1586f02ca220850d993\""
+            },
+            "clash": {
+                "name": "vmess/ws-tls",
+                "type": "vmess",
+                "server": "node.example.test",
+                "port": 20016,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "alterId": 0,
+                "cipher": "aes-128-gcm",
+                "udp": true,
+                "tls": true,
+                "servername": "node.example.test",
+                "network": "ws",
+                "ws-opts": {
+                    "path": "/ws",
+                    "headers": {
+                        "Host": "node.example.test"
+                    }
+                }
+            },
+            "singbox": {
+                "tag": "vmess/ws-tls",
+                "type": "vmess",
+                "server": "node.example.test",
+                "server_port": 20016,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "security": "aes-128-gcm",
+                "alter_id": 0,
+                "transport": {
+                    "type": "ws",
+                    "path": "/ws",
+                    "headers": {
+                        "Host": [
+                            "node.example.test"
+                        ]
+                    },
+                    "max_early_data": 2048,
+                    "early_data_header_name": "Sec-WebSocket-Protocol"
+                },
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test"
+                }
+            },
+            "link": "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3NcL3dzLXRscyIsImFkZCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwicG9ydCI6IjIwMDE2IiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwic2N5IjoiYWVzLTEyOC1nY20iLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwicGF0aCI6Ilwvd3MiLCJ0bHMiOiJ0bHMiLCJmcCI6ImNocm9tZSIsImFsbG93SW5zZWN1cmUiOjAsInNuaSI6Im5vZGUuZXhhbXBsZS50ZXN0In0=",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vmess/grpc": {
+            "node_type": "vmess",
+            "node_id": 5,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6ImdycGMiLCJuZXR3b3JrU2V0dGluZ3MiOnsic2VydmljZU5hbWUiOiJHdW5TZXJ2aWNlIn0sInRscyI6MCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"4bcd7c805d32a6c54f52c5a4a14f15e12c574fdf\""
+            },
+            "clash": {
+                "name": "vmess/grpc",
+                "type": "vmess",
+                "server": "node.example.test",
+                "port": 20017,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "alterId": 0,
+                "cipher": "auto",
+                "udp": true,
+                "network": "grpc",
+                "grpc-opts": {
+                    "grpc-service-name": "GunService"
+                }
+            },
+            "singbox": {
+                "tag": "vmess/grpc",
+                "type": "vmess",
+                "server": "node.example.test",
+                "server_port": 20017,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "security": "auto",
+                "alter_id": 0,
+                "transport": {
+                    "type": "grpc",
+                    "service_name": "GunService"
+                },
+                "domain_resolver": "local"
+            },
+            "link": "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3NcL2dycGMiLCJhZGQiOiJub2RlLmV4YW1wbGUudGVzdCIsInBvcnQiOiIyMDAxNyIsImlkIjoiMTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU1NTU1IiwiYWlkIjoiMCIsInNjeSI6ImF1dG8iLCJuZXQiOiJncnBjIiwidHlwZSI6Im5vbmUiLCJob3N0IjoiIiwicGF0aCI6Ikd1blNlcnZpY2UiLCJ0bHMiOiIiLCJmcCI6ImNocm9tZSJ9",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vmess/kcp": {
+            "node_type": "vmess",
+            "node_id": 6,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6ImtjcCIsIm5ldHdvcmtTZXR0aW5ncyI6eyJoZWFkZXIiOnsidHlwZSI6Im5vbmUifSwic2VlZCI6bnVsbH0sInRscyI6MCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"1557420551cb53700e9ebbfed8f923fc5988f6a2\""
+            },
+            "clash": null,
+            "singbox": null,
+            "link": "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3NcL2tjcCIsImFkZCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwicG9ydCI6IjIwMDE4IiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6ImtjcCIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIiLCJ0bHMiOiIiLCJmcCI6ImNocm9tZSJ9",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vmess/httpupgrade": {
+            "node_type": "vmess",
+            "node_id": 7,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6Imh0dHB1cGdyYWRlIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3VwIiwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0In0sInRscyI6MCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"2dfb505a71ec88d9d863a91a5091136dfa3c54bc\""
+            },
+            "clash": {
+                "name": "vmess/httpupgrade",
+                "type": "vmess",
+                "server": "node.example.test",
+                "port": 20019,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "alterId": 0,
+                "cipher": "auto",
+                "udp": true,
+                "network": "ws",
+                "ws-opts": {
+                    "v2ray-http-upgrade": true,
+                    "path": "/up",
+                    "headers": {
+                        "Host": "node.example.test"
+                    }
+                }
+            },
+            "singbox": {
+                "tag": "vmess/httpupgrade",
+                "type": "vmess",
+                "server": "node.example.test",
+                "server_port": 20019,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "security": "auto",
+                "alter_id": 0,
+                "transport": {
+                    "type": "httpupgrade",
+                    "path": "/up",
+                    "host": "node.example.test"
+                },
+                "domain_resolver": "local"
+            },
+            "link": "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3NcL2h0dHB1cGdyYWRlIiwiYWRkIjoibm9kZS5leGFtcGxlLnRlc3QiLCJwb3J0IjoiMjAwMTkiLCJpZCI6IjExMTExMTExLTIyMjItMzMzMy00NDQ0LTU1NTU1NTU1NTU1NSIsImFpZCI6IjAiLCJzY3kiOiJhdXRvIiwibmV0IjoiaHR0cHVwZ3JhZGUiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsInBhdGgiOiJcL3VwIiwidGxzIjoiIiwiZnAiOiJjaHJvbWUifQ==",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "vmess/xhttp": {
+            "node_type": "vmess",
+            "node_id": 8,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InhodHRwIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3hoIiwiaG9zdCI6bnVsbCwibW9kZSI6ImF1dG8ifSwidGxzIjowLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"0fe4c070e7a78e6c606bfa4f40a90f93d6963ef8\""
+            },
+            "clash": null,
+            "singbox": null,
+            "link": "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3NcL3hodHRwIiwiYWRkIjoibm9kZS5leGFtcGxlLnRlc3QiLCJwb3J0IjoiMjAwMjAiLCJpZCI6IjExMTExMTExLTIyMjItMzMzMy00NDQ0LTU1NTU1NTU1NTU1NSIsImFpZCI6IjAiLCJzY3kiOiJhdXRvIiwibmV0IjoieGh0dHAiLCJ0eXBlIjoibm9uZSIsImhvc3QiOm51bGwsInBhdGgiOiJcL3hoIiwidGxzIjoiIiwiZnAiOiJjaHJvbWUiLCJtb2RlIjoiYXV0byJ9",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "trojan/tcp": {
+            "node_type": "trojan",
+            "node_id": 1,
+            "config": {
+                "body": "eyJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJuZXR3b3JrIjoidGNwIiwibmV0d29ya1NldHRpbmdzIjpudWxsLCJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"e22c877b642965ac93ad87958e09e1ea82bb6e07\""
+            },
+            "clash": {
+                "name": "trojan/tcp",
+                "type": "trojan",
+                "server": "node.example.test",
+                "port": 20021,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "sni": "node.example.test",
+                "skip-cert-verify": false
+            },
+            "singbox": {
+                "tag": "trojan/tcp",
+                "type": "trojan",
+                "server": "node.example.test",
+                "server_port": 20021,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test"
+                }
+            },
+            "link": "trojan://11111111-2222-3333-4444-555555555555@node.example.test:20021?allowInsecure=0&peer=node.example.test&sni=node.example.test&type=tcp#trojan%2Ftcp",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "trojan/ws": {
+            "node_type": "trojan",
+            "node_id": 2,
+            "config": {
+                "body": "eyJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJuZXR3b3JrIjoid3MiLCJuZXR3b3JrU2V0dGluZ3MiOnsicGF0aCI6Ilwvd3MiLCJoZWFkZXJzIjp7Ikhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCJ9fSwic2VydmVyX3BvcnQiOjI0NDMsInNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"c57e2ee947c2314fa275fb07312e3a53978b0d31\""
+            },
+            "clash": {
+                "name": "trojan/ws",
+                "type": "trojan",
+                "server": "node.example.test",
+                "port": 20022,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "network": "ws",
+                "ws-opts": {
+                    "path": "/ws",
+                    "headers": {
+                        "Host": "node.example.test"
+                    }
+                },
+                "sni": "node.example.test",
+                "skip-cert-verify": false
+            },
+            "singbox": {
+                "tag": "trojan/ws",
+                "type": "trojan",
+                "server": "node.example.test",
+                "server_port": 20022,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test"
+                },
+                "transport": {
+                    "type": "ws",
+                    "path": "/ws",
+                    "headers": {
+                        "Host": [
+                            "node.example.test"
+                        ]
+                    },
+                    "max_early_data": 2048,
+                    "early_data_header_name": "Sec-WebSocket-Protocol"
+                }
+            },
+            "link": "trojan://11111111-2222-3333-4444-555555555555@node.example.test:20022?allowInsecure=0&peer=node.example.test&sni=node.example.test&type=ws&path=%2Fws&host=node.example.test#trojan%2Fws",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "trojan/grpc": {
+            "node_type": "trojan",
+            "node_id": 3,
+            "config": {
+                "body": "eyJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJuZXR3b3JrIjoiZ3JwYyIsIm5ldHdvcmtTZXR0aW5ncyI6eyJzZXJ2aWNlTmFtZSI6Ikd1blNlcnZpY2UifSwic2VydmVyX3BvcnQiOjI0NDMsInNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"c0a6366f52e0c40a8831d9fcfe46ac756bca95d2\""
+            },
+            "clash": {
+                "name": "trojan/grpc",
+                "type": "trojan",
+                "server": "node.example.test",
+                "port": 20023,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "network": "grpc",
+                "grpc-opts": {
+                    "grpc-service-name": "GunService"
+                },
+                "sni": "node.example.test",
+                "skip-cert-verify": false
+            },
+            "singbox": {
+                "tag": "trojan/grpc",
+                "type": "trojan",
+                "server": "node.example.test",
+                "server_port": 20023,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test"
+                },
+                "transport": {
+                    "type": "grpc",
+                    "service_name": "GunService"
+                }
+            },
+            "link": "trojan://11111111-2222-3333-4444-555555555555@node.example.test:20023?allowInsecure=0&peer=node.example.test&sni=node.example.test&type=grpc&serviceName=GunService#trojan%2Fgrpc",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "shadowsocks/aes-128-gcm": {
+            "node_type": "shadowsocks",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiY2lwaGVyIjoiYWVzLTEyOC1nY20iLCJvYmZzIjpudWxsLCJvYmZzX3NldHRpbmdzIjpudWxsLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"b96b77009052a13ada303e48665389022d343ca0\""
+            },
+            "clash": {
+                "name": "shadowsocks/aes-128-gcm",
+                "type": "ss",
+                "server": "node.example.test",
+                "port": 20024,
+                "cipher": "aes-128-gcm",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "udp": true
+            },
+            "singbox": {
+                "tag": "shadowsocks/aes-128-gcm",
+                "type": "shadowsocks",
+                "server": "node.example.test",
+                "server_port": 20024,
+                "method": "aes-128-gcm",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local"
+            },
+            "link": "ss://YWVzLTEyOC1nY206MTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU1NTU1@node.example.test:20024#shadowsocks%2Faes-128-gcm",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "shadowsocks/chacha20-ietf-poly1305": {
+            "node_type": "shadowsocks",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiY2lwaGVyIjoiY2hhY2hhMjAtaWV0Zi1wb2x5MTMwNSIsIm9iZnMiOm51bGwsIm9iZnNfc2V0dGluZ3MiOm51bGwsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"74c76b68c417da42fa69f712a19b8af8ba24d902\""
+            },
+            "clash": {
+                "name": "shadowsocks/chacha20-ietf-poly1305",
+                "type": "ss",
+                "server": "node.example.test",
+                "port": 20025,
+                "cipher": "chacha20-ietf-poly1305",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "udp": true
+            },
+            "singbox": {
+                "tag": "shadowsocks/chacha20-ietf-poly1305",
+                "type": "shadowsocks",
+                "server": "node.example.test",
+                "server_port": 20025,
+                "method": "chacha20-ietf-poly1305",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local"
+            },
+            "link": "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNToxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU@node.example.test:20025#shadowsocks%2Fchacha20-ietf-poly1305",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "shadowsocks/2022-blake3-aes-128-gcm": {
+            "node_type": "shadowsocks",
+            "node_id": 3,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiY2lwaGVyIjoiMjAyMi1ibGFrZTMtYWVzLTEyOC1nY20iLCJvYmZzIjpudWxsLCJvYmZzX3NldHRpbmdzIjpudWxsLCJzZXJ2ZXJfa2V5IjoiTkdZNFlqTXpORE0wWmpaak4yUTFNQT09IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"f69dd94594959c58e918b1bc62064dd4361ce3f1\""
+            },
+            "clash": {
+                "name": "shadowsocks/2022-blake3-aes-128-gcm",
+                "type": "ss",
+                "server": "node.example.test",
+                "port": 20026,
+                "cipher": "2022-blake3-aes-128-gcm",
+                "password": "NGY4YjMzNDM0ZjZjN2Q1MA==:MTExMTExMTEtMjIyMi0zMw==",
+                "udp": true
+            },
+            "singbox": {
+                "tag": "shadowsocks/2022-blake3-aes-128-gcm",
+                "type": "shadowsocks",
+                "server": "node.example.test",
+                "server_port": 20026,
+                "method": "2022-blake3-aes-128-gcm",
+                "password": "NGY4YjMzNDM0ZjZjN2Q1MA==:MTExMTExMTEtMjIyMi0zMw==",
+                "domain_resolver": "local"
+            },
+            "link": "ss://MjAyMi1ibGFrZTMtYWVzLTEyOC1nY206TkdZNFlqTXpORE0wWmpaak4yUTFNQT09Ok1URXhNVEV4TVRFdE1qSXlNaTB6TXc9PQ@node.example.test:20026#shadowsocks%2F2022-blake3-aes-128-gcm",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "shadowsocks/2022-blake3-aes-256-gcm": {
+            "node_type": "shadowsocks",
+            "node_id": 4,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiY2lwaGVyIjoiMjAyMi1ibGFrZTMtYWVzLTI1Ni1nY20iLCJvYmZzIjpudWxsLCJvYmZzX3NldHRpbmdzIjpudWxsLCJzZXJ2ZXJfa2V5IjoiTkdZNFlqTXpORE0wWmpaak4yUTFNR1kxTUdSbFlUTTFNVEF4WW1GbU5XUT0iLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"7bab37fbbe21af4e74cc04aa1c489b7ad6c4e471\""
+            },
+            "clash": {
+                "name": "shadowsocks/2022-blake3-aes-256-gcm",
+                "type": "ss",
+                "server": "node.example.test",
+                "port": 20027,
+                "cipher": "2022-blake3-aes-256-gcm",
+                "password": "NGY4YjMzNDM0ZjZjN2Q1MGY1MGRlYTM1MTAxYmFmNWQ=:MTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU=",
+                "udp": true
+            },
+            "singbox": {
+                "tag": "shadowsocks/2022-blake3-aes-256-gcm",
+                "type": "shadowsocks",
+                "server": "node.example.test",
+                "server_port": 20027,
+                "method": "2022-blake3-aes-256-gcm",
+                "password": "NGY4YjMzNDM0ZjZjN2Q1MGY1MGRlYTM1MTAxYmFmNWQ=:MTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU=",
+                "domain_resolver": "local"
+            },
+            "link": "ss://MjAyMi1ibGFrZTMtYWVzLTI1Ni1nY206TkdZNFlqTXpORE0wWmpaak4yUTFNR1kxTUdSbFlUTTFNVEF4WW1GbU5XUT06TVRFeE1URXhNVEV0TWpJeU1pMHpNek16TFRRME5EUXROVFUxTlRVMU5UVT0@node.example.test:20027#shadowsocks%2F2022-blake3-aes-256-gcm",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "hysteria/v1": {
+            "node_type": "hysteria",
+            "node_id": 1,
+            "config": {
+                "body": "eyJ2ZXJzaW9uIjoxLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCIsInVwX21icHMiOjEwMCwiZG93bl9tYnBzIjoxMDAsIm9iZnMiOm51bGwsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"c54829fb546a9c5aaa335c28823c281f092c11a8\""
+            },
+            "clash": {
+                "name": "hysteria/v1",
+                "server": "node.example.test",
+                "port": 20028,
+                "udp": true,
+                "skip-cert-verify": false,
+                "sni": "node.example.test",
+                "type": "hysteria",
+                "auth_str": "11111111-2222-3333-4444-555555555555",
+                "up": 100,
+                "down": 100,
+                "protocol": "udp"
+            },
+            "singbox": {
+                "tag": "hysteria/v1",
+                "server": "node.example.test",
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test"
+                },
+                "server_port": 20028,
+                "auth_str": "11111111-2222-3333-4444-555555555555",
+                "type": "hysteria",
+                "up_mbps": 100,
+                "down_mbps": 100,
+                "disable_mtu_discovery": true
+            },
+            "link": "hysteria://node.example.test:20028/?protocol=udp&auth=11111111-2222-3333-4444-555555555555&insecure=0&peer=node.example.test&upmbps=100&downmbps=100#hysteria%2Fv1",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "hysteria2/plain": {
+            "node_type": "hysteria2",
+            "node_id": 2,
+            "config": {
+                "body": "eyJ2ZXJzaW9uIjoyLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCIsInVwX21icHMiOjAsImRvd25fbWJwcyI6MCwiaWdub3JlX2NsaWVudF9iYW5kd2lkdGgiOnRydWUsIm9iZnMiOm51bGwsIm9iZnMtcGFzc3dvcmQiOm51bGwsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"c944ef49acb650b3d2dd78d54b3cdda0be03c75c\""
+            },
+            "clash": {
+                "name": "hysteria2/plain",
+                "server": "node.example.test",
+                "port": 20029,
+                "udp": true,
+                "skip-cert-verify": false,
+                "sni": "node.example.test",
+                "type": "hysteria2",
+                "password": "11111111-2222-3333-4444-555555555555"
+            },
+            "singbox": {
+                "tag": "hysteria2/plain",
+                "server": "node.example.test",
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test"
+                },
+                "server_port": 20029,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "type": "hysteria2"
+            },
+            "link": "hysteria2://11111111-2222-3333-4444-555555555555@node.example.test:20029/?insecure=0&sni=node.example.test#hysteria2%2Fplain",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "hysteria2/salamander": {
+            "node_type": "hysteria2",
+            "node_id": 3,
+            "config": {
+                "body": "eyJ2ZXJzaW9uIjoyLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCIsInVwX21icHMiOjAsImRvd25fbWJwcyI6MCwiaWdub3JlX2NsaWVudF9iYW5kd2lkdGgiOnRydWUsIm9iZnMiOiJzYWxhbWFuZGVyIiwib2Jmcy1wYXNzd29yZCI6IlpEUXhaRGhqWkRrNFpqQXdZakl3TkE9PSIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"f349eff54fa986eda4c00af31321bc45f01b16d6\""
+            },
+            "clash": {
+                "name": "hysteria2/salamander",
+                "server": "node.example.test",
+                "port": 20030,
+                "udp": true,
+                "skip-cert-verify": false,
+                "sni": "node.example.test",
+                "type": "hysteria2",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "obfs": "salamander",
+                "obfs-password": "ZDQxZDhjZDk4ZjAwYjIwNA=="
+            },
+            "singbox": {
+                "tag": "hysteria2/salamander",
+                "server": "node.example.test",
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test"
+                },
+                "server_port": 20030,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "type": "hysteria2",
+                "obfs": {
+                    "type": "salamander",
+                    "password": "ZDQxZDhjZDk4ZjAwYjIwNA=="
+                }
+            },
+            "link": "hysteria2://11111111-2222-3333-4444-555555555555@node.example.test:20030/?insecure=0&sni=node.example.test&obfs=salamander&obfs-password=ZDQxZDhjZDk4ZjAwYjIwNA%3D%3D#hysteria2%2Fsalamander",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "hysteria2/bandwidth": {
+            "node_type": "hysteria2",
+            "node_id": 4,
+            "config": {
+                "body": "eyJ2ZXJzaW9uIjoyLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCIsInVwX21icHMiOjEwMCwiZG93bl9tYnBzIjoyMDAsImlnbm9yZV9jbGllbnRfYmFuZHdpZHRoIjpmYWxzZSwib2JmcyI6bnVsbCwib2Jmcy1wYXNzd29yZCI6bnVsbCwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"824e842a60f48b47b6d0b1b2b5f2fccc2b85cdd6\""
+            },
+            "clash": {
+                "name": "hysteria2/bandwidth",
+                "server": "node.example.test",
+                "port": 20031,
+                "udp": true,
+                "skip-cert-verify": false,
+                "sni": "node.example.test",
+                "type": "hysteria2",
+                "password": "11111111-2222-3333-4444-555555555555"
+            },
+            "singbox": {
+                "tag": "hysteria2/bandwidth",
+                "server": "node.example.test",
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "server_name": "node.example.test"
+                },
+                "server_port": 20031,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "type": "hysteria2"
+            },
+            "link": "hysteria2://11111111-2222-3333-4444-555555555555@node.example.test:20031/?insecure=0&sni=node.example.test#hysteria2%2Fbandwidth",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "tuic/bbr": {
+            "node_type": "tuic",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCIsImNvbmdlc3Rpb25fY29udHJvbCI6ImJiciIsInplcm9fcnR0X2hhbmRzaGFrZSI6ZmFsc2UsImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"b8ea5f9f04bd72af688047449de83619e46dc747\""
+            },
+            "clash": {
+                "name": "tuic/bbr",
+                "type": "tuic",
+                "server": "node.example.test",
+                "port": 20032,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "alpn": [
+                    "h3"
+                ],
+                "disable-sni": false,
+                "reduce-rtt": false,
+                "udp-relay-mode": "native",
+                "congestion-controller": "bbr",
+                "skip-cert-verify": false,
+                "sni": "node.example.test"
+            },
+            "singbox": {
+                "tag": "tuic/bbr",
+                "type": "tuic",
+                "server": "node.example.test",
+                "server_port": 20032,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "congestion_control": "bbr",
+                "udp_relay_mode": "native",
+                "zero_rtt_handshake": false,
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "alpn": [
+                        "h3"
+                    ],
+                    "disable_sni": false,
+                    "server_name": "node.example.test"
+                }
+            },
+            "link": "tuic://11111111-2222-3333-4444-555555555555:11111111-2222-3333-4444-555555555555@node.example.test:20032?sni=node.example.test&alpn=h3&congestion_control=bbr&allow_insecure=0&disable_sni=0&udp_relay_mode=native#tuic%2Fbbr",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "tuic/cubic-0rtt": {
+            "node_type": "tuic",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCIsImNvbmdlc3Rpb25fY29udHJvbCI6ImN1YmljIiwiemVyb19ydHRfaGFuZHNoYWtlIjp0cnVlLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"9a80b9dcfc64fe78e0d9ab07130cd33affdb854f\""
+            },
+            "clash": {
+                "name": "tuic/cubic-0rtt",
+                "type": "tuic",
+                "server": "node.example.test",
+                "port": 20033,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "alpn": [
+                    "h3"
+                ],
+                "disable-sni": false,
+                "reduce-rtt": true,
+                "udp-relay-mode": "quic",
+                "congestion-controller": "cubic",
+                "skip-cert-verify": false,
+                "sni": "node.example.test"
+            },
+            "singbox": {
+                "tag": "tuic/cubic-0rtt",
+                "type": "tuic",
+                "server": "node.example.test",
+                "server_port": 20033,
+                "uuid": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "congestion_control": "cubic",
+                "udp_relay_mode": "quic",
+                "zero_rtt_handshake": true,
+                "domain_resolver": "local",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "alpn": [
+                        "h3"
+                    ],
+                    "disable_sni": false,
+                    "server_name": "node.example.test"
+                }
+            },
+            "link": "tuic://11111111-2222-3333-4444-555555555555:11111111-2222-3333-4444-555555555555@node.example.test:20033?sni=node.example.test&alpn=h3&congestion_control=cubic&allow_insecure=0&disable_sni=0&udp_relay_mode=quic#tuic%2Fcubic-0rtt",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "anytls/tls": {
+            "node_type": "anytls",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOiJub2RlLmV4YW1wbGUudGVzdCIsInBhZGRpbmdfc2NoZW1lIjpudWxsLCJ0bHMiOjEsInRsc19zZXR0aW5ncyI6bnVsbCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"69a01086e6334ed39336abaebdeebc928ba15fa7\""
+            },
+            "clash": {
+                "name": "anytls/tls",
+                "type": "anytls",
+                "server": "node.example.test",
+                "port": 20034,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "client-fingerprint": "chrome",
+                "udp": true,
+                "alpn": [
+                    "h2",
+                    "http/1.1"
+                ],
+                "sni": "node.example.test",
+                "skip-cert-verify": false
+            },
+            "singbox": {
+                "tag": "anytls/tls",
+                "type": "anytls",
+                "server": "node.example.test",
+                "server_port": 20034,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "idle_session_timeout": "90s",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "alpn": [
+                        "h2",
+                        "http/1.1"
+                    ],
+                    "server_name": "node.example.test"
+                }
+            },
+            "link": "anytls://11111111-2222-3333-4444-555555555555@node.example.test:20034/?type=tcp&insecure=0&fp=chrome&sni=node.example.test#anytls%2Ftls",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "anytls/reality": {
+            "node_type": "anytls",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOm51bGwsInBhZGRpbmdfc2NoZW1lIjpudWxsLCJ0bHMiOjIsInRsc19zZXR0aW5ncyI6eyJzZXJ2ZXJfbmFtZSI6ImNvdmVyLmV4YW1wbGUudGVzdCIsInNlcnZlcl9wb3J0IjoiNDQzIiwicHVibGljX2tleSI6ImlGQm9OME9HbWRRNmQwOTFyMENwNlpNanRFdE13NHcyNFJUWmNmSnJBeEkiLCJwcml2YXRlX2tleSI6ImRTMG45SGl4QU5ObmwyaVNhUWRQS3NtekhyZzFWSDJzRXhfV1pqMk1RRTQiLCJzaG9ydF9pZCI6IjllNTIxNDBkIn0sImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"c22857f449d8698f3751554c224630a94088fcde\""
+            },
+            "clash": {
+                "name": "anytls/reality",
+                "type": "anytls",
+                "server": "node.example.test",
+                "port": 20035,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "client-fingerprint": "chrome",
+                "udp": true,
+                "alpn": [
+                    "h2",
+                    "http/1.1"
+                ],
+                "sni": "cover.example.test",
+                "skip-cert-verify": false,
+                "reality-opts": {
+                    "public-key": "iFBoN0OGmdQ6d091r0Cp6ZMjtEtMw4w24RTZcfJrAxI",
+                    "short-id": "9e52140d"
+                }
+            },
+            "singbox": {
+                "tag": "anytls/reality",
+                "type": "anytls",
+                "server": "node.example.test",
+                "server_port": 20035,
+                "password": "11111111-2222-3333-4444-555555555555",
+                "domain_resolver": "local",
+                "idle_session_timeout": "90s",
+                "tls": {
+                    "enabled": true,
+                    "insecure": false,
+                    "alpn": [
+                        "h2",
+                        "http/1.1"
+                    ],
+                    "server_name": "cover.example.test",
+                    "reality": {
+                        "enabled": true,
+                        "public_key": "iFBoN0OGmdQ6d091r0Cp6ZMjtEtMw4w24RTZcfJrAxI",
+                        "short_id": "9e52140d"
+                    },
+                    "utls": {
+                        "enabled": true,
+                        "fingerprint": "chrome"
+                    }
+                }
+            },
+            "link": "anytls://11111111-2222-3333-4444-555555555555@node.example.test:20035/?type=tcp&insecure=0&fp=chrome&sni=cover.example.test&security=reality&pbk=iFBoN0OGmdQ6d091r0Cp6ZMjtEtMw4w24RTZcfJrAxI&sid=9e52140d#anytls%2Freality",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        }
+    }
+}

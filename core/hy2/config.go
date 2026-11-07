@@ -260,6 +260,10 @@ func (n *Hysteria2node) getOutboundConfig(c *serverConfig) (server.Outbound, err
 		uOb = obs[0].Outbound
 	}
 
+	// Inside the resolver, when there is one, so the guard checks the
+	// addresses it found; the guard resolves a name itself otherwise.
+	uOb = newDestinationGuard(n.Tag, n.allowPrivate, uOb, n.Logger)
+
 	switch strings.ToLower(c.Resolver.Type) {
 	case "", "system":
 		if hasACL {
