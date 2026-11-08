@@ -3,6 +3,7 @@ package hy2
 import (
 	"net"
 	"net/netip"
+	"sync"
 
 	"github.com/PoriyaVali/V2bX/limiter"
 	"github.com/apernet/hysteria/extras/v2/outbounds"
@@ -91,10 +92,23 @@ func (g *destinationGuard) rules() *limiter.Limiter {
 	return l
 }
 
+// panelRefusal is the panel's verdict on one resolved address: why its rules
+// refuse it, or "".
+func panelRefusal(l *limiter.Limiter, ip net.IP, port uint16) string {
+	if l == nil {
+		return ""
+	}
+	if reject, kind := l.CheckDestinationRule(ip.String(), port); reject {
+		return "a panel " + kind + " rule"
+	}
+	return ""
+}
+
 // permitAddresses drops the request's resolved addresses that the guard
 // refuses, and refuses the request if none is left. A failed lookup is left
-// to the outbound, which reports it.
-func (g *destinationGuard) permitAddresses(addr *outbounds.AddrEx, l *limiter.Limiter) error {
+// to the outbound, which reports it. panel gives the panel's verdict on an
+// address.
+func (g *destinationGuard) permitAddresses(addr *outbounds.AddrEx, panel func(ip net.IP) string) error {
 	if addr.ResolveInfo == nil {
 		resolve(addr)
 	}
@@ -111,11 +125,9 @@ func (g *destinationGuard) permitAddresses(addr *outbounds.AddrEx, l *limiter.Li
 			reason = "a private address (AllowPrivateDestinations is off)"
 			return false
 		}
-		if l != nil {
-			if reject, kind := l.CheckDestinationRule(ip.String(), addr.Port); reject {
-				reason = "a panel " + kind + " rule"
-				return false
-			}
+		if refusal := panel(ip); refusal != "" {
+			reason = refusal
+			return false
 		}
 		return true
 	}
@@ -148,7 +160,7 @@ func (g *destinationGuard) check(addr *outbounds.AddrEx, udp bool) error {
 			return refusedError{"a panel " + kind + " rule"}
 		}
 	}
-	return g.permitAddresses(addr, l)
+	return g.permitAddresses(addr, func(ip net.IP) string { return panelRefusal(l, ip, addr.Port) })
 }
 
 func (g *destinationGuard) refused(network string, addr *outbounds.AddrEx, err error) {
@@ -174,7 +186,7 @@ func (g *destinationGuard) UDP(addr *outbounds.AddrEx) (outbounds.UDPConn, error
 	if err != nil {
 		return nil, err
 	}
-	return &guardedUDPConn{UDPConn: conn, guard: g}, nil
+	return &guardedUDPConn{UDPConn: conn, guard: g, limiter: g.rules(), checked: make(map[netip.AddrPort]string)}, nil
 }
 
 func (g *destinationGuard) CheckUDP(addr *outbounds.AddrEx) error {
@@ -185,18 +197,54 @@ func (g *destinationGuard) CheckUDP(addr *outbounds.AddrEx) error {
 	return g.next.CheckUDP(addr)
 }
 
+// maxCheckedDestinations bounds what a UDP session remembers of the panel's
+// verdicts; past it, the record starts over.
+const maxCheckedDestinations = 64
+
 // guardedUDPConn checks each datagram's resolved address: hysteria asks
 // CheckUDP once per address and caches the answer, while the outbound
 // resolves a name again for every datagram, so a name could pass the check
-// and then be sent to whatever it resolves to next.
+// and then be sent to whatever it resolves to next. Both the private-address
+// block and the panel's address and port rules apply; a name that resolved
+// to an allowed address and then to one the panel blocks was let through
+// while only the first was checked here.
 type guardedUDPConn struct {
 	outbounds.UDPConn
-	guard *destinationGuard
+	guard   *destinationGuard
+	limiter *limiter.Limiter // the node's rules when the session opened
+
+	mu      sync.Mutex
+	checked map[netip.AddrPort]string // the panel's verdict per address
 }
 
 func (c *guardedUDPConn) WriteTo(b []byte, addr *outbounds.AddrEx) (int, error) {
-	if err := c.guard.permitAddresses(addr, nil); err != nil {
+	if err := c.guard.permitAddresses(addr, func(ip net.IP) string { return c.panelRefusal(ip, addr.Port) }); err != nil {
 		return 0, err
 	}
 	return c.UDPConn.WriteTo(b, addr)
+}
+
+// panelRefusal is the panel's verdict on a datagram's address, remembered
+// for the session: the rules match names and addresses by pattern, which is
+// not worth doing again for every datagram.
+func (c *guardedUDPConn) panelRefusal(ip net.IP, port uint16) string {
+	if c.limiter == nil {
+		return ""
+	}
+	a, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return panelRefusal(c.limiter, ip, port)
+	}
+	key := netip.AddrPortFrom(a.Unmap(), port)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if reason, ok := c.checked[key]; ok {
+		return reason
+	}
+	reason := panelRefusal(c.limiter, ip, port)
+	if len(c.checked) >= maxCheckedDestinations {
+		clear(c.checked)
+	}
+	c.checked[key] = reason
+	return reason
 }

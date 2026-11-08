@@ -188,3 +188,37 @@ func TestGuard_ChecksEveryDatagram(t *testing.T) {
 		t.Fatalf("outbound wrote %+v, want one datagram to 8.8.8.8, resolved", next.writes)
 	}
 }
+
+// The panel's address and port rules apply to each datagram too, not only
+// the private-address block: hysteria checks a name once per session, then
+// resolves it again for every datagram, so a name that answered with an
+// allowed address and later with one the panel blocks reached the blocked
+// one. The verdict per address is remembered for the session, and a refused
+// datagram leaves the session open.
+func TestGuard_AppliesThePanelsRulesToEveryDatagram(t *testing.T) {
+	g, next := guardFor(t, "hy-datagram-rules", false, &panel.Rules{IP: []string{"9.9.9.0/24"}, Port: []string{"9999"}})
+	conn, err := g.UDP(addr("8.8.8.8", 53))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := func(host string, ip net.IP, port uint16) *outbounds.AddrEx {
+		return &outbounds.AddrEx{Host: host, Port: port, ResolveInfo: &outbounds.ResolveInfo{IPv4: ip.To4()}}
+	}
+	for i := 0; i < 2; i++ { // the second time from what the session remembers
+		if _, err := conn.WriteTo([]byte("x"), resolved("rebind.example", net.IPv4(9, 9, 9, 9), 53)); !refused(err) {
+			t.Fatalf("a datagram to a name now resolving to a blocked address: err = %v, want refused", err)
+		}
+		if _, err := conn.WriteTo([]byte("x"), addr("9.9.9.10", 53)); !refused(err) {
+			t.Fatalf("a datagram to a blocked address: err = %v, want refused", err)
+		}
+		if _, err := conn.WriteTo([]byte("x"), addr("8.8.4.4", 9999)); !refused(err) {
+			t.Fatalf("a datagram to a blocked port: err = %v, want refused", err)
+		}
+		if _, err := conn.WriteTo([]byte("x"), resolved("rebind.example", net.IPv4(1, 1, 1, 1), 53)); err != nil {
+			t.Fatalf("a datagram to an allowed address: %v", err)
+		}
+	}
+	if len(next.writes) != 2 {
+		t.Fatalf("outbound wrote %d datagrams, want the 2 to the allowed address", len(next.writes))
+	}
+}
