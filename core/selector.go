@@ -157,24 +157,40 @@ func (s *Selector) AddNode(tag string, info *panel.NodeInfo, option *conf.Option
 
 // warnRulesNotEnforced says so when a node carries panel rules its core does
 // not apply. The blocking rules are enforced where connections are routed
-// through the limiter - the xray and sing cores - and the per-node outbounds
-// by xray alone (sing warns for those itself). Without this an operator had
-// no way to learn that a rule set in the panel did nothing on this node.
+// through the limiter - the xray, sing and Mihomo cores (Mihomo refuses a
+// node with route rules) - and the per-node outbounds by xray alone (sing
+// warns for those itself). The hysteria2 core's destination guard applies
+// the domain, address and port rules and a UDP block, but no other protocol
+// rule: it does not sniff. Without this an operator had no way to learn that
+// a rule set in the panel did nothing on this node.
 func warnRulesNotEnforced(tag, coreType string, info *panel.NodeInfo) {
 	if coreType == "xray" || coreType == "sing" || coreType == "mihomo" {
 		return
 	}
 	r := info.Rules
 	blocking := len(r.Regexp) + len(r.Domain) + len(r.Protocol) + len(r.IP) + len(r.Port)
+	if coreType == "hysteria2" {
+		// It warned for every rule, after its guard came to apply them.
+		blocking = 0
+		for _, p := range r.Protocol {
+			if p != "udp" {
+				blocking++
+			}
+		}
+	}
 	if blocking == 0 && len(info.RouteRules) == 0 {
 		return
+	}
+	message := "The panel's route rules are not applied by this core; they take effect on xray (all of them) and sing (blocking only)"
+	if coreType == "hysteria2" {
+		message = "This core applies the panel's domain, address and port rules and a UDP block, but not its other protocol rules or its outbound routes; they take effect on xray (all of them) and sing (blocking only)"
 	}
 	log.WithFields(log.Fields{
 		"tag":         tag,
 		"core":        coreType,
 		"block_rules": blocking,
 		"route_rules": len(info.RouteRules),
-	}).Warn("The panel's route rules are not applied by this core; they take effect on xray (all of them) and sing (blocking only)")
+	}).Warn(message)
 }
 
 func (s *Selector) DelNode(tag string) error {
