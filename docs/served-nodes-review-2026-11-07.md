@@ -80,6 +80,10 @@ In V2bX:
      session and each datagram.
    - Both the hysteria2 and xray cores now take `AllowPrivateDestinations`, as
      the sing and Mihomo cores do.
+   - The warning a node logs when its core does not apply the panel's rules
+     went on counting every rule for this core. It now counts only what the
+     guard does not apply: protocol rules other than UDP, which needs
+     sniffing, and outbound routes.
 5. **Xray core (xray patch):**
    - mKCP read a connection's receive buffer outside the lock its teardown
      takes: a data race whenever a node's listener closed.
