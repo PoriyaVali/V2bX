@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 )
 
@@ -147,6 +148,54 @@ func Refused(pc net.PacketConn, allowed, blocked netip.AddrPort) error {
 	default:
 		return nil
 	}
+}
+
+// Bulk sends count datagrams of size random bytes to to through pc, one at a
+// time, each until it is answered, as Check does. It returns the bytes sent,
+// resends included, and the bytes answered, late duplicates included: what a
+// node that counts datagrams should bill. Bulk closes pc.
+func Bulk(pc net.PacketConn, to netip.AddrPort, count, size int) (sent, received int64, err error) {
+	defer pc.Close()
+	answers := make(chan answer, 64)
+	failed := make(chan error, 1)
+	var mu sync.Mutex
+	var answered int64
+	go func() {
+		for {
+			buf := make([]byte, 65535)
+			n, from, err := pc.ReadFrom(buf)
+			if err != nil {
+				failed <- err
+				return
+			}
+			if !Same(from, to) {
+				continue
+			}
+			mu.Lock()
+			answered += int64(n)
+			mu.Unlock()
+			select {
+			case answers <- answer{buf[:n], from}:
+			default:
+			}
+		}
+	}()
+	total := func() int64 {
+		mu.Lock()
+		defer mu.Unlock()
+		return answered
+	}
+	for i := 0; i < count; i++ {
+		payload := make([]byte, size)
+		_, _ = rand.Read(payload)
+		times, err := exchange(pc, answers, failed, payload, to)
+		sent += int64(times * size)
+		if err != nil {
+			return sent, total(), fmt.Errorf("datagram %d of %d: %w", i+1, count, err)
+		}
+	}
+	time.Sleep(300 * time.Millisecond) // an answer to a resent datagram, late
+	return sent, total(), nil
 }
 
 // exchange sends payload to to until it is answered, and returns how many

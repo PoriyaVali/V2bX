@@ -326,7 +326,11 @@ func servedNodeInfo(t *testing.T, n servedNode) *panel.NodeInfo {
 
 // servedPanel answers V2bX as Irboard did, with config as the node's config.
 func servedPanel(n servedNode, config []byte) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(servedHandler(n, config))
+}
+
+func servedHandler(n servedNode, config []byte) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("token") != "contract-token" {
 			http.Error(w, "token", http.StatusForbidden)
 			return
@@ -353,7 +357,7 @@ func servedPanel(n servedNode, config []byte) *httptest.Server {
 		default:
 			_, _ = w.Write([]byte(`{"data":true}`))
 		}
-	}))
+	})
 }
 
 // servedConfig is the node's config listening on port, and for a REALITY
@@ -379,6 +383,13 @@ func servedConfig(body []byte, port int, site string) ([]byte, error) {
 // returns its port.
 func startServedNode(t *testing.T, n servedNode, core string, cert servedCert) (int, error) {
 	t.Helper()
+	return startServedNodeWith(t, n, core, cert, func(config []byte) http.Handler { return servedHandler(n, config) })
+}
+
+// startServedNodeWith is startServedNode with the panel panelFor answers as,
+// given the node's config.
+func startServedNodeWith(t *testing.T, n servedNode, core string, cert servedCert, panelFor func(config []byte) http.Handler) (int, error) {
+	t.Helper()
 	var head struct {
 		TLS int `json:"tls"`
 	}
@@ -392,7 +403,7 @@ func startServedNode(t *testing.T, n servedNode, core string, cert servedCert) (
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := servedPanel(n, config)
+	srv := httptest.NewServer(panelFor(config))
 	t.Cleanup(srv.Close)
 
 	cc := conf.CoreConfig{Type: core}
