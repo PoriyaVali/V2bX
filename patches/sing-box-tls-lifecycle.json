@@ -6,12 +6,52 @@
   "module_sum": "h1:9fqgzsOwlTtDQ83kSbtcdSNHkctXqOjBpzgWUHOxEiM=",
   "go_mod_sum": "h1:3QuzuhcfVrYNDkKPuPsMd/goaOGSTEUyDBbFlBaGx48=",
   "patch": "sing-box-tls-lifecycle.patch",
-  "patch_sha256": "b879362161593150187e3c42fbe7845a25304aaba204d1e50baa09d65127e561",
+  "patch_sha256": "7b1411c5e36e23160d17f7ac65ea5ccefba27fb05e631dbc61aeb6f8536c7141",
   "files": [
     {
       "path": "common/tls/std_server.go",
       "base_sha256": "118f825967e102c1394bd7fe7959e61aa9c967659d96ad2a8a84567d05d19697",
       "patched_sha256": "a04ba69ac1d88a00d7a82a485c83ab0fe235f706eade58e570902e0bcc05a10c"
+    },
+    {
+      "path": "common/listener/proxyproto.go",
+      "base_sha256": "81c3dd36e1fad60c50cbf9144087f45fb57a7199dcbeacb4d0c64fe4c2b10180",
+      "patched_sha256": "92e4be9cd0e2c64f7173c5a1a21a0cab6239684918282c4b69ef7d82ade42b50"
+    },
+    {
+      "path": "common/listener/proxyproto_test.go",
+      "base_sha256": "afcf915c471f12897be7dab871b358008c670e84c2d19d348bbe17fc8a474f8b",
+      "patched_sha256": "fef407d8e936698de533e3f049dab6c8d41cef1d2ee60610759e3e98453ca606"
+    },
+    {
+      "path": "transport/v2rayhttp/conn.go",
+      "base_sha256": "268c2859984d9826edf89eaa82950abfa9570d92eee642cfe0b478d6048c04c9",
+      "patched_sha256": "38320c6a78453534348bf3eab0ab80d84c3561ce84eebabf0aebb586ae789742"
+    },
+    {
+      "path": "transport/v2rayhttp/conn_context_test.go",
+      "base_sha256": null,
+      "patched_sha256": "55faebec83169932f828161af5aa5690e8e6f826f3ebdad73e4443c9b571cf63"
+    },
+    {
+      "path": "transport/v2raygrpclite/conn.go",
+      "base_sha256": "ed1e07be25106995544b6711a52e1b2a82b53b2e9dc93f69995513e405bb75db",
+      "patched_sha256": "24fdc650149e157c17f5c2fbf0ed900feb5ac38cf10d3c8790b964bff8dfcaf4"
+    },
+    {
+      "path": "transport/v2raygrpclite/conn_setup_test.go",
+      "base_sha256": null,
+      "patched_sha256": "1d34a5a36c5f040fe1fb7a6b6a1d0bb870020368a16f5f3b3367c4ffe8f78e3f"
+    },
+    {
+      "path": "transport/v2rayhttpupgrade/server.go",
+      "base_sha256": "1bc5c4afb21175412cd55c85e4441d579d05c0f9f75d5a204a0721c4e690f5ee",
+      "patched_sha256": "9e5ff14139d6147354aa0bed6bc02b71a52739ad3a208646d4f4bc59c1b6f1ce"
+    },
+    {
+      "path": "transport/v2rayhttpupgrade/server_buffered_test.go",
+      "base_sha256": null,
+      "patched_sha256": "3f0bf66c7c177c10ea00f74df92eaada0c3e7a3a2aa0fec66e095150fe333c0d"
     }
   ]
 }

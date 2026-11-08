@@ -8,6 +8,12 @@ type XrayConfig struct {
 	ConnectionConfig   *XrayConnectionConfig `json:"XrayConnectionConfig"`
 	InboundConfigPath  string                `json:"InboundConfigPath"`
 	OutboundConfigPath string                `json:"OutboundConfigPath"`
+	// AllowPrivateDestinations lets users reach loopback, private and
+	// link-local addresses through the node, as on the sing and Mihomo
+	// cores. Off by default, which is Xray's own default for its proxy
+	// inbounds: those are the node's own services and its hosting provider's
+	// internal network.
+	AllowPrivateDestinations bool `json:"AllowPrivateDestinations"`
 }
 
 type XrayLogConfig struct {

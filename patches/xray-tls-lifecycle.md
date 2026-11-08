@@ -64,3 +64,28 @@ ordinary V2bX-generated encipherment TLS path uses the new source. Public
 issuance tests and production deployment are not claimed. The normal pinned
 dependency graph remains unchanged until the reproducible patch-preparation
 workflow explicitly selects the prepared sources.
+
+## mKCP receive buffer and Vision pointers
+
+Two more repairs ride on this patch.
+
+`transport/internet/kcp/receiving.go`: `ReadMultiBuffer` and `Read` took and
+kept a partly read segment (`leftOver`) outside the worker's lock, which
+`Release` clears it under when a connection is torn down. Closing a node's
+mKCP listener while a connection was being read was a data race, which the
+race detector reported (`receiving_release_test.go` reproduces it). Both now
+work under the lock.
+
+`proxy/vless/inbound/inbound.go` and `proxy/vless/outbound/outbound.go`: Vision
+kept the TLS connection's address in a uintptr and turned it back into
+pointers to the connection's input buffers. Go does not allow that conversion,
+and its pointer checks, on under the race detector, end the process at the
+first Vision connection. The address is now carried as an `unsafe.Pointer`
+and offset with `unsafe.Add`. V2bX's `cmd/irboard_served_test.go` runs VLESS
+Vision over TLS and REALITY, and mKCP, under the race detector.
+
+`transport/internet/grpc/encoding/hunkconn.go` and `multiconn.go`: closing a
+gRPC connection called `CloseSend` while its writer could still be in `Send`,
+which a gRPC client stream does not allow, and the race detector reported it.
+Both are now serialized by a send lock; `Close` still cancels the stream first,
+so a `Send` held up by flow control returns (`closesend_test.go`).
