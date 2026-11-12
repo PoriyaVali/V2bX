@@ -1,103 +1,148 @@
+<div align="center">
+
 # V2bX — DrMobile Fork
+
+**سرویس نود چندهسته‌ای برای پنل Irboard / V2board**
+<br>
+A multi-core node server for Irboard / V2board panels
 
 [![Release](https://img.shields.io/github/v/release/PoriyaVali/V2bX?color=blue&label=Release)](https://github.com/PoriyaVali/V2bX/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/PoriyaVali/V2bX/release.yml?label=Build)](https://github.com/PoriyaVali/V2bX/actions)
 [![License](https://img.shields.io/github/license/PoriyaVali/V2bX)](LICENSE)
 
-A multi-core V2board node server with updated cores and a bilingual (English/Persian) menu. Forked from [wyx2685/V2bX](https://github.com/wyx2685/V2bX).
+[نصب آسان](#-نصب-آسان) · [نصب دستی](#-نصب-دستی) · [قابلیت‌ها](#-قابلیتها) · [هسته‌ها و پروتکل‌ها](#-هستهها-و-پروتکلها) · [دستورها](#-دستورها) · [English](#-english-summary)
 
-یک سرویس نود چند هسته‌ای برای V2board با هسته‌های به‌روز و منوی دوزبانه (انگلیسی/فارسی). منشعب از [wyx2685/V2bX](https://github.com/wyx2685/V2bX).
-
-The optional **Mihomo server core** supports 11 multi-user listeners, including
-HTTP/SOCKS5, Mieru, and ShadowQUIC. See [setup and supported settings](docs/mihomo-server.md).
-
-هستهٔ سرور Mihomo با مدیریت مصرف و کاربران به‌صورت مستقل برای هر نود اضافه شده؛
-[راهنمای تنظیم و محدودیت‌ها](docs/mihomo-server.md) را ببینید.
+</div>
 
 ---
 
-## 🚀 One-Click Install / Update | نصب و آپدیت با یک کلیک
+<div dir="rtl">
 
-Auto-detects your server: **updates** if V2bX is already installed, otherwise does a **fresh install**.
+V2bX روی سرور نود نصب می‌شود، تنظیمات و فهرست کاربران را از پنل می‌گیرد و مصرف هر کاربر را به پنل گزارش می‌کند. یک برنامه است با **شش هسته**؛ هر نود را می‌توانید روی هسته‌ای بگذارید که برای پروتکلش مناسب‌تر است، و چند نود با هسته‌های مختلف کنار هم روی یک سرور کار می‌کنند.
 
-خودش تشخیص می‌دهد: اگر V2bX نصب باشد **آپدیت** می‌کند، وگرنه **نصب کامل** انجام می‌دهد.
+منشعب از [wyx2685/V2bX](https://github.com/wyx2685/V2bX)، با هسته‌های به‌روز، منوی فارسی/انگلیسی و آزمون سرتاسری هر پروتکل روی هر هسته.
+
+## 🚀 نصب آسان
+
+یک دستور، با دسترسی root. اگر V2bX نصب باشد **به‌روزرسانی** می‌کند، وگرنه **نصب کامل** انجام می‌دهد و ویزارد تنظیم را باز می‌کند:
+
+</div>
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh) setup
 ```
 
-Already installed? Update to the latest complete release with one command:
+<div dir="rtl">
 
-برای نصب موجود، به‌روزرسانی به آخرین ریلیز کامل با یک دستور و دسترسی root انجام می‌شود:
+ویزارد فقط این‌ها را می‌پرسد: آدرس پنل، کلید ارتباط (API Key)، شناسهٔ نود و هسته. نوع پروتکل، TLS و دامنه را خودش از پنل می‌خواند. جزئیات در [راهنمای تنظیم خودکار](docs/automated-setup.md).
 
-```bash
-v2bx update
-```
+بعد از نصب، هر زمان:
 
-Existing configuration and certificate files are preserved. An active service
-is restarted; an inactive service stays inactive. See the
-[v1.10.0 upgrade notes](docs/releases/v1.10.0.md) for Mihomo setup and compatibility.
-
-تنظیمات و گواهی‌های موجود حفظ می‌شوند. سرویس فعال دوباره راه‌اندازی می‌شود؛ سرویس
-خاموش، خاموش می‌ماند. جزئیات تغییرات خودکار و تنظیمات اختیاری در
-[یادداشت ارتقا به v1.10.0](docs/releases/v1.10.0.md) آمده است.
-
-Then open the management menu anytime with | سپس هر زمان منوی مدیریت را باز کنید با:
+</div>
 
 ```bash
-v2bx menu
+v2bx menu      # منوی مدیریت
+v2bx update    # به‌روزرسانی به آخرین نسخه
 ```
 
-The menu covers install, update, uninstall, start/stop/restart, logs, config wizard, X25519 key, and BBR.
+<div dir="rtl">
 
-منو شامل نصب، آپدیت، حذف، استارت/استاپ/ری‌استارت، لاگ، ویزارد کانفیگ، کلید X25519 و BBR است.
+در به‌روزرسانی، فایل‌های تنظیم و گواهی‌ها دست نمی‌خورند. سرویسِ روشن دوباره راه‌اندازی می‌شود و سرویسِ خاموش، خاموش می‌ماند. اگر دانلود ناقص باشد یا نسخه پیدا نشود، نسخهٔ نصب‌شده تغییری نمی‌کند.
 
----
+## 🛠 نصب دستی
 
-## ✨ Features | ویژگی‌ها
+برای وقتی که نمی‌خواهید اسکریپت نصب را اجرا کنید.
 
-- Vmess/Vless, Trojan, Shadowsocks, Hysteria2 | پشتیبانی از پروتکل‌های Vmess/Vless، Trojan، Shadowsocks، Hysteria2
-- Vless + XTLS and Reality | پشتیبانی از Vless، XTLS و Reality
-- One instance, multiple nodes — no restart needed | یک نمونه برای چندین نود بدون راه‌اندازی مجدد
-- Per-user online IP limit, TCP connection limit | محدودیت IP آنلاین و اتصال TCP در هر کاربر
-- Node- and user-level speed limit | محدودیت سرعت در سطح نود و کاربر
-- Auto TLS certificate + renewal | صدور و تمدید خودکار گواهی TLS
-- Auto-restart on config change | راه‌اندازی مجدد خودکار پس از تغییر تنظیمات
-- Answers active probes with a decoy site, tuned for lossy and filtered networks — see [docs/censorship-countermeasures.md](docs/censorship-countermeasures.md) | پاسخ به پروب فعال با سایت پوششی و تنظیم برای شبکه‌های ضعیف و فیلترشده — [توضیحات](docs/censorship-countermeasures.md)
+**۱. دانلود باینری** از [صفحهٔ انتشارها](https://github.com/PoriyaVali/V2bX/releases/latest). نام فایل بر اساس معماری سرور:
 
-## 🧩 Core Versions | نسخه هسته‌ها
+</div>
 
-| Core | Version |
-|------|---------|
-| xray-core | v26.9.9 (PoriyaVali fork v1.260909.1) |
-| sing-box | v1.13.21-v2bx.2 (PoriyaVali fork) |
-| hysteria2 | v2.11.0 |
-| Mihomo | PoriyaVali fork, pinned `8fd40782e828` (managed server integration) |
-| MasterDnsVPN | android-multiuser-20261023 (`25b103d6a5f4`) |
-
-## ⌨️ CLI Commands | دستورات
+| معماری (`uname -m`) | فایل |
+|---|---|
+| `x86_64` | `V2bX-linux-64.zip` |
+| `aarch64` | `V2bX-linux-arm64-v8a.zip` |
+| `armv7l` | `V2bX-linux-arm32-v7a.zip` |
+| `riscv64` | `V2bX-linux-riscv64.zip` |
+| `s390x` | `V2bX-linux-s390x.zip` |
 
 ```bash
-v2bx menu       # Management menu | منوی مدیریت
-v2bx start      # Start service   | راه‌اندازی سرویس
-v2bx stop       # Stop service    | توقف سرویس
-v2bx restart    # Restart service | راه‌اندازی مجدد
-v2bx log        # View logs       | مشاهده لاگ
-v2bx update     # Update version  | به‌روزرسانی
-v2bx update 1.7.2   # Select a version (also accepts v1.7.2) | انتخاب نسخه با یا بدون v
-v2bx uninstall  # Uninstall       | حذف
-v2bx synctime   # Sync system time| همگام‌سازی زمان
+mkdir -p /usr/local/V2bX /etc/V2bX
+wget -O /tmp/V2bX.zip https://github.com/PoriyaVali/V2bX/releases/latest/download/V2bX-linux-64.zip
+unzip -o /tmp/V2bX.zip -d /usr/local/V2bX
+chmod +x /usr/local/V2bX/V2bX
+ln -sf /usr/local/V2bX/V2bX /usr/bin/v2bx
 ```
 
-`v2bx update 1.7.2` and `v2bx update v1.7.2` can both downgrade to the published
-1.7.2 release. An exact tag is preferred; the alternate `v` spelling is tried
-only when that tag is missing. A missing release or a network error leaves the
-installed service unchanged instead of switching to the latest version.
+<div dir="rtl">
 
-هر دو دستور بالا برای دانگرید قابل استفاده‌اند. اگر نسخه پیدا نشود یا ارتباط با
-گیت‌هاب خطا داشته باشد، نسخهٔ نصب‌شده و سرویس فعلی تغییری نمی‌کنند.
+**۲. فایل تنظیم.** نمونه‌ها در پوشهٔ [example](example/) هستند. کمترین تنظیم برای یک نود:
 
-## 🔧 Build from Source | ساخت از سورس
+</div>
+
+```json
+{
+  "Log": { "Level": "info" },
+  "Cores": [
+    { "Type": "sing", "OriginalPath": "/etc/V2bX/sing_origin.json" }
+  ],
+  "Nodes": [
+    {
+      "Core": "sing",
+      "ApiHost": "https://panel.example.com",
+      "ApiKey": "کلید ارتباط پنل",
+      "NodeID": 1,
+      "NodeType": "vless",
+      "ListenIP": "0.0.0.0",
+      "CertConfig": {
+        "CertMode": "http",
+        "CertDomain": "node.example.com",
+        "CertFile": "/etc/V2bX/node.example.com.crt",
+        "KeyFile": "/etc/V2bX/node.example.com.key"
+      }
+    }
+  ]
+}
+```
+
+<div dir="rtl">
+
+این را در `/etc/V2bX/config.json` بگذارید. `sing_origin.json`، `dns.json` و `route.json` را هم از پوشهٔ example در `/etc/V2bX` کپی کنید. به‌جای نوشتن دستی می‌توانید ویزارد را اجرا کنید: `v2bx configure`.
+
+**۳. سرویس systemd:**
+
+</div>
+
+```bash
+cat > /etc/systemd/system/V2bX.service <<'EOF'
+[Unit]
+Description=V2bX Service
+After=network.target nss-lookup.target
+
+[Service]
+User=root
+WorkingDirectory=/usr/local/V2bX
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/V2bX/V2bX server -c /etc/V2bX/config.json
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now V2bX
+journalctl -u V2bX -f
+```
+
+<div dir="rtl">
+
+دستور `v2bx` همان باینری است، پس با پیوندی که در گام ۱ ساختید منو و همهٔ دستورها را دارید. فقط نودهای TrustTunnel به برنامهٔ endpoint جدا نیاز دارند که اسکریپت نصب دانلودش می‌کند.
+
+**ساخت از سورس** (Go 1.27.1):
+
+</div>
 
 ```bash
 git clone https://github.com/PoriyaVali/V2bX.git && cd V2bX
@@ -106,21 +151,222 @@ GOEXPERIMENT=jsonv2 go build -v -o V2bX \
   -trimpath -ldflags "-s -w -buildid="
 ```
 
-## ⚙️ Configuration | تنظیمات
+<div dir="rtl">
 
-Use the built-in config wizard (`v2bx menu` → option 9) or see the [example configs](example/).
+## ✨ قابلیت‌ها
 
-از ویزارد داخلی (`v2bx menu` → گزینه ۹) استفاده کنید یا به پوشه [example](example/) مراجعه کنید.
+### مدیریت کاربران و مصرف
 
-`V2bX configure` keeps mux, node ID and per-node core selection under the
-administrator's control, then detects protocol/TLS/domain and asks for Enter
-to continue. See [automated setup](docs/automated-setup.md) and
-[cover-site security](docs/cover-site-security.md).
+- **صورت‌حساب دقیق:** مصرف هر کاربر به پنل گزارش می‌شود، حتی ترافیکی که درست قبل از حذف کاربر مصرف شده.
+- **قطع فوری:** کاربری که پنل حذف می‌کند، اتصال‌های بازش هم بسته می‌شود.
+- **محدودیت سرعت** برای هر کاربر و هر نود، روی آپلود و دانلود.
+- **محدودیت دستگاه و اتصال** برای هر کاربر، و گزارش دستگاه‌های آنلاین.
+- **تغییر کاربران بدون قطع نود:** افزودن و حذف کاربر اتصال دیگران را قطع نمی‌کند.
 
-## Credits | تشکر
+### امنیت و فیلترینگ
 
-[wyx2685/V2bX](https://github.com/wyx2685/V2bX) · [XTLS](https://github.com/XTLS/) · [sing-box](https://github.com/SagerNet/sing-box) · [hysteria](https://github.com/apernet/hysteria) · [XrayR](https://github.com/XrayR/XrayR) · [V2Fly](https://github.com/v2fly)
+- **قوانین پنل روی هر اتصال و هر بستهٔ UDP:** دامنه، آدرس، پورت و پروتکل مسدودشده.
+- **مسدودسازی آدرس‌های خصوصی:** کاربر به سرویس‌های خود سرور و شبکهٔ داخلی آن نمی‌رسد.
+- **سایت پوششی:** به کاوشگرها یک سایت واقعی نشان می‌دهد، نه خطای پروکسی. [توضیحات](docs/censorship-countermeasures.md) · [امنیت سایت پوششی](docs/cover-site-security.md)
+- **مسدودسازی کشور** با GeoIP (هستهٔ Sing).
+
+### شبکه و پایداری
+
+- **DNS هوشمند:** اگر UDP سرور بسته گم کند، پرس‌وجوهای DNS خودکار روی TCP می‌روند و جواب‌ها نگه داشته می‌شوند. همهٔ هسته‌ها از آن استفاده می‌کنند. [توضیحات](docs/smart-dns.md)
+- **گواهی TLS خودکار:** صدور و تمدید با HTTP یا DNS، و بارگذاری گواهی جدید بدون قطع نود.
+- **بارگذاری دوبارهٔ خودکار** با تغییر فایل تنظیم.
+- **تنظیم برای شبکه‌های ضعیف** و کنترل مصرف حافظه. [توضیحات](docs/performance-stability.md)
+
+### راه‌اندازی
+
+- **ویزارد دوزبانه** که نوع نود را از پنل می‌خواند و هستهٔ مناسب را پیشنهاد می‌دهد.
+- **چند نود و چند هسته** در یک برنامه.
+- **به‌روزرسانی امن:** نسخهٔ جدید فقط وقتی جایگزین می‌شود که کامل دانلود و بررسی شده باشد؛ برگشت به نسخهٔ قبلی با `v2bx update 1.12.3`.
+- **metrics** به قالب Prometheus (اختیاری).
+
+## 🧩 هسته‌ها و پروتکل‌ها
+
+### کدام هسته را انتخاب کنم؟
+
+اگر در ویزارد هسته را روی **auto** بگذارید، همین مسیر را خودش می‌رود:
+
+</div>
+
+```mermaid
+flowchart TD
+    A([نوع نود در پنل]) --> B{پروتکل}
+    B -->|HTTP · SOCKS5 · Mieru<br>ShadowQUIC · Sudoku · Snell| M[Mihomo]
+    B -->|mdns| D[mdns]
+    B -->|TrustTunnel| T[TrustTunnel]
+    B -->|Hysteria · Hysteria2<br>TUIC · AnyTLS · Shadowsocks| S[Sing]
+    B -->|VLESS · VMess · Trojan| C{شرایط نود}
+    C -->|XHTTP یا mKCP<br>یا رمزنگاری VLESS| X[Xray]
+    C -->|VLESS یا Trojan<br>روی TCP + TLS| X
+    C -->|بقیهٔ حالت‌ها<br>WS · gRPC · REALITY| S
+
+    classDef xray fill:#1f6feb,stroke:#1f6feb,color:#fff
+    classDef sing fill:#8250df,stroke:#8250df,color:#fff
+    classDef mihomo fill:#bf8700,stroke:#bf8700,color:#fff
+    classDef other fill:#1a7f37,stroke:#1a7f37,color:#fff
+    class X xray
+    class S sing
+    class M mihomo
+    class D,T other
+```
+
+<div dir="rtl">
+
+### هر هسته چه پروتکلی را سرویس می‌دهد
+
+✅ پشتیبانی می‌شود · ⭐ انتخاب خودکار ویزارد · ➖ ندارد
+
+</div>
+
+| پروتکل | Xray | Sing | Mihomo | Hysteria2 | شرایط |
+|---|:-:|:-:|:-:|:-:|---|
+| **VLESS** | ✅ | ✅ ⭐ | ✅ | ➖ | جدول انتقال‌ها را ببینید |
+| **VMess** | ✅ | ✅ ⭐ | ✅ | ➖ | جدول انتقال‌ها را ببینید |
+| **Trojan** | ✅ | ✅ ⭐ | ✅ | ➖ | روی TCP + TLS ویزارد Xray را برمی‌دارد |
+| **Shadowsocks** | ✅ | ✅ ⭐ | ➖ | ➖ | شامل Shadowsocks 2022 |
+| **Hysteria2** | ➖ | ✅ ⭐ | ✅ | ✅ | |
+| **Hysteria (v1)** | ➖ | ✅ ⭐ | ➖ | ➖ | |
+| **TUIC** | ➖ | ✅ ⭐ | ✅ | ➖ | |
+| **AnyTLS** | ➖ | ✅ ⭐ | ✅ | ➖ | |
+| **HTTP · SOCKS5** | ➖ | ➖ | ✅ ⭐ | ➖ | نود مدیریت‌شده در Irboard |
+| **Mieru** | ➖ | ➖ | ✅ ⭐ | ➖ | TCP یا UDP |
+| **ShadowQUIC** | ➖ | ➖ | ✅ ⭐ | ➖ | برای HTTP/3 «UDP روی stream» را روشن کنید |
+| **Sudoku** | ➖ | ➖ | ✅ ⭐ | ➖ | |
+| **Snell** | ➖ | ➖ | ✅ ⭐ | ➖ | با ShadowTLS v3 |
+
+<div dir="rtl">
+
+دو هستهٔ دیگر هر کدام یک پروتکل دارند: **mdns** (تونل DNS با MasterDnsVPN، روی پورت UDP 53) و **TrustTunnel** (با برنامهٔ endpoint جدا؛ هستهٔ Mihomo هم آن را سرویس می‌دهد).
+
+### انتقال‌ها و امنیت برای VLESS و VMess
+
+</div>
+
+| انتقال / امنیت | Xray | Sing | Mihomo |
+|---|:-:|:-:|:-:|
+| TCP | ✅ | ✅ | ✅ |
+| WebSocket | ✅ | ✅ | ✅ |
+| gRPC | ✅ | ✅ | ✅ |
+| HTTPUpgrade | ✅ | ✅ | ➖ |
+| XHTTP | ✅ | ➖ | ➖ |
+| mKCP | ✅ | ➖ | ➖ |
+| TCP با هدر HTTP (پیش‌فرض فرم VMess) | ✅ | ➖ | ➖ |
+| HTTP/2 و QUIC | ➖ | ✅ | ➖ |
+| TLS | ✅ | ✅ | ✅ |
+| REALITY | ✅ | ✅ | ➖ |
+| Vision (`xtls-rprx-vision`) | ✅ | ✅ | ✅ |
+| رمزنگاری VLESS | ✅ | ➖ | ➖ |
+| ECH | ✅ | ✅ | ➖ |
+
+<div dir="rtl">
+
+اگر نودی را روی هسته‌ای بگذارید که آن را سرویس نمی‌دهد، ویزارد همان موقع می‌گوید و هسته‌های ممکن را نام می‌برد. جزئیات هستهٔ Mihomo در [راهنمای Mihomo](docs/mihomo-server.md).
+
+> هستهٔ Xray تنها هسته‌ای است که مسیرها و DNS سفارشی پنل (route و dns) را اعمال می‌کند.
+
+### نسخهٔ هسته‌ها
+
+</div>
+
+| هسته | نسخه |
+|---|---|
+| xray-core | v26.9.9 (fork: `v1.260909.1`) |
+| sing-box | v1.13.21 (fork: `v1.13.21-v2bx.2`) |
+| Mihomo | v1.19.32 (fork، `3de39671cc05`) |
+| hysteria2 | v2.11.0 |
+| MasterDnsVPN | fork، `98b6fbffd1b4` |
+| TrustTunnel endpoint | آخرین انتشار [fork](https://github.com/PoriyaVali/TrustTunnel) |
+
+<div dir="rtl">
+
+## ⌨️ دستورها
+
+</div>
+
+```bash
+v2bx menu            # منوی مدیریت
+v2bx start           # روشن کردن سرویس
+v2bx stop            # خاموش کردن
+v2bx restart         # راه‌اندازی دوباره
+v2bx status          # وضعیت سرویس
+v2bx log             # دیدن log
+v2bx update          # به‌روزرسانی به آخرین نسخه
+v2bx update 1.12.3   # نصب یک نسخهٔ مشخص (برای برگشت به عقب هم)
+v2bx version         # نسخهٔ نصب‌شده
+v2bx configure       # ویزارد تنظیم نود از روی پنل
+v2bx edit            # ویرایش فایل تنظیم
+v2bx check           # بررسی فایل تنظیم
+v2bx cert            # تاریخ انقضای گواهی‌ها
+v2bx x25519          # ساخت کلید برای REALITY
+v2bx bbr             # روشن کردن BBR
+v2bx synctime        # هماهنگ کردن ساعت سرور
+v2bx uninstall       # حذف
+```
+
+<div dir="rtl">
+
+## ⚙️ تنظیمات
+
+فایل اصلی `/etc/V2bX/config.json` است. بخش‌های آن:
+
+</div>
+
+| بخش | کار |
+|---|---|
+| `Log` | سطح و مقصد log |
+| `Cores` | هسته‌هایی که اجرا می‌شوند و تنظیم هر کدام |
+| `Nodes` | نودها: آدرس پنل، کلید، شناسه، هسته، گواهی |
+| `DNS` | DNS هوشمند: `Mode` (`auto`، `tcp`، `system`) و `Servers` — [توضیحات](docs/smart-dns.md) |
+| `Metrics` | آدرس endpoint اختیاری Prometheus |
+| `Memory` | سقف مصرف حافظه |
+
+<div dir="rtl">
+
+## 📚 مستندات
+
+- [تنظیم خودکار و ویزارد](docs/automated-setup.md)
+- [DNS هوشمند](docs/smart-dns.md)
+- [هستهٔ Mihomo](docs/mihomo-server.md)
+- [مقابله با فیلترینگ و سایت پوششی](docs/censorship-countermeasures.md)
+- [پایداری و کارایی](docs/performance-stability.md)
+- [بررسی نودهای Irboard روی همهٔ هسته‌ها](docs/served-nodes-review-2026-11-07.md)
+- [بررسی صورت‌حساب، حذف کاربر و محدودیت سرعت](docs/billing-and-removal-review-2026-11-12.md)
+- [یادداشت‌های هر نسخه](docs/releases/)
+
+</div>
+
+---
+
+## 🌍 English summary
+
+V2bX runs on a node server, takes its node settings and user list from an Irboard / V2board panel, and reports each user's traffic back. One binary carries six cores (Xray, sing-box, Mihomo, Hysteria2, mdns, TrustTunnel); each node runs on the core you choose, and nodes on different cores run side by side.
+
+**Install or update** (root):
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/PoriyaVali/V2bX/dev_new/install.sh) setup
+```
+
+Then `v2bx menu` to manage it and `v2bx update` to upgrade. Manual installation (binary, `config.json`, systemd unit) is described in the Persian section above; the commands are the same in any language.
+
+**Highlights**
+
+- Per-user traffic accounting, speed limits, device limits, and immediate cut-off of removed users, on every core.
+- Panel rules and a private-address block applied to every connection and every UDP datagram.
+- A built-in DNS forwarder that moves to TCP while UDP queries are being lost — [docs/smart-dns.md](docs/smart-dns.md).
+- Automatic TLS certificates, a cover site for active probes, hot config reload.
+- Every node type the panel can create is tested end to end on every core that serves it, with mihomo, sing-box and Xray clients.
+
+The protocol and transport tables above show which core serves what; the setup wizard's `auto` choice follows the flowchart.
+
+## Credits
+
+[wyx2685/V2bX](https://github.com/wyx2685/V2bX) · [XTLS](https://github.com/XTLS/) · [sing-box](https://github.com/SagerNet/sing-box) · [mihomo](https://github.com/MetaCubeX/mihomo) · [hysteria](https://github.com/apernet/hysteria) · [XrayR](https://github.com/XrayR/XrayR) · [V2Fly](https://github.com/v2fly)
 
 ## Disclaimer | سلب مسئولیت
 
-Provided as-is with no warranty. Use at your own risk. | بدون هیچ ضمانتی ارائه می‌شود؛ استفاده به عهده کاربر است.
+Provided as-is with no warranty. Use at your own risk. | بدون هیچ ضمانتی ارائه می‌شود؛ استفاده به عهدهٔ کاربر است.
