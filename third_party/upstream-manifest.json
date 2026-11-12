@@ -564,7 +564,7 @@
       {
         "path": "hysteria/service.go",
         "upstream_sha256": "51fa3841b26468bd28de6251c85780c103f231786657443f8288dfdb64f605f8",
-        "patched_sha256": "2a9dbfd1bc56dce3d89679de80323f952c1089b599009b05ca422ff331042ca2"
+        "patched_sha256": "9c8bd199a4a921fa2707e40653b70a99bc52521d2f21f8041b915ae151d0b4dc"
       },
       {
         "path": "hysteria/service_packet.go",
@@ -689,7 +689,7 @@
       {
         "path": "tuic/service.go",
         "upstream_sha256": "61b709a63ff047de52463fe4402e3a4774ab562d38acd64578aca7782822baf1",
-        "patched_sha256": "002628f283b9f93b9e7d3b124f031981edc78bcb9c8d0f46bd735f5cdb9a5f9a"
+        "patched_sha256": "ab13b5d120c32a86f8163ac9caa0c84a55649b7b7e6ef140750c6c4908eef87f"
       },
       {
         "path": "tuic/service_packet.go",

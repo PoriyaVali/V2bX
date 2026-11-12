@@ -206,7 +206,12 @@ func (s *Service[U]) handleConnection(connection *quic.Conn) {
 	}
 	s.sessions.Store(session, struct{}{})
 	go func() {
-		<-session.connDone
+		// Until the session closes itself, or its connection ends without
+		// it: not every way out of a session closes it.
+		select {
+		case <-session.connDone:
+		case <-connection.Context().Done():
+		}
 		s.sessions.Delete(session)
 	}()
 	session.handle()

@@ -200,7 +200,12 @@ func (s *Service[U]) loopConnections(listener qtls.Listener) {
 		}
 		s.sessions.Store(session, struct{}{})
 		go func() {
-			<-session.connDone
+			// Until the session closes itself, or its connection ends without
+			// it: not every way out of a session closes it.
+			select {
+			case <-session.connDone:
+			case <-connection.Context().Done():
+			}
 			s.sessions.Delete(session)
 		}()
 		go session.handleConnection()
