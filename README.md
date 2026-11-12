@@ -10,7 +10,7 @@ A multi-core node server for Irboard / V2board panels
 [![Build](https://img.shields.io/github/actions/workflow/status/PoriyaVali/V2bX/release.yml?label=Build)](https://github.com/PoriyaVali/V2bX/actions)
 [![License](https://img.shields.io/github/license/PoriyaVali/V2bX)](LICENSE)
 
-[نصب آسان](#-نصب-آسان) · [نصب دستی](#-نصب-دستی) · [قابلیت‌ها](#-قابلیتها) · [هسته‌ها و پروتکل‌ها](#-هستهها-و-پروتکلها) · [دستورها](#-دستورها) · [English](#-english-summary)
+[نصب آسان](#-نصب-آسان) · [نصب دستی](#-نصب-دستی) · [قابلیت‌ها](#-قابلیتها) · [هسته‌ها و پروتکل‌ها](#-هستهها-و-پروتکلها) · [TrustTunnel](#-trusttunnel) · [دستورها](#-دستورها) · [English](#-english-summary)
 
 </div>
 
@@ -237,10 +237,11 @@ flowchart TD
 | **ShadowQUIC** | ➖ | ➖ | ✅ ⭐ | ➖ | برای HTTP/3 «UDP روی stream» را روشن کنید |
 | **Sudoku** | ➖ | ➖ | ✅ ⭐ | ➖ | |
 | **Snell** | ➖ | ➖ | ✅ ⭐ | ➖ | با ShadowTLS v3 |
+| **TrustTunnel** | ➖ | ➖ | ✅ | ➖ | ⭐ هستهٔ TrustTunnel؛ [بخش TrustTunnel](#-trusttunnel) را ببینید |
 
 <div dir="rtl">
 
-دو هستهٔ دیگر هر کدام یک پروتکل دارند: **mdns** (تونل DNS با MasterDnsVPN، روی پورت UDP 53) و **TrustTunnel** (با برنامهٔ endpoint جدا؛ هستهٔ Mihomo هم آن را سرویس می‌دهد).
+دو هستهٔ دیگر هر کدام یک پروتکل دارند: **mdns** (تونل DNS با MasterDnsVPN، روی پورت UDP 53) و **TrustTunnel** (با برنامهٔ endpoint رسمی؛ هستهٔ Mihomo هم آن را سرویس می‌دهد، با امکانات متفاوت — [بخش TrustTunnel](#-trusttunnel)).
 
 ### انتقال‌ها و امنیت برای VLESS و VMess
 
@@ -267,6 +268,37 @@ flowchart TD
 اگر نودی را روی هسته‌ای بگذارید که آن را سرویس نمی‌دهد، ویزارد همان موقع می‌گوید و هسته‌های ممکن را نام می‌برد. جزئیات هستهٔ Mihomo در [راهنمای Mihomo](docs/mihomo-server.md).
 
 > هستهٔ Xray تنها هسته‌ای است که مسیرها و DNS سفارشی پنل (route و dns) را اعمال می‌کند.
+
+### 🔐 TrustTunnel
+
+TrustTunnel روی **دو هسته** اجرا می‌شود و این دو از نظر امکانات مدیریتی یکی نیستند. ویزارد در حالت `auto` هستهٔ **TrustTunnel** را برمی‌دارد؛ برای Mihomo باید در تنظیم نود `"Core": "mihomo"` بگذارید.
+
+</div>
+
+| | هستهٔ **TrustTunnel** | هستهٔ **Mihomo** |
+|---|:-:|:-:|
+| پیاده‌سازی | برنامهٔ رسمی endpoint (Rust، پردازهٔ جدا) | پیاده‌سازی داخلی Mihomo درون V2bX |
+| انتقال | HTTP/2 و QUIC | HTTP/2 و QUIC |
+| گزارش مصرف هر کاربر به پنل | ✅ | ✅ |
+| افزودن و حذف کاربر بدون قطع دیگران | ✅ | ➖ اتصال همهٔ کاربران نود یک لحظه قطع و دوباره وصل می‌شود |
+| ردِ کاربر حذف‌شده برای اتصال تازه | ✅ | ✅ |
+| بستن اتصال‌های باز کاربر حذف‌شده | ❔ آزموده نشده | ✅ |
+| محدودیت سرعت کاربر و نود | ➖ | ✅ |
+| محدودیت دستگاه و گزارش دستگاه‌های آنلاین | ➖ | ✅ |
+| قوانین پنل (دامنه، آدرس، پورت، پروتکل) | ➖ | ✅ |
+| مسدودسازی آدرس‌های خصوصی | ✅ | ✅ |
+| گواهی TLS از V2bX، با تمدید بدون قطع | ✅ | ✅ |
+| DNS هوشمند | محدود: فقط TCP هنگام شروع، اگر UDP خراب باشد | ✅ کامل |
+| برنامهٔ جدا لازم دارد | بله، اسکریپت نصب دانلودش می‌کند | نه |
+
+<div dir="rtl">
+
+**کدام را انتخاب کنم؟**
+
+- **هستهٔ Mihomo** وقتی محدودیت سرعت، محدودیت دستگاه یا قوانین مسدودسازی پنل لازم دارید. هزینه‌اش قطع لحظه‌ای همهٔ کاربران نود با هر تغییر در فهرست کاربران است.
+- **هستهٔ TrustTunnel** وقتی کارکرد دقیقاً مثل سرور رسمی و قطع نشدن اتصال‌ها هنگام همگام‌سازی کاربران مهم‌تر است و آن محدودیت‌ها را لازم ندارید.
+
+> TrustTunnel هنوز در آزمون سرتاسری «هر نود Irboard روی هر هسته» نیست؛ پوشش فعلی آن تست‌های خود هر هسته است: شمارش مصرف، حذف کاربر، محدودیت سرعت و تعویض گواهی روی Mihomo، و تولید تنظیم، گواهی، همگام‌سازی کاربران و شمارش مصرف روی endpoint رسمی.
 
 ### نسخهٔ هسته‌ها
 
@@ -362,6 +394,8 @@ Then `v2bx menu` to manage it and `v2bx update` to upgrade. Manual installation 
 - Every node type the panel can create is tested end to end on every core that serves it, with mihomo, sing-box and Xray clients.
 
 The protocol and transport tables above show which core serves what; the setup wizard's `auto` choice follows the flowchart.
+
+**TrustTunnel** runs on two cores. The TrustTunnel core runs the official endpoint: user changes never disconnect anyone, but it applies no speed limit, device limit or panel rule. The Mihomo core applies all of those, but rebuilds the node's listener, reconnecting every user, whenever the user list changes. See the table in the TrustTunnel section.
 
 ## Credits
 
