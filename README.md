@@ -10,7 +10,7 @@ A multi-core node server for Irboard / V2board panels
 [![Build](https://img.shields.io/github/actions/workflow/status/PoriyaVali/V2bX/release.yml?label=Build)](https://github.com/PoriyaVali/V2bX/actions)
 [![License](https://img.shields.io/github/license/PoriyaVali/V2bX)](LICENSE)
 
-[نصب آسان](#-نصب-آسان) · [نصب دستی](#-نصب-دستی) · [قابلیت‌ها](#-قابلیتها) · [هسته‌ها و پروتکل‌ها](#-هستهها-و-پروتکلها) · [TrustTunnel](#-trusttunnel) · [دستورها](#-دستورها) · [English](#-english-summary)
+[نصب آسان](#-نصب-آسان) · [نصب دستی](#-نصب-دستی) · [قابلیت‌ها](#-قابلیتها) · [هسته‌ها و پروتکل‌ها](#-هستهها-و-پروتکلها) · [mdns](#-mdns-تونل-dns) · [TrustTunnel](#-trusttunnel) · [دستورها](#-دستورها) · [English](#-english-summary)
 
 </div>
 
@@ -186,6 +186,21 @@ GOEXPERIMENT=jsonv2 go build -v -o V2bX \
 
 ## 🧩 هسته‌ها و پروتکل‌ها
 
+### شش هسته در یک نگاه
+
+</div>
+
+| هسته | بر پایهٔ | پروتکل‌ها | ویزارد کِی انتخابش می‌کند |
+|---|---|---|---|
+| **Xray** | xray-core | VLESS · VMess · Trojan · Shadowsocks | XHTTP، mKCP، رمزنگاری VLESS، و VLESS یا Trojan روی TCP + TLS |
+| **Sing** | sing-box | VLESS · VMess · Trojan · Shadowsocks · Hysteria · Hysteria2 · TUIC · AnyTLS | بیشتر نودها |
+| **Mihomo** | mihomo | ۱۳ پروتکل، از جمله HTTP · SOCKS5 · Mieru · ShadowQUIC · Sudoku · Snell | پروتکل‌هایی که فقط Mihomo دارد |
+| **Hysteria2** | سرور رسمی Hysteria2 | Hysteria2 | هیچ‌وقت؛ باید خودتان انتخاب کنید |
+| **mdns** | MasterDnsVPN | تونل DNS | نودهای mdns — [بخش mdns](#-mdns-تونل-dns) |
+| **TrustTunnel** | endpoint رسمی TrustTunnel (برنامهٔ جدا) | TrustTunnel | نودهای TrustTunnel — [بخش TrustTunnel](#-trusttunnel) |
+
+<div dir="rtl">
+
 ### کدام هسته را انتخاب کنم؟
 
 اگر در ویزارد هسته را روی **auto** بگذارید، همین مسیر را خودش می‌رود:
@@ -222,26 +237,25 @@ flowchart TD
 
 </div>
 
-| پروتکل | Xray | Sing | Mihomo | Hysteria2 | شرایط |
-|---|:-:|:-:|:-:|:-:|---|
-| **VLESS** | ✅ | ✅ ⭐ | ✅ | ➖ | جدول انتقال‌ها را ببینید |
-| **VMess** | ✅ | ✅ ⭐ | ✅ | ➖ | جدول انتقال‌ها را ببینید |
-| **Trojan** | ✅ | ✅ ⭐ | ✅ | ➖ | روی TCP + TLS ویزارد Xray را برمی‌دارد |
-| **Shadowsocks** | ✅ | ✅ ⭐ | ➖ | ➖ | شامل Shadowsocks 2022 |
-| **Hysteria2** | ➖ | ✅ ⭐ | ✅ | ✅ | |
-| **Hysteria (v1)** | ➖ | ✅ ⭐ | ➖ | ➖ | |
-| **TUIC** | ➖ | ✅ ⭐ | ✅ | ➖ | |
-| **AnyTLS** | ➖ | ✅ ⭐ | ✅ | ➖ | |
-| **HTTP · SOCKS5** | ➖ | ➖ | ✅ ⭐ | ➖ | نود مدیریت‌شده در Irboard |
-| **Mieru** | ➖ | ➖ | ✅ ⭐ | ➖ | TCP یا UDP |
-| **ShadowQUIC** | ➖ | ➖ | ✅ ⭐ | ➖ | برای HTTP/3 «UDP روی stream» را روشن کنید |
-| **Sudoku** | ➖ | ➖ | ✅ ⭐ | ➖ | |
-| **Snell** | ➖ | ➖ | ✅ ⭐ | ➖ | با ShadowTLS v3 |
-| **TrustTunnel** | ➖ | ➖ | ✅ | ➖ | ⭐ هستهٔ TrustTunnel؛ [بخش TrustTunnel](#-trusttunnel) را ببینید |
+| پروتکل | Xray | Sing | Mihomo | Hysteria2 | mdns | TrustTunnel | شرایط |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|---|
+| **VLESS** | ✅ | ✅ ⭐ | ✅ | ➖ | ➖ | ➖ | جدول انتقال‌ها را ببینید |
+| **VMess** | ✅ | ✅ ⭐ | ✅ | ➖ | ➖ | ➖ | جدول انتقال‌ها را ببینید |
+| **Trojan** | ✅ | ✅ ⭐ | ✅ | ➖ | ➖ | ➖ | روی TCP + TLS ویزارد Xray را برمی‌دارد |
+| **Shadowsocks** | ✅ | ✅ ⭐ | ➖ | ➖ | ➖ | ➖ | شامل Shadowsocks 2022 |
+| **Hysteria2** | ➖ | ✅ ⭐ | ✅ | ✅ | ➖ | ➖ | |
+| **Hysteria (v1)** | ➖ | ✅ ⭐ | ➖ | ➖ | ➖ | ➖ | |
+| **TUIC** | ➖ | ✅ ⭐ | ✅ | ➖ | ➖ | ➖ | |
+| **AnyTLS** | ➖ | ✅ ⭐ | ✅ | ➖ | ➖ | ➖ | |
+| **HTTP · SOCKS5** | ➖ | ➖ | ✅ ⭐ | ➖ | ➖ | ➖ | نود مدیریت‌شده در Irboard |
+| **Mieru** | ➖ | ➖ | ✅ ⭐ | ➖ | ➖ | ➖ | TCP یا UDP |
+| **ShadowQUIC** | ➖ | ➖ | ✅ ⭐ | ➖ | ➖ | ➖ | برای HTTP/3 «UDP روی stream» را روشن کنید |
+| **Sudoku** | ➖ | ➖ | ✅ ⭐ | ➖ | ➖ | ➖ | |
+| **Snell** | ➖ | ➖ | ✅ ⭐ | ➖ | ➖ | ➖ | با ShadowTLS v3 |
+| **TrustTunnel** | ➖ | ➖ | ✅ | ➖ | ➖ | ✅ ⭐ | امکانات دو هسته فرق دارد — [بخش TrustTunnel](#-trusttunnel) |
+| **mdns** (تونل DNS) | ➖ | ➖ | ➖ | ➖ | ✅ ⭐ | ➖ | دامنه و پورت UDP لازم دارد — [بخش mdns](#-mdns-تونل-dns) |
 
 <div dir="rtl">
-
-دو هستهٔ دیگر هر کدام یک پروتکل دارند: **mdns** (تونل DNS با MasterDnsVPN، روی پورت UDP 53) و **TrustTunnel** (با برنامهٔ endpoint رسمی؛ هستهٔ Mihomo هم آن را سرویس می‌دهد، با امکانات متفاوت — [بخش TrustTunnel](#-trusttunnel)).
 
 ### انتقال‌ها و امنیت برای VLESS و VMess
 
@@ -268,6 +282,34 @@ flowchart TD
 اگر نودی را روی هسته‌ای بگذارید که آن را سرویس نمی‌دهد، ویزارد همان موقع می‌گوید و هسته‌های ممکن را نام می‌برد. جزئیات هستهٔ Mihomo در [راهنمای Mihomo](docs/mihomo-server.md).
 
 > هستهٔ Xray تنها هسته‌ای است که مسیرها و DNS سفارشی پنل (route و dns) را اعمال می‌کند.
+
+### 🌐 mdns (تونل DNS)
+
+هستهٔ mdns ترافیک کاربر را داخل پرس‌وجوهای DNS به سرور می‌رساند، با [MasterDnsVPN](https://github.com/PoriyaVali/MasterDnsVPN). برای شبکه‌هایی ساخته شده که جز DNS تقریباً همه‌چیز در آن‌ها بسته است. سرعتش از پروتکل‌های دیگر کمتر است، ولی وقتی هیچ راه دیگری کار نمی‌کند، کار می‌کند.
+
+**پیش‌نیازها:**
+
+- یک یا چند دامنه که در پنل برای نود تعریف می‌شود و پرس‌وجوهایش باید به همین سرور برسد (معمولاً با رکورد NS).
+- پورت UDP‌ای که پنل برای نود می‌دهد (معمولاً 53) روی آدرس عمومی سرور باز و آزاد باشد.
+- گواهی TLS لازم نیست؛ کلید رمزنگاری و رمز نود را پنل می‌فرستد.
+- اگر روی همین سرور resolver محلی مثل Unbound دارید، آن باید فقط روی `127.0.0.1:53` گوش دهد و `ListenIP` نود mdns آدرس عمومی سرور باشد؛ وگرنه هر دو پورت 53 را می‌خواهند. DNS هوشمند V2bX هرگز پورت 53 را نمی‌گیرد.
+
+</div>
+
+| | هستهٔ **mdns** |
+|---|:-:|
+| گزارش مصرف هر کاربر به پنل | ✅ حتی هنگام بارگذاری دوبارهٔ نود از دست نمی‌رود |
+| محدودیت سرعت کاربر | ✅ تغییر در پنل روی کاربرانِ وصل هم اعمال می‌شود |
+| محدودیت دستگاه و گزارش دستگاه‌های آنلاین | ✅ |
+| افزودن و حذف کاربر بدون قطع دیگران | ✅ |
+| بستن جلسه‌های باز کاربر حذف‌شده | ✅ |
+| مسدودسازی آدرس‌های خصوصی | ✅ |
+| قوانین پنل (دامنه، آدرس، پورت، پروتکل) | ➖ |
+| DNS هوشمند | ✅ |
+
+<div dir="rtl">
+
+> mdns در آزمون سرتاسری «هر نود Irboard روی هر هسته» نیست؛ پوشش آن تست‌های خود هسته و MasterDnsVPN است.
 
 ### 🔐 TrustTunnel
 
@@ -394,6 +436,8 @@ Then `v2bx menu` to manage it and `v2bx update` to upgrade. Manual installation 
 - Every node type the panel can create is tested end to end on every core that serves it, with mihomo, sing-box and Xray clients.
 
 The protocol and transport tables above show which core serves what; the setup wizard's `auto` choice follows the flowchart.
+
+**mdns** carries traffic inside DNS queries, for networks where little but DNS gets through. It needs a domain delegated to the server and the UDP port the panel gives (usually 53). It applies accounting, speed limits, device limits and the private-address block, but not panel rules.
 
 **TrustTunnel** runs on two cores. The TrustTunnel core runs the official endpoint: user changes never disconnect anyone, but it applies no speed limit, device limit or panel rule. The Mihomo core applies all of those, but rebuilds the node's listener, reconnecting every user, whenever the user list changes. See the table in the TrustTunnel section.
 
