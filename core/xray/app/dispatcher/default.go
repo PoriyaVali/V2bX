@@ -439,18 +439,45 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 			return errors.New("Limited ", user.Email, " by conn or ip")
 		}
 		lm := d.linkManager(user.Email)
+		// Closing a pipe ends a Dispatch link. This link is the inbound's own
+		// reader and writer, and closing those ends it only where the writer
+		// happens to close something: VLESS over TLS or WebSocket writes
+		// straight to the connection. Under Vision, VLESS encryption, XHTTP
+		// or HTTPUpgrade, and for VLESS's own UDP, the writer is a wrapper
+		// with no Close, and a user the panel removed kept every connection
+		// they had open, for as long as they went on using it. The link ends
+		// with its context, which stops the outbound, and with the inbound's
+		// connection.
+		linkCtx, endLink := context.WithCancel(ctx)
+		defer endLink()
+		ctx = linkCtx
+		inboundConn := sessionInbound.Conn
 		managedWriter := &ManagedWriter{
 			writer:  outbound.Writer,
 			manager: lm,
+			end: func() {
+				endLink()
+				if inboundConn != nil {
+					// Not on the caller's time: a TLS close waits to write.
+					go inboundConn.Close()
+				}
+			},
 		}
+		defer lm.RemoveWriter(managedWriter)
 		outbound.Writer = managedWriter
 		sessionInbound.CanSpliceCopy = 3
-		outbound.Writer = rate.NewRateLimitWriter(outbound.Writer, limit.RateLimiter(user.Email))
+		// One bucket for both directions, as Dispatch limits both its pipes.
+		// Only the writer was limited here, so a VLESS upload ran at full
+		// speed whatever the user's plan allowed.
+		live := limit.RateLimiter(user.Email)
+		outbound.Writer = rate.NewRateLimitWriter(outbound.Writer, live)
 		ts := d.trafficCounter(sessionInbound.Tag).GetCounter(user.Email)
 		downcounter := &counter.XrayTrafficCounter{V: &ts.DownCounter}
 		outbound.Reader = &CounterReader{
 			Reader:  timeoutReader,
 			Counter: &ts.UpCounter,
+			Limiter: live,
+			Context: linkCtx,
 		}
 		if err := lm.AddLink(managedWriter, outbound.Reader, limit.MaxConns); err != nil {
 			errors.LogInfo(ctx, "Refused ", user.Email, ": ", err)
