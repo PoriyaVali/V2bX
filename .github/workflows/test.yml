@@ -139,6 +139,7 @@ jobs:
           go test -race -count=3 -timeout 2m -tags "with_utls" github.com/wyx2685/sing-vmess/vless
           # The package's own dial test takes about 40 s under the race detector.
           go test -race -count=3 -timeout 2m github.com/xtls/xray-core/transport/internet/kcp -run '^TestReceivingWorkerReleaseDuringRead$'
+          go test -race -count=3 -timeout 2m github.com/xtls/xray-core/proxy -run '^TestVisionFilterStateIsSharedSafely$'
 
       # api/ and core/ are included for their regression tests: the cores run
       # for real there (a sing-box and an xray instance with live connections,
@@ -159,7 +160,7 @@ jobs:
       - name: Test (race detector)
         env:
           GOEXPERIMENT: jsonv2
-        run: go test -race -count=1 -timeout 5m ./limiter/... ./node/... ./conf/... ./common/... ./api/... ./core/... ./cmd/...
+        run: go test -race -count=1 -timeout 15m ./limiter/... ./node/... ./conf/... ./common/... ./api/... ./core/... ./cmd/...
 
       - name: Certificate lifecycle over TLS and QUIC
         env:
@@ -188,9 +189,9 @@ jobs:
         env:
           GOEXPERIMENT: jsonv2
         run: |
-          go test -count=1 -timeout 10m \
+          go test -count=1 -timeout 20m \
             -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" \
-            ./cmd -run '^TestIrboardServedNodes(OnEveryCore|RefuseBlockedDatagrams)$'
+            ./cmd -run '^TestIrboardServedNodes(OnEveryCore|RefuseBlockedDatagrams|BillCutOffAndLimit)$'
 
       - name: Go formatting (changed files)
         if: always()

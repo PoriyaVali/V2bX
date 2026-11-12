@@ -560,25 +560,150 @@ func (p *ledgerPanel) settled(g *ledgerTargets, push int) [2]int64 {
 	return p.billed(ledgerUser)
 }
 
-// TestIrboardServedNodesLedgerSurvey reports, for every node on every core,
-// with every client:
-//
-//   - what V2bX bills for TCP, TCP carrying TLS, and UDP, against what the
-//     targets counted;
-//   - whether what a user ran up since the last report is still billed when
-//     the panel removes them;
-//   - whether connections held open across the removal still work, and
-//     whether new ones get in;
-//   - whether the user gets in again once the panel adds them back;
-//   - how long an upload and a download take once the user's plan gets a
-//     speed limit of 2 Mbit/s, under which 512 KiB takes 1.8 seconds.
-//
-// Set LEDGER_SURVEY=1 to run it; LEDGER_ONLY=NAME runs one node,
-// LEDGER_CORE=NAME one core, and LEDGER_PARALLEL=1 the nodes side by side.
-func TestIrboardServedNodesLedgerSurvey(t *testing.T) {
-	if os.Getenv("LEDGER_SURVEY") == "" {
-		t.Skip("LEDGER_SURVEY is not set")
+// ledgerCounts are what was billed to the subscriber, and what the targets
+// counted at that moment.
+type ledgerCounts struct {
+	billedUp, targetUp, billedDown, targetDown int64
+}
+
+func (c ledgerCounts) String() string {
+	return fmt.Sprintf("up=%d/%d down=%d/%d", c.billedUp, c.targetUp, c.billedDown, c.targetDown)
+}
+
+// off is how far the bill is from what the targets counted. A connection's
+// last TLS alert may be counted on one side and not the other, 24 bytes a
+// time.
+func (c ledgerCounts) off() int64 {
+	return max(c.billedUp-c.targetUp, c.targetUp-c.billedUp, c.billedDown-c.targetDown, c.targetDown-c.billedDown)
+}
+
+// ledgerSpeed is how long one client took to move ledgerLimited bytes each
+// way under the limit.
+type ledgerSpeed struct {
+	client   string
+	up, down time.Duration
+}
+
+// ledgerResult is what ledgerRun saw of one node on one core.
+type ledgerResult struct {
+	clients []string
+	// first is the bill for TCP, TCP carrying TLS and UDP through every
+	// client; late, after traffic the node had not reported when the panel
+	// removed the user; end, after everything.
+	first, late, end ledgerCounts
+	// other is what was billed to the user no client used.
+	other [2]int64
+	// stillOpen are the connections held across the removal that still
+	// carried traffic after it; letIn, the clients that got a new one.
+	stillOpen, letIn []string
+	// keptOut are the clients that could not connect once the user was back.
+	keptOut []string
+	speeds  []ledgerSpeed
+	// notes are what failed along the way.
+	notes []string
+}
+
+const (
+	ledgerPush         = 3
+	ledgerSize         = 64 << 10
+	ledgerDatagrams    = 16
+	ledgerDatagramSize = 1000
+	// 2 Mbit/s is 250 kB/s after a 64 KiB burst: 512 KiB take 1.8 seconds.
+	ledgerLimit   = 2
+	ledgerLimited = 512 << 10
+)
+
+// ledgerRun starts the node on core and takes it through a subscriber's
+// life: traffic over TCP, TCP carrying TLS and UDP through every client;
+// connections held open; more traffic, then the panel removing the user
+// before the node has reported it; the panel adding the user back; and the
+// user's plan getting a speed limit while they are on the node.
+func ledgerRun(t *testing.T, n servedNode, core string, cert servedCert, mihomo string) (ledgerResult, error) {
+	t.Helper()
+	var r ledgerResult
+	p := newLedgerPanel(n)
+	port, err := startServedNodeWith(t, n, core, cert, p.handler)
+	if err != nil {
+		return r, err
 	}
+	g := newLedgerTargets(t, cert)
+	clients := ledgerClients(t, n, port, cert, g, mihomo)
+	note := func(c ledgerClient, what string, err error) {
+		if err != nil && !errors.Is(err, udpecho.ErrNoUDP) {
+			r.notes = append(r.notes, c.name+" "+what+": "+err.Error())
+		}
+	}
+	counts := func() ledgerCounts {
+		billed := p.settled(g, ledgerPush)
+		return ledgerCounts{billed[0], g.up.Load(), billed[1], g.down.Load()}
+	}
+	for _, c := range clients {
+		r.clients = append(r.clients, c.name)
+		note(c, "tcp", c.bulk(ledgerSize, false))
+		note(c, "tls", c.bulk(ledgerSize, true))
+		note(c, "udp", c.datagrams(ledgerDatagrams, ledgerDatagramSize))
+	}
+	r.first = counts()
+
+	var holds []func() error
+	var held []string
+	for _, c := range clients {
+		for _, inner := range []bool{false, true} {
+			still, err := c.hold(inner)
+			if err != nil {
+				note(c, "hold", err)
+				continue
+			}
+			holds = append(holds, still)
+			held = append(held, map[bool]string{false: c.name, true: c.name + "+tls"}[inner])
+		}
+	}
+	p.settled(g, ledgerPush)
+	// Right after a report, so that the next one comes after the removal.
+	p.reported()
+	if len(clients) > 0 {
+		note(clients[0], "tcp before the removal", clients[0].bulk(ledgerSize, false))
+	}
+	p.setUsers(0, false)
+	p.fetched()
+	for i, still := range holds {
+		if err := still(); err == nil {
+			r.stillOpen = append(r.stillOpen, held[i])
+		} else if os.Getenv("LEDGER_WHY") != "" {
+			t.Logf("%s's held connection: %v", held[i], err)
+		}
+	}
+	for _, c := range clients {
+		if c.bulk(1024, false) == nil {
+			r.letIn = append(r.letIn, c.name)
+		}
+	}
+	r.late = counts()
+
+	p.setUsers(0, true)
+	p.fetched()
+	for _, c := range clients {
+		if err := c.bulk(1024, false); err != nil {
+			r.keptOut = append(r.keptOut, c.name+": "+err.Error())
+		}
+	}
+
+	p.setUsers(ledgerLimit, true)
+	p.fetched()
+	for _, c := range clients {
+		up, err := c.upload(ledgerLimited)
+		note(c, "limited upload", err)
+		down, err := c.download(ledgerLimited)
+		note(c, "limited download", err)
+		r.speeds = append(r.speeds, ledgerSpeed{c.name, up, down})
+	}
+	r.end = counts()
+	r.other = p.billed(ledgerOther)
+	return r, nil
+}
+
+func ledgerNodes(t *testing.T) map[string]servedNode {
+	t.Helper()
 	raw, err := os.ReadFile("../api/panel/testdata/irboard/served.json")
 	if err != nil {
 		t.Fatal(err)
@@ -589,8 +714,20 @@ func TestIrboardServedNodesLedgerSurvey(t *testing.T) {
 	if err := json.Unmarshal(raw, &served); err != nil {
 		t.Fatal(err)
 	}
-	names := make([]string, 0, len(served.Nodes))
-	for name := range served.Nodes {
+	return served.Nodes
+}
+
+// TestIrboardServedNodesLedgerSurvey reports what ledgerRun sees of every
+// node on every core. Set LEDGER_SURVEY=1 to run it; LEDGER_ONLY=NAME runs
+// one node, LEDGER_CORE=NAME one core, and LEDGER_PARALLEL=1 the nodes side
+// by side.
+func TestIrboardServedNodesLedgerSurvey(t *testing.T) {
+	if os.Getenv("LEDGER_SURVEY") == "" {
+		t.Skip("LEDGER_SURVEY is not set")
+	}
+	nodes := ledgerNodes(t)
+	names := make([]string, 0, len(nodes))
+	for name := range nodes {
 		if only := os.Getenv("LEDGER_ONLY"); only == "" || only == name {
 			names = append(names, name)
 		}
@@ -598,15 +735,8 @@ func TestIrboardServedNodesLedgerSurvey(t *testing.T) {
 	sort.Strings(names)
 	cert := servedCertificate(t)
 	mihomo := buildMihomoClient(t)
-	const (
-		push         = 3
-		size         = 64 << 10
-		datagrams    = 16
-		datagramSize = 1000
-		limited      = 512 << 10
-	)
 	for _, name := range names {
-		n := ledgerConfig(t, served.Nodes[name], push)
+		n := ledgerConfig(t, nodes[name], ledgerPush)
 		info := servedNodeInfo(t, n)
 		for _, core := range servedCores {
 			if validateSetupCore(core, info) != nil {
@@ -619,94 +749,116 @@ func TestIrboardServedNodesLedgerSurvey(t *testing.T) {
 				if os.Getenv("LEDGER_PARALLEL") != "" {
 					t.Parallel()
 				}
-				p := newLedgerPanel(n)
-				port, err := startServedNodeWith(t, n, core, cert, p.handler)
+				r, err := ledgerRun(t, n, core, cert, mihomo)
 				if notInThisBuild(err) {
 					t.Skip(err)
 				}
 				if err != nil {
 					t.Fatalf("the node did not start: %v", err)
 				}
-				g := newLedgerTargets(t, cert)
-				clients := ledgerClients(t, n, port, cert, g, mihomo)
-				var notes []string
-				note := func(c ledgerClient, what string, err error) {
-					if err != nil && !errors.Is(err, udpecho.ErrNoUDP) {
-						notes = append(notes, c.name+" "+what+": "+err.Error())
-					}
-				}
-
-				for _, c := range clients {
-					note(c, "tcp", c.bulk(size, false))
-					note(c, "tls", c.bulk(size, true))
-					note(c, "udp", c.datagrams(datagrams, datagramSize))
-				}
-				billed := p.settled(g, push)
-				first := fmt.Sprintf("up=%d/%d down=%d/%d", billed[0], g.up.Load(), billed[1], g.down.Load())
-
-				// Held connections, then traffic the node has not reported
-				// yet when the panel drops the user.
-				var holds []func() error
-				var held []string
-				for _, c := range clients {
-					for _, inner := range []bool{false, true} {
-						still, err := c.hold(inner)
-						if err != nil {
-							note(c, "hold", err)
-							continue
-						}
-						holds = append(holds, still)
-						held = append(held, map[bool]string{false: c.name, true: c.name + "+tls"}[inner])
-					}
-				}
-				p.settled(g, push)
-				p.reported()
-				if len(clients) > 0 {
-					note(clients[0], "tcp before the removal", clients[0].bulk(size, false))
-				}
-				p.setUsers(0, false)
-				p.fetched()
-				var stillOpen, letIn []string
-				for i, still := range holds {
-					if err := still(); err == nil {
-						stillOpen = append(stillOpen, held[i])
-					} else if os.Getenv("LEDGER_WHY") != "" {
-						t.Logf("%s's held connection: %v", held[i], err)
-					}
-				}
-				for _, c := range clients {
-					if c.bulk(1024, false) == nil {
-						letIn = append(letIn, c.name)
-					}
-				}
-				billed = p.settled(g, push)
-				late := fmt.Sprintf("up=%d/%d down=%d/%d", billed[0], g.up.Load(), billed[1], g.down.Load())
-
-				p.setUsers(0, true)
-				p.fetched()
-				var keptOut []string
-				for _, c := range clients {
-					if err := c.bulk(1024, false); err != nil {
-						keptOut = append(keptOut, c.name+": "+err.Error())
-					}
-				}
-
-				// A plan's limit changing for a user already on the node.
 				var speed []string
-				p.setUsers(2, true)
-				p.fetched()
-				for _, c := range clients {
-					up, err := c.upload(limited)
-					note(c, "limited upload", err)
-					down, err := c.download(limited)
-					note(c, "limited download", err)
-					speed = append(speed, fmt.Sprintf("%s up %.2fs down %.2fs", c.name, up.Seconds(), down.Seconds()))
+				for _, s := range r.speeds {
+					speed = append(speed, fmt.Sprintf("%s up %.2fs down %.2fs", s.client, s.up.Seconds(), s.down.Seconds()))
 				}
-				billed = p.settled(g, push)
-				other := p.billed(ledgerOther)
-				t.Logf("LEDGER %-34s %-9s | billed %s | after a removal %s | at the end up=%d/%d down=%d/%d other=%v | removed: still open %v, let in %v | re-added: kept out %v | 512KiB at 2Mbps: %s | notes %v",
-					name, core, first, late, billed[0], g.up.Load(), billed[1], g.down.Load(), other, stillOpen, letIn, keptOut, strings.Join(speed, "; "), notes)
+				t.Logf("LEDGER %-34s %-9s | billed %v | after a removal %v | at the end %v other=%v | removed: still open %v, let in %v | re-added: kept out %v | 512KiB at 2Mbps: %s | notes %v",
+					name, core, r.first, r.late, r.end, r.other, r.stillOpen, r.letIn, r.keptOut, strings.Join(speed, "; "), r.notes)
 			})
 		}
+	}
+}
+
+// ledgerCases are a node of each kind the survey found a fault with, on the
+// core it was found on, and the Mihomo core's own.
+var ledgerCases = []struct{ node, core string }{
+	// A removed user kept VLESS connections under Vision and over XHTTP,
+	// VLESS uploads were not limited, and no protocol's last traffic before
+	// a removal was billed.
+	{"vless/tcp-tls-vision", "xray"},
+	{"vless/xhttp-tls-padding", "xray"},
+	{"trojan/tcp", "xray"},
+	// The last traffic before a removal was not billed, and no speed limit
+	// applied.
+	{"hysteria2/plain", "hysteria2"},
+	// A gRPC connection could not be closed: removing its user stalled the
+	// node, and the user, added back, was refused.
+	{"trojan/grpc", "sing"},
+	// The end of a limited download over AnyTLS was delivered and not billed.
+	{"anytls/tls", "sing"},
+	// A removed user's QUIC connection stayed up, refusing every stream: a
+	// client that kept it got nothing once the user was back.
+	{"tuic/bbr", "sing"},
+	{"hysteria/v1", "sing"},
+	{"vless/tcp-tls", "mihomo"},
+	{"hysteria2/plain", "mihomo"},
+}
+
+// TestIrboardServedNodesBillCutOffAndLimit holds each of ledgerCases to what
+// a panel relies on a node for:
+//
+//   - what the subscriber is billed is what went through the node, to the
+//     byte but for a closing TLS alert, traffic not yet reported when the
+//     panel removes them included, and nothing is billed to anyone else;
+//   - once the panel removes them, the connections they hold stop carrying
+//     traffic and no client gets a new one;
+//   - once the panel adds them back, every client connects again, the ones
+//     that stayed up through the removal included;
+//   - under a speed limit of 2 Mbit/s neither an upload nor a download of
+//     512 KiB, which take 1.8 seconds, finishes in under 1.2.
+func TestIrboardServedNodesBillCutOffAndLimit(t *testing.T) {
+	nodes := ledgerNodes(t)
+	cert := servedCertificate(t)
+	mihomo := buildMihomoClient(t)
+	for _, c := range ledgerCases {
+		served, ok := nodes[c.node]
+		if !ok {
+			t.Fatalf("served.json has no %s node", c.node)
+		}
+		n := ledgerConfig(t, served, ledgerPush)
+		t.Run(c.node+"/"+c.core, func(t *testing.T) {
+			t.Parallel()
+			r, err := ledgerRun(t, n, c.core, cert, mihomo)
+			if notInThisBuild(err) {
+				t.Skip(err)
+			}
+			if err != nil {
+				t.Fatalf("the node did not start: %v", err)
+			}
+			if len(r.clients) == 0 {
+				t.Fatal("no client could be configured for the node")
+			}
+			for _, note := range r.notes {
+				t.Errorf("%s", note)
+			}
+			const tolerance = 400
+			if r.first.off() > tolerance {
+				t.Errorf("billed %v: not what went through the node", r.first)
+			}
+			if r.late.off() > tolerance {
+				t.Errorf("billed %v once the user was removed: what they ran up since the last report is missing", r.late)
+			}
+			if r.end.off() > tolerance {
+				t.Errorf("billed %v at the end: not what went through the node", r.end)
+			}
+			if r.other != [2]int64{} {
+				t.Errorf("%v billed to a user who sent nothing", r.other)
+			}
+			if len(r.stillOpen) > 0 {
+				t.Errorf("connections of the removed user still carry traffic: %v", r.stillOpen)
+			}
+			if len(r.letIn) > 0 {
+				t.Errorf("the removed user got new connections: %v", r.letIn)
+			}
+			if len(r.keptOut) > 0 {
+				t.Errorf("added back, the user is still refused: %v", r.keptOut)
+			}
+			for _, s := range r.speeds {
+				if s.up < 1200*time.Millisecond {
+					t.Errorf("%s uploaded 512 KiB in %v at 2 Mbit/s: not limited", s.client, s.up.Round(10*time.Millisecond))
+				}
+				if s.down < 1200*time.Millisecond {
+					t.Errorf("%s downloaded 512 KiB in %v at 2 Mbit/s: not limited", s.client, s.down.Round(10*time.Millisecond))
+				}
+			}
+		})
 	}
 }

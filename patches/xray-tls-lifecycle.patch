@@ -876,3 +876,168 @@ new file mode 100644
 +		}
 +	}
 +}
+diff --git a/proxy/proxy.go b/proxy/proxy.go
+--- a/proxy/proxy.go
++++ b/proxy/proxy.go
+@@ -13,6 +13,7 @@
+ 	"math/big"
+ 	"runtime"
+ 	"strconv"
++	"sync"
+ 	"time"
+ 
+ 	"github.com/pires/go-proxyproto"
+@@ -102,7 +103,12 @@
+ // TrafficState is used to track uplink and downlink of one connection
+ // It is used by XTLS to determine if switch to raw copy mode, It is used by Vision to calculate padding
+ type TrafficState struct {
+-	UserUUID               []byte
++	UserUUID []byte
++	// filter guards what XtlsFilterTls learns of the connection: the fields
++	// down to RemainingServerHello. A connection's reader and its writer
++	// both filter and both read them, each on its own goroutine, and did so
++	// with no lock: a data race on every Vision connection carrying TLS.
++	filter                 sync.Mutex
+ 	NumberOfPacketToFilter int
+ 	EnableXtls             bool
+ 	IsTLS12orAbove         bool
+@@ -232,7 +238,7 @@
+ 		return buffer, err
+ 	}
+ 
+-	if *withinPaddingBuffers || w.trafficState.NumberOfPacketToFilter > 0 {
++	if *withinPaddingBuffers || w.trafficState.packetsToFilter() > 0 {
+ 		mb2 := make(buf.MultiBuffer, 0, len(buffer))
+ 		for _, b := range buffer {
+ 			newbuffer := XtlsUnpadding(b, w.trafficState, w.isUplink, w.ctx)
+@@ -252,7 +258,7 @@
+ 			errors.LogDebug(w.ctx, "XtlsRead unknown command ", *currentCommand, buffer.Len())
+ 		}
+ 	}
+-	if w.trafficState.NumberOfPacketToFilter > 0 {
++	if w.trafficState.packetsToFilter() > 0 {
+ 		XtlsFilterTls(buffer, w.trafficState, w.ctx)
+ 	}
+ 
+@@ -349,9 +355,10 @@
+ 		w.directWriteCounter.Add(int64(mb.Len()))
+ 	}
+ 
+-	if w.trafficState.NumberOfPacketToFilter > 0 {
++	if w.trafficState.packetsToFilter() > 0 {
+ 		XtlsFilterTls(mb, w.trafficState, w.ctx)
+ 	}
++	packetsToFilter, isTLS, isTLS12orAbove, enableXtls := w.trafficState.filtered()
+ 
+ 	if *isPadding {
+ 		if len(mb) == 1 && mb[0] == nil {
+@@ -359,16 +366,16 @@
+ 		} else {
+ 			isComplete := IsCompleteRecord(mb)
+ 			mb = ReshapeMultiBuffer(w.ctx, mb)
+-			longPadding := w.trafficState.IsTLS
++			longPadding := isTLS
+ 			for i, b := range mb {
+-				if w.trafficState.IsTLS && b.Len() >= 6 && bytes.Equal(TlsApplicationDataStart, b.BytesTo(3)) && isComplete {
+-					if w.trafficState.EnableXtls {
++				if isTLS && b.Len() >= 6 && bytes.Equal(TlsApplicationDataStart, b.BytesTo(3)) && isComplete {
++					if enableXtls {
+ 						*switchToDirectCopy = true
+ 					}
+ 					var command byte = CommandPaddingContinue
+ 					if i == len(mb)-1 {
+ 						command = CommandPaddingEnd
+-						if w.trafficState.EnableXtls {
++						if enableXtls {
+ 							command = CommandPaddingDirect
+ 						}
+ 					}
+@@ -376,7 +383,7 @@
+ 					*isPadding = false // padding going to end
+ 					longPadding = false
+ 					continue
+-				} else if !w.trafficState.IsTLS12orAbove && w.trafficState.NumberOfPacketToFilter <= 1 { // For compatibility with earlier vision receiver, we finish padding 1 packet early
++				} else if !isTLS12orAbove && packetsToFilter <= 1 { // For compatibility with earlier vision receiver, we finish padding 1 packet early
+ 					*isPadding = false
+ 					mb[i] = XtlsPadding(b, CommandPaddingEnd, &w.writeOnceUserUUID, longPadding, w.ctx, w.testseed)
+ 					break
+@@ -384,7 +391,7 @@
+ 				var command byte = CommandPaddingContinue
+ 				if i == len(mb)-1 && !*isPadding {
+ 					command = CommandPaddingEnd
+-					if w.trafficState.EnableXtls {
++					if enableXtls {
+ 						command = CommandPaddingDirect
+ 					}
+ 				}
+@@ -615,8 +622,24 @@
+ 	return newbuffer
+ }
+ 
++// packetsToFilter is how many more packets XtlsFilterTls wants to see.
++func (s *TrafficState) packetsToFilter() int {
++	s.filter.Lock()
++	defer s.filter.Unlock()
++	return s.NumberOfPacketToFilter
++}
++
++// filtered is what XtlsFilterTls has learned of the connection so far.
++func (s *TrafficState) filtered() (packetsToFilter int, isTLS, isTLS12orAbove, enableXtls bool) {
++	s.filter.Lock()
++	defer s.filter.Unlock()
++	return s.NumberOfPacketToFilter, s.IsTLS, s.IsTLS12orAbove, s.EnableXtls
++}
++
+ // XtlsFilterTls filter and recognize tls 1.3 and other info
+ func XtlsFilterTls(buffer buf.MultiBuffer, trafficState *TrafficState, ctx context.Context) {
++	trafficState.filter.Lock()
++	defer trafficState.filter.Unlock()
+ 	for _, b := range buffer {
+ 		if b == nil {
+ 			continue
+diff --git a/proxy/vision_filter_race_test.go b/proxy/vision_filter_race_test.go
+new file mode 100644
+--- /dev/null
++++ b/proxy/vision_filter_race_test.go
+@@ -0,0 +1,41 @@
++package proxy
++
++import (
++	"context"
++	"sync"
++	"testing"
++
++	"github.com/xtls/xray-core/common/buf"
++)
++
++// A connection's reader and its writer both run XtlsFilterTls on what passes
++// and both read what it has learned, each on its own goroutine. They did so
++// with no lock (run with -race): on every Vision connection carrying TLS.
++func TestVisionFilterStateIsSharedSafely(t *testing.T) {
++	state := NewTrafficState(make([]byte, 16))
++	record := func() buf.MultiBuffer {
++		b := buf.New()
++		// A TLS application data record's start.
++		_, _ = b.Write([]byte{0x17, 0x03, 0x03, 0x00, 0x10, 0x00, 0x00, 0x00})
++		return buf.MultiBuffer{b}
++	}
++	var wg sync.WaitGroup
++	for i := 0; i < 2; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for j := 0; j < 200; j++ {
++				if state.packetsToFilter() > 0 {
++					mb := record()
++					XtlsFilterTls(mb, state, context.Background())
++					buf.ReleaseMulti(mb)
++				}
++				_, _, _, _ = state.filtered()
++			}
++		}()
++	}
++	wg.Wait()
++	if left := state.packetsToFilter(); left > 0 {
++		t.Fatalf("%d packets left to filter after far more than eight passed", left)
++	}
++}

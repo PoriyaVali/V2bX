@@ -58,6 +58,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,6 +111,11 @@ type servedNode struct {
 	Singbox  map[string]any `json:"singbox"`
 	Link     string         `json:"link"`
 }
+
+// servedRegistries keeps sing-box's registries from being built side by
+// side: built without QUIC, each build writes the same package variable, and
+// tests that run nodes in parallel build one for every node and client.
+var servedRegistries sync.Mutex
 
 // notInThisBuild is how sing-box refuses what needs a build tag.
 func notInThisBuild(err error) bool {
@@ -429,7 +435,9 @@ func startServedNodeWith(t *testing.T, n servedNode, core string, cert servedCer
 		cc.Hysteria2Config = conf.NewHysteria2Config()
 		cc.Hysteria2Config.AllowPrivateDestinations = true
 	}
+	servedRegistries.Lock()
 	server, err := vCore.NewCore([]conf.CoreConfig{cc})
+	servedRegistries.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -706,8 +714,10 @@ func singboxClient(t *testing.T, outbound map[string]any, port int) (*box.Box, i
 	if err != nil {
 		return nil, 0, err
 	}
+	servedRegistries.Lock()
 	ctx := box.Context(context.Background(), include.InboundRegistry(), include.OutboundRegistry(),
 		include.EndpointRegistry(), include.DNSTransportRegistry(), include.ServiceRegistry())
+	servedRegistries.Unlock()
 	options, err := sjson.UnmarshalExtendedContext[option.Options](ctx, config)
 	if err != nil {
 		return nil, 0, fmt.Errorf("profile: %w", err)
