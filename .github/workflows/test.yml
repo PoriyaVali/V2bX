@@ -191,7 +191,7 @@ jobs:
         run: |
           go test -count=1 -timeout 20m \
             -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor mdns trusttunnel mihomo" \
-            ./cmd -run '^TestIrboardServedNodes(OnEveryCore|RefuseBlockedDatagrams|BillCutOffAndLimit)$'
+            ./cmd -run '^(TestIrboardServedNodes(OnEveryCore|RefuseBlockedDatagrams|BillCutOffAndLimit)|TestEveryCoreResolvesThroughTheForwarder)$'
 
       - name: Go formatting (changed files)
         if: always()

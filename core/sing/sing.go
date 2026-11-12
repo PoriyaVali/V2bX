@@ -130,7 +130,9 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		}
 	}
 
-	applyDNSDefaults(&options)
+	if err := applyDNSDefaults(ctx, &options); err != nil {
+		return nil, err
+	}
 	if !c.SingConfig.AllowPrivateDestinations {
 		if err := addPrivateDestinationRules(&options); err != nil {
 			return nil, err

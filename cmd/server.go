@@ -12,6 +12,7 @@ import (
 	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/memguard"
 	"github.com/PoriyaVali/V2bX/common/metrics"
+	"github.com/PoriyaVali/V2bX/common/smartdns"
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
 	"github.com/PoriyaVali/V2bX/limiter"
@@ -91,6 +92,9 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 	// Before anything allocates much: the soft limit steers the collector from
 	// the first connection on.
 	memguard.Start(c.MemoryConfig.LimitPercent)
+	// Before any core is built: each is pointed at the forwarder as it is.
+	startDNS(c.DNSConfig)
+	defer smartdns.Disable()
 	limiter.Init()
 	log.Info("Start V2bX...")
 	vc, err := vCore.NewCore(c.CoresConfig)
@@ -185,4 +189,21 @@ func serverHandle(_ *cobra.Command, _ []string) error {
 	nodes.Close()
 	lifecycle.Unlock()
 	return nil
+}
+
+// startDNS runs V2bX's DNS forwarder. A machine it cannot run on resolves as
+// it did before: that is never a reason not to start.
+func startDNS(c conf.DNSConfig) {
+	reason, err := smartdns.Enable(smartdns.Config{Mode: c.Mode, Servers: c.Servers})
+	if err != nil {
+		log.WithError(err).Warn("DNS forwarder not started: names are resolved by the system resolver")
+		return
+	}
+	s := smartdns.Active()
+	if s == nil {
+		log.WithField("reason", reason).Info("DNS forwarder not started: names are resolved by the system resolver")
+		return
+	}
+	log.WithFields(log.Fields{"listen": s.Addr().String(), "resolvers": s.Servers(), "over_tcp": s.OverTCP()}).
+		Info("DNS forwarder started: every core resolves through it, over TCP while UDP queries are being lost")
 }

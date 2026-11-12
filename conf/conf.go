@@ -16,6 +16,20 @@ type Conf struct {
 	NodeConfig    []NodeConfig  `json:"Nodes"`
 	MetricsConfig MetricsConfig `json:"Metrics"`
 	MemoryConfig  MemoryConfig  `json:"Memory"`
+	DNSConfig     DNSConfig     `json:"DNS"`
+}
+
+// DNSConfig tunes V2bX's own DNS forwarder (see common/smartdns), which every
+// core resolves through. It applies when V2bX starts.
+type DNSConfig struct {
+	// Mode is "auto" (the default): the machine's resolvers are asked over
+	// UDP while they answer and over TCP while UDP queries are being lost.
+	// "tcp" always asks over TCP. "system" runs no forwarder: every core
+	// resolves as it did before.
+	Mode string `json:"Mode"`
+	// Servers replaces the resolvers of /etc/resolv.conf: IP addresses,
+	// with or without a port.
+	Servers []string `json:"Servers"`
 }
 
 // MemoryConfig tunes how V2bX fits into the machine's RAM (see common/memguard).

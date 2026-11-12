@@ -125,6 +125,10 @@ type servedNode struct {
 	Link     string         `json:"link"`
 }
 
+// servedSingOrigin is the sing core's own config file, when a test gives it
+// one.
+var servedSingOrigin string
+
 // servedRegistries keeps sing-box's registries from being built side by
 // side: built without QUIC, each build writes the same package variable, and
 // tests that run nodes in parallel build one for every node and client. An
@@ -452,6 +456,7 @@ func startServedNodeWith(t *testing.T, n servedNode, core string, cert servedCer
 		cc.XrayConfig.AllowPrivateDestinations = true
 	case "sing":
 		cc.SingConfig = conf.NewSingConfig()
+		cc.SingConfig.OriginalPath = servedSingOrigin
 		// SERVED_SING_LOG=1 shows the node's own log: why it refused a client.
 		cc.SingConfig.LogConfig.Disabled = os.Getenv("SERVED_SING_LOG") == ""
 		cc.SingConfig.LogConfig.Level = "debug"

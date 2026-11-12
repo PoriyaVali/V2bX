@@ -2,6 +2,7 @@ package xray
 
 import (
 	"fmt"
+	"github.com/PoriyaVali/V2bX/common/smartdns"
 	"os"
 	"strings"
 	"sync"
@@ -166,6 +167,15 @@ func getCore(c *conf.XrayConfig) (server *core.Instance, err error) {
 			return nil, fmt.Errorf("decode xray DNS config: %w", err)
 		}
 		os.Setenv("XRAY_DNS_PATH", c.DnsConfigPath)
+	} else if fwd := smartdns.Active(); fwd != nil {
+		// No DNS config of the operator's: where Xray resolves a name itself
+		// it asks V2bX's forwarder, not the machine's resolvers over UDP.
+		// "+local": asked directly, not through the node's outbound, which
+		// refuses loopback destinations.
+		raw := fmt.Sprintf(`{"servers":["tcp+local://%s"]}`, fwd.Addr().String())
+		if err := json.Unmarshal([]byte(raw), coreDnsConfig); err != nil {
+			return nil, fmt.Errorf("point xray DNS at the forwarder: %w", err)
+		}
 	}
 	dnsConfig, err := coreDnsConfig.Build()
 	if err != nil {

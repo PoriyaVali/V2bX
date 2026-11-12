@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/PoriyaVali/V2bX/common/smartdns"
 	"io"
 	"net/http"
 	"os"
@@ -280,6 +281,7 @@ func (n *node) start(bin string) error {
 	}
 	cmd := exec.Command(bin, "./vpn.toml", "./hosts.toml", "-l", endpointLogLevel())
 	cmd.Dir = n.dir
+	cmd.Env = endpointEnv(os.Environ())
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -506,4 +508,31 @@ func sanitizeTag(tag string) string {
 			return '_'
 		}
 	}, tag)
+}
+
+// endpointEnv is the endpoint's environment. The endpoint resolves names with
+// the C library, which V2bX's DNS forwarder cannot stand in for; while the
+// forwarder finds the machine's resolvers losing UDP queries, glibc is told
+// to ask them over TCP as well (RES_OPTIONS use-vc). It takes effect when the
+// endpoint starts.
+func endpointEnv(env []string) []string {
+	fwd := smartdns.Active()
+	if fwd == nil || !fwd.OverTCP() {
+		return env
+	}
+	out := make([]string, 0, len(env)+1)
+	options := "use-vc"
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "RES_OPTIONS="); ok {
+			if strings.Contains(v, "use-vc") {
+				return env
+			}
+			if v != "" {
+				options = v + " use-vc"
+			}
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, "RES_OPTIONS="+options)
 }
