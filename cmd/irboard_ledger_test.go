@@ -790,6 +790,11 @@ var ledgerCases = []struct{ node, core string }{
 	{"hysteria/v1", "sing"},
 	{"vless/tcp-tls", "mihomo"},
 	{"hysteria2/plain", "mihomo"},
+	// The protocols only the Mihomo core serves, with a user of their own
+	// kind each: Mieru's, ShadowQUIC's over QUIC, and Sudoku's derived key.
+	{"mieru/tcp", "mihomo"},
+	{"shadowquic/default", "mihomo"},
+	{"sudoku/default", "mihomo"},
 }
 
 // TestIrboardServedNodesBillCutOffAndLimit holds each of ledgerCases to what

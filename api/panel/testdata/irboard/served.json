@@ -5,9 +5,9 @@
             "node_type": "vless",
             "node_id": 1,
             "config": {
-                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjoyLCJmbG93IjoieHRscy1ycHJ4LXZpc2lvbiIsInRsc19zZXR0aW5ncyI6eyJzZXJ2ZXJfbmFtZSI6ImNvdmVyLmV4YW1wbGUudGVzdCIsInNlcnZlcl9wb3J0IjoiNDQzIiwicHVibGljX2tleSI6IkJKbXhXTm1rQW5JRUFDUXprdXhpOHBiSHFvMTdaMUlXYm5DY0pfUDV5eE0iLCJwcml2YXRlX2tleSI6Ik9UUTRQQ1dMN0Nha3RVanZpak5TeHNySnlRdkVFWWlWSjI4T1VZaERXRkkiLCJzaG9ydF9pZCI6IjU3YTIyMzM2In0sImVuY3J5cHRpb24iOm51bGwsImVuY3J5cHRpb25fc2V0dGluZ3MiOm51bGwsImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjoyLCJmbG93IjoieHRscy1ycHJ4LXZpc2lvbiIsInRsc19zZXR0aW5ncyI6eyJzZXJ2ZXJfbmFtZSI6ImNvdmVyLmV4YW1wbGUudGVzdCIsInNlcnZlcl9wb3J0IjoiNDQzIiwicHVibGljX2tleSI6IkdSTjVLNlBpa2pYRUV2V1hNSkJyV2pxZThPZUNiR1gzUXFBZFplbzNjV0EiLCJwcml2YXRlX2tleSI6IkhXN0JjUHc3Q09CMVhGOGE4dUQ4Zm1DdGJFb3NFVFBkZzBSSFNZNkpObmMiLCJzaG9ydF9pZCI6IjQ1YTI1N2IyIn0sImVuY3J5cHRpb24iOm51bGwsImVuY3J5cHRpb25fc2V0dGluZ3MiOm51bGwsImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
                 "content_type": "application/json",
-                "etag": "\"1811fd868af45096a338d286b36f747b9e7255e2\""
+                "etag": "\"8a68d370e6cbc706c5f5cd2b59158729c8febb49\""
             },
             "clash": {
                 "name": "vless/tcp-reality-vision",
@@ -22,8 +22,8 @@
                 "client-fingerprint": "chrome",
                 "servername": "cover.example.test",
                 "reality-opts": {
-                    "public-key": "BJmxWNmkAnIEACQzkuxi8pbHqo17Z1IWbnCcJ_P5yxM",
-                    "short-id": "57a22336"
+                    "public-key": "GRN5K6PikjXEEvWXMJBrWjqe8OeCbGX3QqAdZeo3cWA",
+                    "short-id": "45a257b2"
                 }
             },
             "singbox": {
@@ -41,8 +41,8 @@
                     "server_name": "cover.example.test",
                     "reality": {
                         "enabled": true,
-                        "public_key": "BJmxWNmkAnIEACQzkuxi8pbHqo17Z1IWbnCcJ_P5yxM",
-                        "short_id": "57a22336"
+                        "public_key": "GRN5K6PikjXEEvWXMJBrWjqe8OeCbGX3QqAdZeo3cWA",
+                        "short_id": "45a257b2"
                     },
                     "utls": {
                         "enabled": true,
@@ -50,7 +50,7 @@
                     }
                 }
             },
-            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20001?type=tcp&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=reality&flow=xtls-rprx-vision&fp=chrome&insecure=0&sni=cover.example.test&pbk=BJmxWNmkAnIEACQzkuxi8pbHqo17Z1IWbnCcJ_P5yxM&sid=57a22336#vless%2Ftcp-reality-vision",
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20001?type=tcp&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=reality&flow=xtls-rprx-vision&fp=chrome&insecure=0&sni=cover.example.test&pbk=GRN5K6PikjXEEvWXMJBrWjqe8OeCbGX3QqAdZeo3cWA&sid=45a257b2#vless%2Ftcp-reality-vision",
             "users": {
                 "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
                 "content_type": "application/x-msgpack",
@@ -268,9 +268,9 @@
             "node_type": "vless",
             "node_id": 6,
             "config": {
-                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6ImdycGMiLCJuZXR3b3JrU2V0dGluZ3MiOnsic2VydmljZU5hbWUiOiJHdW5TZXJ2aWNlIn0sInRscyI6MiwiZmxvdyI6bnVsbCwidGxzX3NldHRpbmdzIjp7InNlcnZlcl9uYW1lIjoiY292ZXIuZXhhbXBsZS50ZXN0Iiwic2VydmVyX3BvcnQiOiI0NDMiLCJwdWJsaWNfa2V5IjoiLUxaZGl4Yjc4UUlsRG5DWWttbWJrZDAzOFQ3a3l2cE1yVlYwNXdUTWhnbyIsInByaXZhdGVfa2V5IjoiNC1tb2xpUFBvVHNIMmJXY1pUSnNFMzlvSkt5SGpYY19DZF83SXVGVmJ2MCIsInNob3J0X2lkIjoiMzMyZTVhZWIifSwiZW5jcnlwdGlvbiI6bnVsbCwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6bnVsbCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6ImdycGMiLCJuZXR3b3JrU2V0dGluZ3MiOnsic2VydmljZU5hbWUiOiJHdW5TZXJ2aWNlIn0sInRscyI6MiwiZmxvdyI6bnVsbCwidGxzX3NldHRpbmdzIjp7InNlcnZlcl9uYW1lIjoiY292ZXIuZXhhbXBsZS50ZXN0Iiwic2VydmVyX3BvcnQiOiI0NDMiLCJwdWJsaWNfa2V5IjoiUWZaWF8zbmZLTjVEYU5KX29KMTF6ZkVPNnV4YUhGZ0RVcjRreUJ2YTdROCIsInByaXZhdGVfa2V5IjoiYld2WHl5eGxBU05CZXptSEhHdlpZMlNJYmtGSGY3TTVFZjFxMWwzS0xVZyIsInNob3J0X2lkIjoiYTcwOGEwM2YifSwiZW5jcnlwdGlvbiI6bnVsbCwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6bnVsbCwiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
                 "content_type": "application/json",
-                "etag": "\"70c9a25a7e3faf51a23429a64da7285ba73acacf\""
+                "etag": "\"a5d12eb980ec6cedea3dceba404bd598cd3a917b\""
             },
             "clash": {
                 "name": "vless/grpc-reality",
@@ -284,8 +284,8 @@
                 "client-fingerprint": "chrome",
                 "servername": "cover.example.test",
                 "reality-opts": {
-                    "public-key": "-LZdixb78QIlDnCYkmmbkd038T7kyvpMrVV05wTMhgo",
-                    "short-id": "332e5aeb"
+                    "public-key": "QfZX_3nfKN5DaNJ_oJ11zfEO6uxaHFgDUr4kyBva7Q8",
+                    "short-id": "a708a03f"
                 },
                 "network": "grpc",
                 "grpc-opts": {
@@ -307,8 +307,8 @@
                     "server_name": "cover.example.test",
                     "reality": {
                         "enabled": true,
-                        "public_key": "-LZdixb78QIlDnCYkmmbkd038T7kyvpMrVV05wTMhgo",
-                        "short_id": "332e5aeb"
+                        "public_key": "QfZX_3nfKN5DaNJ_oJ11zfEO6uxaHFgDUr4kyBva7Q8",
+                        "short_id": "a708a03f"
                     },
                     "utls": {
                         "enabled": true,
@@ -320,7 +320,7 @@
                     "service_name": "GunService"
                 }
             },
-            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20006?type=grpc&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=GunService&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=-LZdixb78QIlDnCYkmmbkd038T7kyvpMrVV05wTMhgo&sid=332e5aeb#vless%2Fgrpc-reality",
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20006?type=grpc&encryption=none&host=&path=&headerType=none&quicSecurity=none&serviceName=GunService&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=QfZX_3nfKN5DaNJ_oJ11zfEO6uxaHFgDUr4kyBva7Q8&sid=a708a03f#vless%2Fgrpc-reality",
             "users": {
                 "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
                 "content_type": "application/x-msgpack",
@@ -444,9 +444,9 @@
             "node_type": "vless",
             "node_id": 9,
             "config": {
-                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InhodHRwIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3hoIiwiaG9zdCI6bnVsbCwibW9kZSI6ImF1dG8ifSwidGxzIjoyLCJmbG93IjpudWxsLCJ0bHNfc2V0dGluZ3MiOnsic2VydmVyX25hbWUiOiJjb3Zlci5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6IjQ0MyIsInB1YmxpY19rZXkiOiJ0UWEwYWY1ZHRBdHh3SzBhUFQ5LUpiNEtMQjM3dGRYQzJaSDZ4Ui1CRlZrIiwicHJpdmF0ZV9rZXkiOiJtS3UzZFZkMGtraUFRbW11WVAwV3Z5ck1MVXFHNW95bUxQdWduOEc3b1FvIiwic2hvcnRfaWQiOiJmZTE4MGM3YSJ9LCJlbmNyeXB0aW9uIjpudWxsLCJlbmNyeXB0aW9uX3NldHRpbmdzIjpudWxsLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InhodHRwIiwibmV0d29ya1NldHRpbmdzIjp7InBhdGgiOiJcL3hoIiwiaG9zdCI6bnVsbCwibW9kZSI6ImF1dG8ifSwidGxzIjoyLCJmbG93IjpudWxsLCJ0bHNfc2V0dGluZ3MiOnsic2VydmVyX25hbWUiOiJjb3Zlci5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6IjQ0MyIsInB1YmxpY19rZXkiOiJhNUFic3FvSjE3NlZGRjVoX1lqTFFJOEIta3kxb25IdDUxTUZ2RzktdW5jIiwicHJpdmF0ZV9rZXkiOiJuOFFPM3ZIallnVjBTMDk2Tzc2cVY0WkJsVWstMER2WDRmOTF6R2NlUVE0Iiwic2hvcnRfaWQiOiJhNzg4MzdhYiJ9LCJlbmNyeXB0aW9uIjpudWxsLCJlbmNyeXB0aW9uX3NldHRpbmdzIjpudWxsLCJob3N0Ijoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
                 "content_type": "application/json",
-                "etag": "\"4e1ba49eedf47c2386e3fe5c99ebcdfadf883caf\""
+                "etag": "\"915d490c47d59210c9e38fd5cb717c7ccdf1975a\""
             },
             "clash": {
                 "name": "vless/xhttp-reality",
@@ -460,8 +460,8 @@
                 "client-fingerprint": "chrome",
                 "servername": "cover.example.test",
                 "reality-opts": {
-                    "public-key": "tQa0af5dtAtxwK0aPT9-Jb4KLB37tdXC2ZH6xR-BFVk",
-                    "short-id": "fe180c7a"
+                    "public-key": "a5AbsqoJ176VFF5h_YjLQI8B-ky1onHt51MFvG9-unc",
+                    "short-id": "a78837ab"
                 },
                 "network": "xhttp",
                 "xhttp-opts": {
@@ -470,7 +470,7 @@
                 }
             },
             "singbox": null,
-            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20009?type=xhttp&encryption=none&host=&path=%2Fxh&headerType=none&quicSecurity=none&serviceName=&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=tQa0af5dtAtxwK0aPT9-Jb4KLB37tdXC2ZH6xR-BFVk&sid=fe180c7a&mode=auto#vless%2Fxhttp-reality",
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20009?type=xhttp&encryption=none&host=&path=%2Fxh&headerType=none&quicSecurity=none&serviceName=&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=a5AbsqoJ176VFF5h_YjLQI8B-ky1onHt51MFvG9-unc&sid=a78837ab&mode=auto#vless%2Fxhttp-reality",
             "users": {
                 "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
                 "content_type": "application/x-msgpack",
@@ -521,9 +521,9 @@
             "node_type": "vless",
             "node_id": 11,
             "config": {
-                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjoyLCJmbG93IjpudWxsLCJ0bHNfc2V0dGluZ3MiOnsic2VydmVyX25hbWUiOiJjb3Zlci5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6IjQ0MyIsInB1YmxpY19rZXkiOiJFY0ZoUWJ2TW5MaDhQWXhWRnUtZ3p6OTBDYUd1VVNDWEI2M2dOV2xodXprIiwicHJpdmF0ZV9rZXkiOiJQS0hyalNfTXFiTHRZUEVodnU2eFYxU0VzZXNlSHlXT2JNNTM5VmR4VHFJIiwic2hvcnRfaWQiOiI0MjdiNzI3MyJ9LCJlbmNyeXB0aW9uIjoibWxrZW03Njh4MjU1MTlwbHVzIiwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6eyJtb2RlIjoibmF0aXZlIiwicnR0IjoiMXJ0dCIsInRpY2tldCI6IjBzIiwicHJpdmF0ZV9rZXkiOiJCb182R1VyUlNuWlJuVzRyMGY5c3pyT0c4a2k3cW1YVEJFcTNvT3p1aFo0IiwicGFzc3dvcmQiOiJIX0s2cWpJMnFUUE84Nk91c3VwRkNRNTlWRVpHU2tRWWFUYjlOUU1VUWpRIn0sImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywibmV0d29yayI6InRjcCIsIm5ldHdvcmtTZXR0aW5ncyI6bnVsbCwidGxzIjoyLCJmbG93IjpudWxsLCJ0bHNfc2V0dGluZ3MiOnsic2VydmVyX25hbWUiOiJjb3Zlci5leGFtcGxlLnRlc3QiLCJzZXJ2ZXJfcG9ydCI6IjQ0MyIsInB1YmxpY19rZXkiOiJBMm92eVpMbkJvb3RQZ29GaE5IRFdrYjhkcE1HeHdjMTZZZG83bHFzVVhrIiwicHJpdmF0ZV9rZXkiOiIwMTNuLUZzVjkwOTNyN09PMkdzSG1IYUJDNUZOYV9jSmlabnhqaG5ieGM4Iiwic2hvcnRfaWQiOiI5YjdjMGYzOCJ9LCJlbmNyeXB0aW9uIjoibWxrZW03Njh4MjU1MTlwbHVzIiwiZW5jcnlwdGlvbl9zZXR0aW5ncyI6eyJtb2RlIjoibmF0aXZlIiwicnR0IjoiMXJ0dCIsInRpY2tldCI6IjBzIiwicHJpdmF0ZV9rZXkiOiJzYzBjR3Y3UFBETDVBVmMyVFdKNE4zS003WlVZRGs2bEI2Wll0dE1rSTBrIiwicGFzc3dvcmQiOiIxMzhYUkVkY2tWa0JuWmRlbllGV2pQVVlleHFYd19lSHBZaHVZNGRqVG4wIn0sImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
                 "content_type": "application/json",
-                "etag": "\"bdcd4c888714904290a77b6daad7076fe2e4ebd4\""
+                "etag": "\"f8071a1ec5f987b4b9f5a0dcd60ecdc40136e478\""
             },
             "clash": {
                 "name": "vless/tcp-reality-encryption",
@@ -537,13 +537,13 @@
                 "client-fingerprint": "chrome",
                 "servername": "cover.example.test",
                 "reality-opts": {
-                    "public-key": "EcFhQbvMnLh8PYxVFu-gzz90CaGuUSCXB63gNWlhuzk",
-                    "short-id": "427b7273"
+                    "public-key": "A2ovyZLnBootPgoFhNHDWkb8dpMGxwc16Ydo7lqsUXk",
+                    "short-id": "9b7c0f38"
                 },
-                "encryption": "mlkem768x25519plus.native.1rtt.H_K6qjI2qTPO86OusupFCQ59VEZGSkQYaTb9NQMUQjQ"
+                "encryption": "mlkem768x25519plus.native.1rtt.138XREdckVkBnZdenYFWjPUYexqXw_eHpYhuY4djTn0"
             },
             "singbox": null,
-            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20011?type=tcp&encryption=mlkem768x25519plus.native.1rtt.H_K6qjI2qTPO86OusupFCQ59VEZGSkQYaTb9NQMUQjQ&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=EcFhQbvMnLh8PYxVFu-gzz90CaGuUSCXB63gNWlhuzk&sid=427b7273#vless%2Ftcp-reality-encryption",
+            "link": "vless://11111111-2222-3333-4444-555555555555@node.example.test:20011?type=tcp&encryption=mlkem768x25519plus.native.1rtt.138XREdckVkBnZdenYFWjPUYexqXw_eHpYhuY4djTn0&host=&path=&headerType=none&quicSecurity=none&serviceName=&security=reality&fp=chrome&insecure=0&sni=cover.example.test&pbk=A2ovyZLnBootPgoFhNHDWkb8dpMGxwc16Ydo7lqsUXk&sid=9b7c0f38#vless%2Ftcp-reality-encryption",
             "users": {
                 "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
                 "content_type": "application/x-msgpack",
@@ -1117,9 +1117,9 @@
             "node_type": "shadowsocks",
             "node_id": 3,
             "config": {
-                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiY2lwaGVyIjoiMjAyMi1ibGFrZTMtYWVzLTEyOC1nY20iLCJvYmZzIjpudWxsLCJvYmZzX3NldHRpbmdzIjpudWxsLCJzZXJ2ZXJfa2V5IjoiTUdKaE5HRTBZalU0WWpKbU1URXhOZz09IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiY2lwaGVyIjoiMjAyMi1ibGFrZTMtYWVzLTEyOC1nY20iLCJvYmZzIjpudWxsLCJvYmZzX3NldHRpbmdzIjpudWxsLCJzZXJ2ZXJfa2V5IjoiTlRaak9ESXpaRE0zWVdaaU1XSTFNZz09IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
                 "content_type": "application/json",
-                "etag": "\"cb8306a7e921bfd3b80a77f9e854da01791a0bf6\""
+                "etag": "\"2d055193e823cd9bf54ef8b8ce8bf75a5dc69908\""
             },
             "clash": {
                 "name": "shadowsocks/2022-blake3-aes-128-gcm",
@@ -1127,7 +1127,7 @@
                 "server": "node.example.test",
                 "port": 20026,
                 "cipher": "2022-blake3-aes-128-gcm",
-                "password": "MGJhNGE0YjU4YjJmMTExNg==:MTExMTExMTEtMjIyMi0zMw==",
+                "password": "NTZjODIzZDM3YWZiMWI1Mg==:MTExMTExMTEtMjIyMi0zMw==",
                 "udp": true
             },
             "singbox": {
@@ -1136,10 +1136,10 @@
                 "server": "node.example.test",
                 "server_port": 20026,
                 "method": "2022-blake3-aes-128-gcm",
-                "password": "MGJhNGE0YjU4YjJmMTExNg==:MTExMTExMTEtMjIyMi0zMw==",
+                "password": "NTZjODIzZDM3YWZiMWI1Mg==:MTExMTExMTEtMjIyMi0zMw==",
                 "domain_resolver": "local"
             },
-            "link": "ss://MjAyMi1ibGFrZTMtYWVzLTEyOC1nY206TUdKaE5HRTBZalU0WWpKbU1URXhOZz09Ok1URXhNVEV4TVRFdE1qSXlNaTB6TXc9PQ@node.example.test:20026#shadowsocks%2F2022-blake3-aes-128-gcm",
+            "link": "ss://MjAyMi1ibGFrZTMtYWVzLTEyOC1nY206TlRaak9ESXpaRE0zWVdaaU1XSTFNZz09Ok1URXhNVEV4TVRFdE1qSXlNaTB6TXc9PQ@node.example.test:20026#shadowsocks%2F2022-blake3-aes-128-gcm",
             "users": {
                 "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
                 "content_type": "application/x-msgpack",
@@ -1150,9 +1150,9 @@
             "node_type": "shadowsocks",
             "node_id": 4,
             "config": {
-                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiY2lwaGVyIjoiMjAyMi1ibGFrZTMtYWVzLTI1Ni1nY20iLCJvYmZzIjpudWxsLCJvYmZzX3NldHRpbmdzIjpudWxsLCJzZXJ2ZXJfa2V5IjoiTUdKaE5HRTBZalU0WWpKbU1URXhOamxqWldObU1UbGlNRGRoWVRobFpHTT0iLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiY2lwaGVyIjoiMjAyMi1ibGFrZTMtYWVzLTI1Ni1nY20iLCJvYmZzIjpudWxsLCJvYmZzX3NldHRpbmdzIjpudWxsLCJzZXJ2ZXJfa2V5IjoiTlRaak9ESXpaRE0zWVdaaU1XSTFNak16Wmpaak1EVTBOek5rWVdFMk0yRT0iLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
                 "content_type": "application/json",
-                "etag": "\"ab7dff8b4cbef2574e3baa4e662be67d29cdeacd\""
+                "etag": "\"4bd39e0d46201d00aadf889f4a9f5f0065400b7d\""
             },
             "clash": {
                 "name": "shadowsocks/2022-blake3-aes-256-gcm",
@@ -1160,7 +1160,7 @@
                 "server": "node.example.test",
                 "port": 20027,
                 "cipher": "2022-blake3-aes-256-gcm",
-                "password": "MGJhNGE0YjU4YjJmMTExNjljZWNmMTliMDdhYThlZGM=:MTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU=",
+                "password": "NTZjODIzZDM3YWZiMWI1MjMzZjZjMDU0NzNkYWE2M2E=:MTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU=",
                 "udp": true
             },
             "singbox": {
@@ -1169,10 +1169,10 @@
                 "server": "node.example.test",
                 "server_port": 20027,
                 "method": "2022-blake3-aes-256-gcm",
-                "password": "MGJhNGE0YjU4YjJmMTExNjljZWNmMTliMDdhYThlZGM=:MTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU=",
+                "password": "NTZjODIzZDM3YWZiMWI1MjMzZjZjMDU0NzNkYWE2M2E=:MTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU=",
                 "domain_resolver": "local"
             },
-            "link": "ss://MjAyMi1ibGFrZTMtYWVzLTI1Ni1nY206TUdKaE5HRTBZalU0WWpKbU1URXhOamxqWldObU1UbGlNRGRoWVRobFpHTT06TVRFeE1URXhNVEV0TWpJeU1pMHpNek16TFRRME5EUXROVFUxTlRVMU5UVT0@node.example.test:20027#shadowsocks%2F2022-blake3-aes-256-gcm",
+            "link": "ss://MjAyMi1ibGFrZTMtYWVzLTI1Ni1nY206TlRaak9ESXpaRE0zWVdaaU1XSTFNak16Wmpaak1EVTBOek5rWVdFMk0yRT06TVRFeE1URXhNVEV0TWpJeU1pMHpNek16TFRRME5EUXROVFUxTlRVMU5UVT0@node.example.test:20027#shadowsocks%2F2022-blake3-aes-256-gcm",
             "users": {
                 "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
                 "content_type": "application/x-msgpack",
@@ -1501,9 +1501,9 @@
             "node_type": "anytls",
             "node_id": 2,
             "config": {
-                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOm51bGwsInBhZGRpbmdfc2NoZW1lIjpudWxsLCJ0bHMiOjIsInRsc19zZXR0aW5ncyI6eyJzZXJ2ZXJfbmFtZSI6ImNvdmVyLmV4YW1wbGUudGVzdCIsInNlcnZlcl9wb3J0IjoiNDQzIiwicHVibGljX2tleSI6IldMX05rRFpzZXFGUVhaVmxfREJ0ZURrUWIxbTJja2hGRG1LMFJUVU1UM2siLCJwcml2YXRlX2tleSI6ImJvMjRZUjB3Qy0xV2dMQmpjUkVvd2FmX05JS3lfaEJOcExSM1hwai1CTVkiLCJzaG9ydF9pZCI6IjcwYTM0ZjJmIn0sImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0Mywic2VydmVyX25hbWUiOm51bGwsInBhZGRpbmdfc2NoZW1lIjpudWxsLCJ0bHMiOjIsInRsc19zZXR0aW5ncyI6eyJzZXJ2ZXJfbmFtZSI6ImNvdmVyLmV4YW1wbGUudGVzdCIsInNlcnZlcl9wb3J0IjoiNDQzIiwicHVibGljX2tleSI6ImljbUdnN3JFZDlCejJPb2xkVGxsZFNydnhhbHQ1WkNQdG9ZbTctTklVMG8iLCJwcml2YXRlX2tleSI6ImstNnJtOVZDdFpUR09zZ3g3SzlOaVQxRjU1NDJBY0I0aG5xdjFyeGt5emMiLCJzaG9ydF9pZCI6ImQ0ODIyNGYwIn0sImhvc3QiOiJub2RlLmV4YW1wbGUudGVzdCIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
                 "content_type": "application/json",
-                "etag": "\"535a41f1683aa5961010cc55a7b99a72b1a6f814\""
+                "etag": "\"4e192d79da58f1976bdcd7e04c70d8b8a1a87e76\""
             },
             "clash": {
                 "name": "anytls/reality",
@@ -1520,8 +1520,8 @@
                 "sni": "cover.example.test",
                 "skip-cert-verify": false,
                 "reality-opts": {
-                    "public-key": "WL_NkDZseqFQXZVl_DBteDkQb1m2ckhFDmK0RTUMT3k",
-                    "short-id": "70a34f2f"
+                    "public-key": "icmGg7rEd9Bz2OoldTlldSrvxalt5ZCPtoYm7-NIU0o",
+                    "short-id": "d48224f0"
                 }
             },
             "singbox": {
@@ -1542,8 +1542,8 @@
                     "server_name": "cover.example.test",
                     "reality": {
                         "enabled": true,
-                        "public_key": "WL_NkDZseqFQXZVl_DBteDkQb1m2ckhFDmK0RTUMT3k",
-                        "short_id": "70a34f2f"
+                        "public_key": "icmGg7rEd9Bz2OoldTlldSrvxalt5ZCPtoYm7-NIU0o",
+                        "short_id": "d48224f0"
                     },
                     "utls": {
                         "enabled": true,
@@ -1551,7 +1551,299 @@
                     }
                 }
             },
-            "link": "anytls://11111111-2222-3333-4444-555555555555@node.example.test:20035/?type=tcp&insecure=0&fp=chrome&sni=cover.example.test&security=reality&pbk=WL_NkDZseqFQXZVl_DBteDkQb1m2ckhFDmK0RTUMT3k&sid=70a34f2f#anytls%2Freality",
+            "link": "anytls://11111111-2222-3333-4444-555555555555@node.example.test:20035/?type=tcp&insecure=0&fp=chrome&sni=cover.example.test&security=reality&pbk=icmGg7rEd9Bz2OoldTlldSrvxalt5ZCPtoYm7-NIU0o&sid=d48224f0#anytls%2Freality",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "http/plain": {
+            "node_type": "http",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ0bHMiOmZhbHNlLCJzZXJ2ZXJfbmFtZSI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"4cefc2240265e2d03bc2034df579dd95994294ee\""
+            },
+            "clash": {
+                "name": "http/plain",
+                "type": "http",
+                "username": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "tls": false,
+                "server": "node.example.test",
+                "port": 20036
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "http/tls": {
+            "node_type": "http",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ0bHMiOnRydWUsInNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"aeb284be74cda6a6c0787c054538625c5878465e\""
+            },
+            "clash": {
+                "name": "http/tls",
+                "type": "http",
+                "username": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "tls": true,
+                "sni": "node.example.test",
+                "server": "node.example.test",
+                "port": 20037
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "socks5/plain": {
+            "node_type": "socks5",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJzZXJ2ZXJfbmFtZSI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"f174bd7fba91186455d20b56f5e155fed64aafbc\""
+            },
+            "clash": {
+                "name": "socks5/plain",
+                "type": "socks5",
+                "username": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "server": "node.example.test",
+                "port": 20038
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "socks5/tls": {
+            "node_type": "socks5",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ0bHMiOnRydWUsInNlcnZlcl9uYW1lIjoibm9kZS5leGFtcGxlLnRlc3QiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"aeb284be74cda6a6c0787c054538625c5878465e\""
+            },
+            "clash": {
+                "name": "socks5/tls",
+                "type": "socks5",
+                "username": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "tls": true,
+                "udp": true,
+                "server": "node.example.test",
+                "port": 20039
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "mieru/tcp": {
+            "node_type": "mieru",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ0cmFuc3BvcnQiOiJUQ1AiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"de00eef3d74c5c54627ad30838e4752d89c2d9a3\""
+            },
+            "clash": {
+                "name": "mieru/tcp",
+                "type": "mieru",
+                "transport": "TCP",
+                "udp": true,
+                "username": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "server": "node.example.test",
+                "port": 20040
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "mieru/udp": {
+            "node_type": "mieru",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ0cmFuc3BvcnQiOiJVRFAiLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"0017672acb4bdb95b244bb8d34c9d41b10a7a00c\""
+            },
+            "clash": {
+                "name": "mieru/udp",
+                "type": "mieru",
+                "transport": "UDP",
+                "udp": true,
+                "username": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "server": "node.example.test",
+                "port": 20041
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "shadowquic/default": {
+            "node_type": "shadowquic",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJzZXJ2ZXJfbmFtZSI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"f174bd7fba91186455d20b56f5e155fed64aafbc\""
+            },
+            "clash": {
+                "name": "shadowquic/default",
+                "type": "shadowquic",
+                "username": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "sni": "node.example.test",
+                "server": "node.example.test",
+                "port": 20042
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "shadowquic/udp-over-stream": {
+            "node_type": "shadowquic",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJzZXJ2ZXJfbmFtZSI6Im5vZGUuZXhhbXBsZS50ZXN0IiwiYmFzZV9jb25maWciOnsicHVzaF9pbnRlcnZhbCI6NjAsInB1bGxfaW50ZXJ2YWwiOjYwLCJub2RlX3JlcG9ydF9taW5fdHJhZmZpYyI6MCwiZGV2aWNlX29ubGluZV9taW5fdHJhZmZpYyI6MH19",
+                "content_type": "application/json",
+                "etag": "\"f174bd7fba91186455d20b56f5e155fed64aafbc\""
+            },
+            "clash": {
+                "name": "shadowquic/udp-over-stream",
+                "type": "shadowquic",
+                "username": "11111111-2222-3333-4444-555555555555",
+                "password": "11111111-2222-3333-4444-555555555555",
+                "sni": "node.example.test",
+                "udp-over-stream": true,
+                "server": "node.example.test",
+                "port": 20043
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "sudoku/default": {
+            "node_type": "sudoku",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJrZXkiOiIxYTE3ODZjMjUzM2U3ZDViNWIxMDE1ZDcxN2VhOGNlMDkxNjU4NThkZWM5MTMyN2M2NmJiOTU4ZGNiZDAwNTBhIiwiYWVhZF9tZXRob2QiOiJjaGFjaGEyMC1wb2x5MTMwNSIsInBhZGRpbmdfbWluIjoyLCJwYWRkaW5nX21heCI6NywidGFibGVfdHlwZSI6InByZWZlcl9hc2NpaSIsImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"837966d0d2c7ff1d28de1edf4859a5d49bb456b1\""
+            },
+            "clash": {
+                "name": "sudoku/default",
+                "type": "sudoku",
+                "key": "1d867d474bf7ecf30094f7e6f4664302b28708b594eb6665de696cdfc6fe0808fd90087b084790675a7c1df0228349dedfdd7cd857a6cb16885129ae04d2fc01",
+                "aead-method": "chacha20-poly1305",
+                "padding-min": 2,
+                "padding-max": 7,
+                "table-type": "prefer_ascii",
+                "server": "node.example.test",
+                "port": 20044
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "sudoku/http-mask": {
+            "node_type": "sudoku",
+            "node_id": 2,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJrZXkiOiIxYTE3ODZjMjUzM2U3ZDViNWIxMDE1ZDcxN2VhOGNlMDkxNjU4NThkZWM5MTMyN2M2NmJiOTU4ZGNiZDAwNTBhIiwiYWVhZF9tZXRob2QiOiJjaGFjaGEyMC1wb2x5MTMwNSIsInBhZGRpbmdfbWluIjoyLCJwYWRkaW5nX21heCI6NywidGFibGVfdHlwZSI6InByZWZlcl9hc2NpaSIsImh0dHBfbWFzayI6dHJ1ZSwiaHR0cF9tYXNrX21vZGUiOiJzdHJlYW0iLCJiYXNlX2NvbmZpZyI6eyJwdXNoX2ludGVydmFsIjo2MCwicHVsbF9pbnRlcnZhbCI6NjAsIm5vZGVfcmVwb3J0X21pbl90cmFmZmljIjowLCJkZXZpY2Vfb25saW5lX21pbl90cmFmZmljIjowfX0=",
+                "content_type": "application/json",
+                "etag": "\"1538a9d9b1c544f0daeeacb6dd1ae138cc736819\""
+            },
+            "clash": {
+                "name": "sudoku/http-mask",
+                "type": "sudoku",
+                "key": "1d867d474bf7ecf30094f7e6f4664302b28708b594eb6665de696cdfc6fe0808fd90087b084790675a7c1df0228349dedfdd7cd857a6cb16885129ae04d2fc01",
+                "aead-method": "chacha20-poly1305",
+                "padding-min": 2,
+                "padding-max": 7,
+                "table-type": "prefer_ascii",
+                "http-mask": true,
+                "http-mask-mode": "stream",
+                "server": "node.example.test",
+                "port": 20045
+            },
+            "singbox": null,
+            "link": "",
+            "users": {
+                "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
+                "content_type": "application/x-msgpack",
+                "etag": "\"bc358cc054e2d98ab6724d16643b87e24e0cf7c7\""
+            }
+        },
+        "snell/shadow-tls": {
+            "node_type": "snell",
+            "node_id": 1,
+            "config": {
+                "body": "eyJzZXJ2ZXJfcG9ydCI6MjQ0MywiaG9zdCI6Im5vZGUuZXhhbXBsZS50ZXN0IiwidXNlcm5hbWUiOiJ7e3V1aWR9fSIsInBhc3N3b3JkIjoie3t1dWlkfX0iLCJ2ZXJzaW9uIjo0LCJvYmZzX29wdHMiOnsibW9kZSI6InNoYWRvdy10bHMiLCJob3N0IjoiY292ZXIuZXhhbXBsZS50ZXN0IiwidmVyc2lvbiI6M30sImJhc2VfY29uZmlnIjp7InB1c2hfaW50ZXJ2YWwiOjYwLCJwdWxsX2ludGVydmFsIjo2MCwibm9kZV9yZXBvcnRfbWluX3RyYWZmaWMiOjAsImRldmljZV9vbmxpbmVfbWluX3RyYWZmaWMiOjB9fQ==",
+                "content_type": "application/json",
+                "etag": "\"59853896c1fb34487073b1cacc2ff1776fa6f43b\""
+            },
+            "clash": {
+                "name": "snell/shadow-tls",
+                "type": "snell",
+                "psk": "11111111-2222-3333-4444-555555555555",
+                "udp": true,
+                "version": 4,
+                "obfs-opts": {
+                    "mode": "shadow-tls",
+                    "version": 3,
+                    "host": "cover.example.test",
+                    "password": "11111111-2222-3333-4444-555555555555"
+                },
+                "server": "node.example.test",
+                "port": 20046
+            },
+            "singbox": null,
+            "link": "",
             "users": {
                 "body": "gaV1c2Vyc5GComlkAqR1dWlk2SQxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTU=",
                 "content_type": "application/x-msgpack",

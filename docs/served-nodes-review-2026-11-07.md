@@ -160,7 +160,8 @@ In Irboard:
   up on a node that does not answer. That is a client's own problem, not a
   node's: V2bX serves gRPC and does not dial it, and sing-box's own builds use
   the lite gRPC client.
-- The Hysteria2 core applies no per-user speed limit. The wizard places
-  Hysteria2 nodes on the sing core, which does.
+- The Hysteria2 core applied no per-user speed limit when this was written.
+  It does since the review of 2026-11-12
+  (`docs/billing-and-removal-review-2026-11-12.md`).
 - sing-box's own VLESS client fails Go's pointer checks in Vision, so the run
   with the release tags runs without the race detector.

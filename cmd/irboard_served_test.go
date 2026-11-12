@@ -96,6 +96,19 @@ var servedWithout = map[string][]string{
 	"singbox": {"vless/kcp", "vless/xhttp-reality", "vless/xhttp-tls-padding", "vless/tcp-reality-encryption", "vmess/kcp", "vmess/xhttp"},
 }
 
+// mihomoOnly are the node types only the Mihomo core serves and only Clash
+// Meta clients reach: sing-box has none of them as Irboard runs them, and
+// they have no share link Xray imports.
+var mihomoOnly = map[string]bool{"http": true, "socks5": true, "mieru": true, "shadowquic": true, "sudoku": true, "snell": true}
+
+// servedDatagramBound are the nodes whose UDP rides QUIC datagrams unsplit,
+// as ShadowQUIC's does unless the node sets UDP over streams: a QUIC-sized
+// packet does not fit one, and the client says so.
+var servedDatagramBound = map[string]string{"shadowquic/default": "DATAGRAM frame too large"}
+
+// servedNoUDP are the nodes that carry no UDP: an HTTP proxy has none.
+var servedNoUDP = map[string]bool{"http": true}
+
 type servedResponse struct {
 	Body        []byte `json:"body"`
 	ContentType string `json:"content_type"`
@@ -114,7 +127,8 @@ type servedNode struct {
 
 // servedRegistries keeps sing-box's registries from being built side by
 // side: built without QUIC, each build writes the same package variable, and
-// tests that run nodes in parallel build one for every node and client.
+// tests that run nodes in parallel build one for every node and client. An
+// Xray instance likewise sets the process's system dialer as it is built.
 var servedRegistries sync.Mutex
 
 // notInThisBuild is how sing-box refuses what needs a build tag.
@@ -154,7 +168,7 @@ func TestIrboardServedNodesOnEveryCore(t *testing.T) {
 					left = left || w == name
 				}
 				has := map[string]bool{"clash": n.Clash != nil, "singbox": n.Singbox != nil}[client]
-				if !left && !has {
+				if !left && !has && !(client == "singbox" && mihomoOnly[n.NodeType]) {
 					t.Errorf("Irboard gives %s clients nothing for this node", client)
 				}
 			}
@@ -180,7 +194,18 @@ func TestIrboardServedNodesOnEveryCore(t *testing.T) {
 						if err := runClash(t, mihomo, profile, echo); err != nil {
 							t.Errorf("mihomo, with the Clash Meta proxy: %v", err)
 						}
-						if err := runClash(t, mihomo, profile, udp[0].String(), "udp", udp[1].String()); err != nil {
+						err := runClash(t, mihomo, profile, udp[0].String(), "udp", udp[1].String())
+						if err != nil && servedNoUDP[n.NodeType] && strings.Contains(err.Error(), udpecho.ErrNoUDP.Error()) {
+							err = nil
+						}
+						if bound, ok := servedDatagramBound[name]; ok {
+							if err == nil {
+								t.Errorf("mihomo carried a QUIC-sized packet in a QUIC datagram: %s is no longer bound to one", name)
+							} else if strings.Contains(err.Error(), fmt.Sprintf("a %d-byte datagram: ", udpecho.QUICSized)+bound) {
+								err = nil
+							}
+						}
+						if err != nil {
 							t.Errorf("mihomo, with the Clash Meta proxy, UDP: %v", err)
 						}
 					}
@@ -228,6 +253,10 @@ var servedUDPKinds = []string{
 	"vless/tcp-tls", "vless/tcp-reality-vision", "vmess/tcp", "trojan/tcp",
 	"shadowsocks/aes-128-gcm", "shadowsocks/2022-blake3-aes-128-gcm",
 	"hysteria/v1", "hysteria2/plain", "tuic/bbr", "anytls/tls",
+	// The Mihomo core's own: SOCKS5's UDP association, Mieru's, ShadowQUIC's
+	// over datagrams and over streams, Sudoku's and Snell's UDP over TCP.
+	"socks5/plain", "mieru/tcp", "shadowquic/default", "shadowquic/udp-over-stream",
+	"sudoku/default", "snell/shadow-tls",
 }
 
 // TestIrboardServedNodesRefuseBlockedDatagrams applies a node's rules to each
@@ -451,8 +480,16 @@ func startServedNodeWith(t *testing.T, n servedNode, core string, cert servedCer
 		t.Fatal(err)
 	}
 	options := &conf.Options{}
-	raw := fmt.Sprintf(`{"Core":%q,"ListenIP":"127.0.0.1","CertConfig":{"CertMode":"file","CertDomain":%q,"CertFile":%q,"KeyFile":%q}}`,
-		core, servedHost, cert.file, cert.key)
+	extra := ""
+	switch n.NodeType {
+	case "shadowquic":
+		// Nothing answers there: only a stranger is handed to the JLS site.
+		extra = fmt.Sprintf(`,"MihomoOptions":{"JLSUpstream":{"Addr":"127.0.0.1:9","SNI":%q}}`, servedHost)
+	case "snell":
+		extra = fmt.Sprintf(`,"MihomoOptions":{"ShadowTLSHandshake":%q}`, servedSite(t))
+	}
+	raw := fmt.Sprintf(`{"Core":%q,"ListenIP":"127.0.0.1","CertConfig":{"CertMode":"file","CertDomain":%q,"CertFile":%q,"KeyFile":%q}%s}`,
+		core, servedHost, cert.file, cert.key, extra)
 	if err := options.UnmarshalJSON([]byte(raw)); err != nil {
 		t.Fatal(err)
 	}
@@ -666,6 +703,12 @@ func clashProfile(t *testing.T, proxy map[string]any, port int) string {
 	if _, ok := p["skip-cert-verify"]; ok || p["tls"] == true {
 		p["skip-cert-verify"] = true
 	}
+	// ShadowTLS verifies the certificate of the site it borrows.
+	if obfs, ok := p["obfs-opts"].(map[string]any); ok && obfs["mode"] == "shadow-tls" {
+		obfs = clone(obfs)
+		obfs["skip-cert-verify"] = true
+		p["obfs-opts"] = obfs
+	}
 	raw, err := json.Marshal(p)
 	if err != nil {
 		t.Fatal(err)
@@ -868,7 +911,10 @@ func xrayClient(link string, port int, pin string) (*xcore.Instance, error) {
 	if err != nil {
 		return nil, fmt.Errorf("client config: %w", err)
 	}
+	// An Xray instance sets the process's system dialer as it is built.
+	servedRegistries.Lock()
 	inst, err := xcore.New(pb)
+	servedRegistries.Unlock()
 	if err != nil {
 		return nil, err
 	}
