@@ -294,3 +294,73 @@ func TestHy2_NoLimiterDoesNotPanic(t *testing.T) {
 	l.TCPRequest(addr, "u1", "example.com:443")
 	l.UDPRequest(addr, "u1", 1, "example.com:443")
 }
+
+// What a user ran up since the node's last report is still reported once the
+// panel removes them. Their counter was deleted with them: up to a whole
+// report interval of traffic was never billed.
+func TestHy2_RemovedUsersTrafficIsStillReported(t *testing.T) {
+	r := newHyRig(t)
+	gone, stays := panel.UserInfo{Id: 7, Uuid: "u7"}, panel.UserInfo{Id: 8, Uuid: "u8"}
+	r.addNode(t, "A", gone, stays)
+	hook := r.h.node("A").TrafficLogger.(*HookServer)
+	hook.LogTraffic(gone.Uuid, 300, 700)
+	hook.LogTraffic(stays.Uuid, 1, 2)
+	if err := r.h.DelUsers([]panel.UserInfo{gone}, "A", r.infos["A"]); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.h.GetUserTrafficSlice("A", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byUID := map[int]panel.UserTraffic{}
+	for _, u := range got {
+		byUID[u.UID] = u
+	}
+	if len(got) != 2 || byUID[7].Upload != 300 || byUID[7].Download != 700 || byUID[8].Upload != 1 || byUID[8].Download != 2 {
+		t.Fatalf("after the removal the report is %+v, want UID 7 with 300/700 and UID 8 with 1/2", got)
+	}
+	if again, _ := r.h.GetUserTrafficSlice("A", true); len(again) != 0 {
+		t.Fatalf("reported %+v again", again)
+	}
+	// Added back, they are billed for what they use from then on.
+	if _, err := r.h.AddUsers(&vCore.AddUsersParams{Tag: "A", Users: []panel.UserInfo{gone}, NodeInfo: r.infos["A"]}); err != nil {
+		t.Fatal(err)
+	}
+	hook.LogTraffic(gone.Uuid, 5, 6)
+	if got, _ := r.h.GetUserTrafficSlice("A", true); len(got) != 1 || got[0].UID != 7 || got[0].Upload != 5 || got[0].Download != 6 {
+		t.Fatalf("once added back the report is %+v, want UID 7 with 5/6", got)
+	}
+}
+
+// The panel's speed limit holds a user on this core too. Hysteria logs each
+// chunk it copies before it writes it on, and this core let every one through
+// at once: a user's plan limit did nothing here. 1 Mbit/s is 125 kB/s after a
+// 64 KiB burst, so 256 KiB take a second and a half.
+func TestHy2_SpeedLimitHoldsTraffic(t *testing.T) {
+	r := newHyRig(t)
+	limited, free := panel.UserInfo{Id: 1, Uuid: "limited", SpeedLimit: 1}, panel.UserInfo{Id: 2, Uuid: "free"}
+	r.addNode(t, "A", limited, free)
+	hook := r.h.node("A").TrafficLogger.(*HookServer)
+	move := func(uuid string) time.Duration {
+		start := time.Now()
+		for i := 0; i < 4; i++ {
+			// An upload and a download share the user's allowance.
+			if !hook.LogTraffic(uuid, 32<<10, 0) || !hook.LogTraffic(uuid, 0, 32<<10) {
+				t.Fatal("a current user's traffic was refused")
+			}
+		}
+		return time.Since(start)
+	}
+	if took := move(free.Uuid); took > 500*time.Millisecond {
+		t.Fatalf("a user with no limit was held for %v", took)
+	}
+	if took := move(limited.Uuid); took < time.Second {
+		t.Fatalf("256 KiB at 1 Mbit/s took %v: the limit did not hold", took)
+	}
+	got, _ := r.h.GetUserTrafficSlice("A", true)
+	for _, u := range got {
+		if u.Upload != 128<<10 || u.Download != 128<<10 {
+			t.Fatalf("billed %+v, want 128 KiB each way for each user", got)
+		}
+	}
+}

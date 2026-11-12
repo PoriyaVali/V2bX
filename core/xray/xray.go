@@ -8,7 +8,6 @@ import (
 
 	"encoding/json/v2"
 
-	"github.com/PoriyaVali/V2bX/api/panel"
 	"github.com/PoriyaVali/V2bX/common/counter"
 	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
@@ -54,55 +53,25 @@ type Xray struct {
 type UserMap struct {
 	uidMap  map[string]int
 	mapLock sync.RWMutex
-	// departed holds, by node tag, the traffic counters of users removed
-	// from the node, each with the user it is billed to, until a report has
-	// taken what they hold.
+	// departed holds, by node tag, the counters of users removed from the
+	// node, until a report has taken what they hold.
 	departedMu sync.Mutex
-	departed   map[string][]departedUser
+	departed   map[string]*counter.Departed
 }
 
-type departedUser struct {
-	uid     int
-	traffic *counter.TrafficStorage
-}
-
-// keepDeparted keeps a removed user's counter for the node's next reports.
-func (m *UserMap) keepDeparted(tag string, uid int, traffic *counter.TrafficStorage) {
+// departedOf is the node's removed users' counters.
+func (m *UserMap) departedOf(tag string) *counter.Departed {
 	m.departedMu.Lock()
 	defer m.departedMu.Unlock()
 	if m.departed == nil {
-		m.departed = make(map[string][]departedUser)
+		m.departed = make(map[string]*counter.Departed)
 	}
-	m.departed[tag] = append(m.departed[tag], departedUser{uid: uid, traffic: traffic})
-}
-
-// departedTraffic is what the node's removed users ran up since its last
-// report. A report that resets the counters lets go of one it found empty:
-// the user's connections are closed with them, and nothing counts into it
-// any more.
-func (m *UserMap) departedTraffic(tag string, reset bool) []panel.UserTraffic {
-	m.departedMu.Lock()
-	defer m.departedMu.Unlock()
-	var out []panel.UserTraffic
-	kept := m.departed[tag][:0]
-	for _, d := range m.departed[tag] {
-		up, down := d.traffic.UpCounter.Load(), d.traffic.DownCounter.Load()
-		if reset {
-			up, down = d.traffic.UpCounter.Swap(0), d.traffic.DownCounter.Swap(0)
-		}
-		if up+down > 0 {
-			out = append(out, panel.UserTraffic{UID: d.uid, Upload: up, Download: down})
-		}
-		if !reset || up+down > 0 {
-			kept = append(kept, d)
-		}
+	d := m.departed[tag]
+	if d == nil {
+		d = &counter.Departed{}
+		m.departed[tag] = d
 	}
-	if len(kept) == 0 {
-		delete(m.departed, tag)
-	} else {
-		m.departed[tag] = kept
-	}
-	return out
+	return d
 }
 
 func New(c *conf.CoreConfig) (vCore.Core, error) {
