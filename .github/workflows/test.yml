@@ -135,6 +135,7 @@ jobs:
             github.com/sagernet/sing-quic/tuic \
             github.com/xtls/xray-core/proxy/shadowsocks_2022 \
             github.com/metacubex/sing/common/canceler
+          go test -race -count=3 -timeout 2m -tags "with_grpc" github.com/sagernet/sing-box/transport/v2raygrpc
           go test -race -count=3 -timeout 2m -tags "with_utls" github.com/wyx2685/sing-vmess/vless
           # The package's own dial test takes about 40 s under the race detector.
           go test -race -count=3 -timeout 2m github.com/xtls/xray-core/transport/internet/kcp -run '^TestReceivingWorkerReleaseDuringRead$'

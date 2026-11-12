@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/sagernet/sing-box/log"
@@ -278,11 +279,28 @@ func (b *Sing) DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo
 	// Closing an AnyTLS stream may wait for its FIN write. The old generation
 	// is already detached, so this cannot block another node's admission or
 	// close a connection registered after this user is re-added.
-	if n := b.closeRetired(tag, list); n > 0 {
-		log.Info("closed ", n, " live connection(s) for ", len(users), " removed user(s) on ", tag)
+	//
+	// Nor may it hold up the node: the caller applies the panel's user list,
+	// and waits here. A close that did not return (a gRPC stream's, until the
+	// transport learned to end one) kept the node from adding or removing
+	// anyone else for as long as that client stayed connected. Past the
+	// grace the closes finish on their own, with the accounting they join.
+	closed := make(chan int, 1)
+	go func() { closed <- b.closeRetired(tag, list) }()
+	select {
+	case n := <-closed:
+		if n > 0 {
+			log.Info("closed ", n, " live connection(s) for ", len(users), " removed user(s) on ", tag)
+		}
+	case <-time.After(removalGrace):
+		log.Warn("still closing ", len(list.closers), " connection(s) of ", len(users), " removed user(s) on ", tag, "; carrying on")
 	}
 	return nil
 }
+
+// removalGrace is how long removing users waits for their connections to
+// close before it carries on.
+const removalGrace = 3 * time.Second
 
 // GetDeviceTrafficSlice reports, per user id, the bytes each of that user's
 // source addresses moved this cycle - the data device_online_min_traffic needs
