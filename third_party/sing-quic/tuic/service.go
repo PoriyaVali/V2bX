@@ -55,9 +55,16 @@ type Service[U comparable] struct {
 	authTimeout       time.Duration
 	udpTimeout        time.Duration
 	handler           ServiceHandler
+	// sessions are the connections being served, so that a user's can be
+	// closed when the user is removed.
+	sessions sync.Map
 
 	quicListener io.Closer
 }
+
+// errUserRemoved closes the connection of a user taken off the service. It
+// is not an error to report.
+var errUserRemoved = E.Cause(net.ErrClosed, "user removed")
 
 type userTable[U comparable] struct {
 	identities map[[16]byte]U
@@ -108,6 +115,22 @@ func (s *Service[U]) UpdateUsers(userList []U, uuidList [][16]byte, passwordList
 	}
 	// Authentication reads both tables from one immutable generation.
 	s.users.Store(&userTable[U]{identities: userMap, passwords: passwordMap})
+	// A removed user's connection is closed, not left authenticated as
+	// someone the service no longer has. Each stream on it was refused, but
+	// the connection stayed up, so a client kept using it: once the user was
+	// added back, that client still got nothing until it reconnected of its
+	// own accord.
+	s.sessions.Range(func(key, _ any) bool {
+		session := key.(*serverSession[U])
+		select {
+		case <-session.authDone:
+			if _, current := passwordMap[session.authUser]; !current {
+				go session.closeWithError(errUserRemoved)
+			}
+		default:
+		}
+		return true
+	})
 }
 
 func (s *Service[U]) lookupUser(id [16]byte) (U, string, bool) {
@@ -181,6 +204,11 @@ func (s *Service[U]) handleConnection(connection *quic.Conn) {
 		authDone:   make(chan struct{}),
 		udpConnMap: make(map[uint16]*udpPacketConn),
 	}
+	s.sessions.Store(session, struct{}{})
+	go func() {
+		<-session.connDone
+		s.sessions.Delete(session)
+	}()
 	session.handle()
 }
 
@@ -276,6 +304,11 @@ func (s *serverSession[U]) handleUniStream(stream *quic.ReceiveStream) error {
 		}
 		s.authUser = user
 		close(s.authDone)
+		// Removed while this was being checked: UpdateUsers looked at the
+		// session before it was authenticated.
+		if current, _, found := s.lookupUser(userUUID); !found || current != user {
+			return errUserRemoved
+		}
 		return nil
 	case CommandPacket:
 		select {
