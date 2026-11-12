@@ -1,10 +1,20 @@
 package cmd
 
+// What a node bills, whom it cuts off and how fast it lets a user go, for
+// every node Irboard's admin forms make, on every V2bX core that serves it,
+// through every client Irboard configures.
+//
+// A node runs behind ledgerPanel, which answers V2bX as Irboard does, keeps
+// the traffic V2bX reports and changes its user list while the node runs. The
+// clients reach ledgerTargets through the node: servers that count the bytes
+// the node sends them and gets back, which is what the node should bill.
+
 import (
 	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,23 +28,25 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/PoriyaVali/V2bX/internal/tcpmeter"
 	"github.com/PoriyaVali/V2bX/internal/udpecho"
 	xnet "github.com/xtls/xray-core/common/net"
 	xcore "github.com/xtls/xray-core/core"
 )
 
-// ledgerOther is a second user of every node: no client uses it, so no
-// traffic may be billed to it.
 const (
-	ledgerUser  = 2
-	ledgerOther = 3
-	ledgerUUID3 = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 	// servedUUID is the subscriber of served.json: user 2, whose
 	// credentials every profile there carries.
 	servedUUID = "11111111-2222-3333-4444-555555555555"
+	ledgerUser = 2
+	// ledgerOther is a second user of every node. No client uses it, so
+	// nothing may be billed to it.
+	ledgerOther     = 3
+	ledgerOtherUUID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 )
 
 // ledgerPanel answers V2bX as Irboard does, and keeps what V2bX reports: the
@@ -49,45 +61,65 @@ type ledgerPanel struct {
 	served  string // the ETag of the user list V2bX last fetched
 	seen    map[string]bool
 	traffic map[int][2]int64
+	pushes  int // the traffic reports received, empty ones included
 }
 
-func newLedgerPanel(n servedNode, uids ...int) *ledgerPanel {
+func newLedgerPanel(n servedNode) *ledgerPanel {
 	p := &ledgerPanel{n: n, seen: map[string]bool{}, traffic: map[int][2]int64{}}
-	p.setUsers(uids...)
+	p.setUsers(0, true)
 	return p
 }
 
-// setUsers makes the panel's user list the users with these ids: 2 is the
-// subscriber the profiles are for, 3 a user no client uses.
-func (p *ledgerPanel) setUsers(uids ...int) {
-	var list struct {
-		Users []map[string]any `json:"users"`
+// setUsers makes the panel's user list ledgerOther and, with subscriber, the
+// subscriber the profiles are for, at a speed limit of mbps (0 for none), as
+// Irboard sends a plan's limit.
+func (p *ledgerPanel) setUsers(mbps int, subscriber bool) {
+	users := []map[string]any{{"id": ledgerOther, "uuid": ledgerOtherUUID, "speed_limit": 0, "device_limit": 0}}
+	if subscriber {
+		users = append(users, map[string]any{"id": ledgerUser, "uuid": servedUUID, "speed_limit": mbps, "device_limit": 0})
 	}
-	list.Users = []map[string]any{}
-	for _, uid := range uids {
-		uuid := ledgerUUID3
-		if uid == ledgerUser {
-			uuid = servedUUID
-		}
-		list.Users = append(list.Users, map[string]any{"id": uid, "uuid": uuid, "speed_limit": 0, "device_limit": 0})
-	}
-	body, _ := json.Marshal(list)
+	body, _ := json.Marshal(map[string]any{"users": users})
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.users = servedResponse{Body: body, ContentType: "application/json", ETag: fmt.Sprintf(`"users-%x"`, body)}
 }
 
-// fetched is whether V2bX has fetched the current user list.
-func (p *ledgerPanel) fetched() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.served == p.users.ETag
+// fetched waits for V2bX to fetch the panel's user list, and a second more
+// for it to apply it.
+func (p *ledgerPanel) fetched() {
+	for i := 0; i < 80; i++ {
+		p.mu.Lock()
+		done := p.served == p.users.ETag
+		p.mu.Unlock()
+		if done {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(time.Second)
 }
 
 func (p *ledgerPanel) billed(uid int) [2]int64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.traffic[uid]
+}
+
+// reported waits for V2bX's next traffic report, which it sends every push
+// interval, traffic or none.
+func (p *ledgerPanel) reported() {
+	p.mu.Lock()
+	start := p.pushes
+	p.mu.Unlock()
+	for i := 0; i < 200; i++ {
+		p.mu.Lock()
+		now := p.pushes
+		p.mu.Unlock()
+		if now != start {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
 
 func (p *ledgerPanel) handler(config []byte) http.Handler {
@@ -100,10 +132,6 @@ func (p *ledgerPanel) handler(config []byte) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/server/UniProxy/config":
-			if r.Header.Get("If-None-Match") == p.n.Config.ETag && p.n.Config.ETag != "" {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
 			_, _ = w.Write(p.config)
 		case "/api/v1/server/UniProxy/user":
 			p.mu.Lock()
@@ -137,6 +165,7 @@ func (p *ledgerPanel) handler(config []byte) http.Handler {
 					p.traffic[uid] = total
 				}
 			}
+			p.pushes++
 			p.mu.Unlock()
 			_, _ = w.Write([]byte(`{"data":true}`))
 		default:
@@ -145,8 +174,9 @@ func (p *ledgerPanel) handler(config []byte) http.Handler {
 	})
 }
 
-// ledgerConfig is the node's config reporting and polling every second.
-func ledgerConfig(t *testing.T, n servedNode) servedNode {
+// ledgerConfig is the node's config reporting every push seconds and polling
+// every second.
+func ledgerConfig(t *testing.T, n servedNode, push int) servedNode {
 	t.Helper()
 	var config map[string]any
 	if err := json.Unmarshal(n.Config.Body, &config); err != nil {
@@ -156,7 +186,7 @@ func ledgerConfig(t *testing.T, n servedNode) servedNode {
 	if base == nil {
 		base = map[string]any{}
 	}
-	base["push_interval"], base["pull_interval"] = 1, 1
+	base["push_interval"], base["pull_interval"] = push, 1
 	config["base_config"] = base
 	var err error
 	if n.Config.Body, err = json.Marshal(config); err != nil {
@@ -164,6 +194,86 @@ func ledgerConfig(t *testing.T, n servedNode) servedNode {
 	}
 	n.Config.ETag = ""
 	return n
+}
+
+// ledgerTargets are the servers a node's clients reach through it. They count
+// what the node sends them and what they send back, TLS records and all: the
+// upload and the download the node should bill.
+type ledgerTargets struct {
+	echo, tlsEcho, meter string
+	udp                  netip.AddrPort
+	up, down             atomic.Int64
+}
+
+type countedConn struct {
+	net.Conn
+	up, down *atomic.Int64
+}
+
+func (c countedConn) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	c.up.Add(int64(n))
+	return n, err
+}
+
+func (c countedConn) Write(b []byte) (int, error) {
+	n, err := c.Conn.Write(b)
+	c.down.Add(int64(n))
+	return n, err
+}
+
+func newLedgerTargets(t *testing.T, cert servedCert) *ledgerTargets {
+	t.Helper()
+	g := &ledgerTargets{}
+	serve := func(handle func(net.Conn)) string {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = ln.Close() })
+		go func() {
+			for {
+				c, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go handle(countedConn{c, &g.up, &g.down})
+			}
+		}()
+		return ln.Addr().String()
+	}
+	g.echo = serve(func(c net.Conn) { defer c.Close(); _, _ = io.Copy(c, c) })
+	pair, err := tls.LoadX509KeyPair(cert.file, cert.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.tlsEcho = serve(func(c net.Conn) {
+		inner := tls.Server(c, &tls.Config{Certificates: []tls.Certificate{pair}})
+		defer inner.Close()
+		_, _ = io.Copy(inner, inner)
+	})
+	g.meter = serve(func(c net.Conn) { _ = tcpmeter.Serve(c) })
+
+	pc, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pc.Close() })
+	go func() {
+		buf := make([]byte, 65535)
+		for {
+			n, from, err := pc.ReadFromUDPAddrPort(buf)
+			if err != nil {
+				return
+			}
+			g.up.Add(int64(n))
+			if w, err := pc.WriteToUDPAddrPort(buf[:n], from); err == nil {
+				g.down.Add(int64(w))
+			}
+		}
+	}()
+	g.udp = pc.LocalAddr().(*net.UDPAddr).AddrPort()
+	return g
 }
 
 // bulk writes size random bytes through conn and wants them all back. It
@@ -229,153 +339,242 @@ func (c cancelConnOnClose) Close() error {
 	return c.Conn.Close()
 }
 
-// ledgerClient is one client of a node: how it echoes over TCP and UDP, and
-// how it holds a connection open across a change on the node.
+// ledgerClient is one client of a node.
 type ledgerClient struct {
 	name string
-	// bulk echoes size bytes over a new TCP connection.
-	bulk func(size int) error
-	// datagrams echoes count datagrams of size bytes over a new UDP session,
-	// and returns the bytes sent and answered; nil when the profile has no UDP.
-	datagrams func(count, size int) (sent, received int64, err error)
+	// bulk echoes size bytes over a new TCP connection: as they are, or
+	// inside TLS to the target, as a browser's traffic is.
+	bulk func(size int, innerTLS bool) error
+	// upload and download move size bytes one way over a new connection, and
+	// return how long it took.
+	upload, download func(size int) (time.Duration, error)
+	// datagrams echoes count datagrams of size bytes over a new UDP session.
+	datagrams func(count, size int) error
 	// hold opens a TCP connection and echoes over it; still echoes over it
 	// again and closes it.
-	hold func() (still func() error, err error)
+	hold func(innerTLS bool) (still func() error, err error)
+}
+
+// innerTLS speaks TLS to the target over conn, trusting any certificate.
+func innerTLS(conn net.Conn) (net.Conn, error) {
+	inner := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+	done := make(chan error, 1)
+	go func() { done <- inner.Handshake() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("inner TLS: %w", err)
+		}
+		return inner, nil
+	case <-time.After(10 * time.Second):
+		conn.Close()
+		return nil, errors.New("inner TLS: no handshake in 10 seconds")
+	}
+}
+
+// connClient is a client that gives connections in this process.
+func connClient(name string, g *ledgerTargets, dial func(target string) (net.Conn, error), packets func() (net.PacketConn, error)) ledgerClient {
+	open := func(inner bool) (net.Conn, error) {
+		if !inner {
+			return dial(g.echo)
+		}
+		conn, err := dial(g.tlsEcho)
+		if err != nil {
+			return nil, err
+		}
+		return innerTLS(conn)
+	}
+	metered := func(move func(net.Conn, int) (time.Duration, error)) func(int) (time.Duration, error) {
+		return func(size int) (time.Duration, error) {
+			conn, err := dial(g.meter)
+			if err != nil {
+				return 0, err
+			}
+			defer conn.Close()
+			watchdog := time.AfterFunc(30*time.Second, func() { conn.Close() })
+			defer watchdog.Stop()
+			return move(conn, size)
+		}
+	}
+	return ledgerClient{
+		name: name,
+		bulk: func(size int, inner bool) error {
+			conn, err := open(inner)
+			if err != nil {
+				return err
+			}
+			defer conn.Close()
+			return bulk(conn, size)
+		},
+		upload:   metered(tcpmeter.Upload),
+		download: metered(tcpmeter.Download),
+		datagrams: func(count, size int) error {
+			pc, err := packets()
+			if err != nil {
+				return err
+			}
+			_, _, err = udpecho.Bulk(pc, g.udp, count, size)
+			return err
+		},
+		hold: func(inner bool) (func() error, error) {
+			conn, err := open(inner)
+			if err != nil {
+				return nil, err
+			}
+			if err := echoes(conn); err != nil {
+				conn.Close()
+				return nil, err
+			}
+			return func() error { defer conn.Close(); return echoes(conn) }, nil
+		},
+	}
+}
+
+// clashClient is the mihomo client, a program of its own.
+func clashClient(program, profile string, g *ledgerTargets) ledgerClient {
+	run := func(inner bool, args ...string) (string, error) {
+		cmd := exec.Command(program, append([]string{profile}, args...)...)
+		if inner {
+			cmd.Env = append(os.Environ(), "MIHOMOCLIENT_INNER_TLS=1")
+		}
+		out, err := cmd.CombinedOutput()
+		result := strings.TrimSpace(string(out))
+		if err != nil {
+			return result, errors.New(result)
+		}
+		return result, nil
+	}
+	target := func(inner bool) string {
+		if inner {
+			return g.tlsEcho
+		}
+		return g.echo
+	}
+	metered := func(mode string) func(int) (time.Duration, error) {
+		return func(size int) (time.Duration, error) {
+			out, err := run(false, g.meter, mode, strconv.Itoa(size))
+			if err != nil {
+				return 0, err
+			}
+			var ms int64
+			if _, err := fmt.Sscanf(out, "ok ms=%d", &ms); err != nil {
+				return 0, errors.New(out)
+			}
+			return time.Duration(ms) * time.Millisecond, nil
+		}
+	}
+	return ledgerClient{
+		name: "mihomo",
+		bulk: func(size int, inner bool) error {
+			_, err := run(inner, target(inner), "bulk", strconv.Itoa(size))
+			return err
+		},
+		upload:   metered("upload"),
+		download: metered("download"),
+		datagrams: func(count, size int) error {
+			out, err := run(false, g.udp.String(), "udp-bulk", strconv.Itoa(count), strconv.Itoa(size))
+			if err != nil && strings.Contains(out, udpecho.ErrNoUDP.Error()) {
+				return udpecho.ErrNoUDP
+			}
+			return err
+		},
+		hold: func(inner bool) (func() error, error) {
+			cmd := exec.Command(program, profile, target(inner), "hold")
+			if inner {
+				cmd.Env = append(os.Environ(), "MIHOMOCLIENT_INNER_TLS=1")
+			}
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				return nil, err
+			}
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				return nil, err
+			}
+			cmd.Stderr = cmd.Stdout
+			if err := cmd.Start(); err != nil {
+				return nil, err
+			}
+			lines := bufio.NewScanner(stdout)
+			if !lines.Scan() || lines.Text() != "ready" {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+				return nil, fmt.Errorf("mihomo did not hold a connection: %s", lines.Text())
+			}
+			return func() error {
+				defer func() { _ = cmd.Wait() }()
+				_, _ = io.WriteString(stdin, "\n")
+				if !lines.Scan() {
+					return errors.New("mihomo said nothing")
+				}
+				if lines.Text() != "open" {
+					return errors.New(lines.Text())
+				}
+				return nil
+			}, nil
+		},
+	}
 }
 
 // ledgerClients are the clients Irboard configures for the node, pointed at
 // port.
-func ledgerClients(t *testing.T, n servedNode, port int, cert servedCert, echo string, udp netip.AddrPort, mihomo string) []ledgerClient {
+func ledgerClients(t *testing.T, n servedNode, port int, cert servedCert, g *ledgerTargets, mihomo string) []ledgerClient {
 	t.Helper()
 	var clients []ledgerClient
 	if n.Clash != nil {
-		profile := clashProfile(t, n.Clash, port)
-		clients = append(clients, ledgerClient{
-			name: "mihomo",
-			bulk: func(size int) error { return runClash(t, mihomo, profile, echo, "bulk", strconv.Itoa(size)) },
-			datagrams: func(count, size int) (int64, int64, error) {
-				out, err := exec.Command(mihomo, profile, udp.String(), "udp-bulk", strconv.Itoa(count), strconv.Itoa(size)).CombinedOutput()
-				var sent, received int64
-				if _, scan := fmt.Sscanf(strings.TrimSpace(string(out)), "ok sent=%d received=%d", &sent, &received); scan != nil {
-					if strings.Contains(string(out), udpecho.ErrNoUDP.Error()) {
-						return 0, 0, udpecho.ErrNoUDP
-					}
-					return 0, 0, fmt.Errorf("%s (%v)", strings.TrimSpace(string(out)), err)
-				}
-				return sent, received, nil
-			},
-			hold: func() (func() error, error) { return holdClash(mihomo, profile, echo) },
-		})
+		clients = append(clients, clashClient(mihomo, clashProfile(t, n.Clash, port), g))
 	}
 	if n.Singbox != nil {
 		client, socks, err := singboxClient(t, n.Singbox, port)
 		if err != nil {
 			t.Logf("sing-box client: %v", err)
 		} else {
-			clients = append(clients, ledgerClient{
-				name: "sing-box",
-				bulk: func(size int) error {
-					conn, err := socksConnect(socks, echo)
-					if err != nil {
-						return err
-					}
-					defer conn.Close()
-					return bulk(conn, size)
-				},
-				datagrams: func(count, size int) (int64, int64, error) {
-					pc, err := singboxPacketConn(client, udp)
-					if err != nil {
-						return 0, 0, err
-					}
-					return udpecho.Bulk(pc, udp, count, size)
-				},
-				hold: func() (func() error, error) {
-					return holdConn(func() (net.Conn, error) { return socksConnect(socks, echo) })
-				},
-			})
+			clients = append(clients, connClient("sing-box", g,
+				func(target string) (net.Conn, error) { return socksConnect(socks, target) },
+				func() (net.PacketConn, error) { return singboxPacketConn(client, g.udp) }))
 		}
 	}
 	if inst, err := xrayClient(n.Link, port, cert.sha256); err == nil {
 		t.Cleanup(func() { _ = inst.Close() })
-		clients = append(clients, ledgerClient{
-			name: "xray",
-			bulk: func(size int) error {
-				conn, err := xrayConn(inst, echo)
-				if err != nil {
-					return err
-				}
-				defer conn.Close()
-				return bulk(conn, size)
-			},
-			datagrams: func(count, size int) (int64, int64, error) {
-				pc, err := xcore.DialUDP(context.Background(), inst)
-				if err != nil {
-					return 0, 0, err
-				}
-				return udpecho.Bulk(pc, udp, count, size)
-			},
-			hold: func() (func() error, error) {
-				return holdConn(func() (net.Conn, error) { return xrayConn(inst, echo) })
-			},
-		})
+		clients = append(clients, connClient("xray", g,
+			func(target string) (net.Conn, error) { return xrayConn(inst, target) },
+			func() (net.PacketConn, error) { return xcore.DialUDP(context.Background(), inst) }))
 	} else if !errors.Is(err, errNotAnXrayLink) {
 		t.Logf("xray client: %v", err)
 	}
 	return clients
 }
 
-// holdConn opens a connection with dial and echoes over it.
-func holdConn(dial func() (net.Conn, error)) (func() error, error) {
-	conn, err := dial()
-	if err != nil {
-		return nil, err
-	}
-	if err := echoes(conn); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	return func() error { defer conn.Close(); return echoes(conn) }, nil
-}
-
-// holdClash holds a connection open in a mihomo client.
-func holdClash(client, profile, echo string) (func() error, error) {
-	cmd := exec.Command(client, profile, echo, "hold")
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	cmd.Stderr = cmd.Stdout
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	lines := bufio.NewScanner(stdout)
-	if !lines.Scan() || lines.Text() != "ready" {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		return nil, fmt.Errorf("mihomo did not hold a connection: %s", lines.Text())
-	}
-	return func() error {
-		defer func() { _ = cmd.Wait() }()
-		_, _ = io.WriteString(stdin, "\n")
-		if !lines.Scan() {
-			return errors.New("mihomo said nothing")
+// settled waits for V2bX to report what the targets counted, for up to three
+// push intervals of push seconds, and returns what is billed to the
+// subscriber then.
+func (p *ledgerPanel) settled(g *ledgerTargets, push int) [2]int64 {
+	deadline := time.Now().Add(time.Duration(3*push)*time.Second + time.Second)
+	for time.Now().Before(deadline) {
+		if b := p.billed(ledgerUser); b[0] >= g.up.Load() && b[1] >= g.down.Load() {
+			break
 		}
-		if lines.Text() != "open" {
-			return errors.New(lines.Text())
-		}
-		return nil
-	}, nil
+		time.Sleep(100 * time.Millisecond)
+	}
+	return p.billed(ledgerUser)
 }
 
 // TestIrboardServedNodesLedgerSurvey reports, for every node on every core,
-// what V2bX bills for known TCP and UDP transfers through every client,
-// whether a user the panel drops is cut off and a user it adds back gets in
-// again, and the speed a user with a limit gets. Set LEDGER_SURVEY=1 to run
-// it; LEDGER_ONLY=NAME runs one node.
+// with every client:
+//
+//   - what V2bX bills for TCP, TCP carrying TLS, and UDP, against what the
+//     targets counted;
+//   - whether what a user ran up since the last report is still billed when
+//     the panel removes them;
+//   - whether connections held open across the removal still work, and
+//     whether new ones get in;
+//   - whether the user gets in again once the panel adds them back;
+//   - how long an upload and a download take once the user's plan gets a
+//     speed limit of 2 Mbit/s, under which 512 KiB takes 1.8 seconds.
+//
+// Set LEDGER_SURVEY=1 to run it; LEDGER_ONLY=NAME runs one node,
+// LEDGER_CORE=NAME one core, and LEDGER_PARALLEL=1 the nodes side by side.
 func TestIrboardServedNodesLedgerSurvey(t *testing.T) {
 	if os.Getenv("LEDGER_SURVEY") == "" {
 		t.Skip("LEDGER_SURVEY is not set")
@@ -398,18 +597,29 @@ func TestIrboardServedNodesLedgerSurvey(t *testing.T) {
 	}
 	sort.Strings(names)
 	cert := servedCertificate(t)
-	echo, udp := servedEcho(t), servedUDPEchoes(t)
 	mihomo := buildMihomoClient(t)
-	const size, datagrams, datagramSize = 64 << 10, 16, 1000
+	const (
+		push         = 3
+		size         = 64 << 10
+		datagrams    = 16
+		datagramSize = 1000
+		limited      = 512 << 10
+	)
 	for _, name := range names {
-		n := ledgerConfig(t, served.Nodes[name])
+		n := ledgerConfig(t, served.Nodes[name], push)
 		info := servedNodeInfo(t, n)
 		for _, core := range servedCores {
 			if validateSetupCore(core, info) != nil {
 				continue
 			}
+			if only := os.Getenv("LEDGER_CORE"); only != "" && only != core {
+				continue
+			}
 			t.Run(name+"/"+core, func(t *testing.T) {
-				p := newLedgerPanel(n, ledgerUser, ledgerOther)
+				if os.Getenv("LEDGER_PARALLEL") != "" {
+					t.Parallel()
+				}
+				p := newLedgerPanel(n)
 				port, err := startServedNodeWith(t, n, core, cert, p.handler)
 				if notInThisBuild(err) {
 					t.Skip(err)
@@ -417,100 +627,86 @@ func TestIrboardServedNodesLedgerSurvey(t *testing.T) {
 				if err != nil {
 					t.Fatalf("the node did not start: %v", err)
 				}
-				clients := ledgerClients(t, n, port, cert, echo, udp[0], mihomo)
-				var up, down int64
+				g := newLedgerTargets(t, cert)
+				clients := ledgerClients(t, n, port, cert, g, mihomo)
 				var notes []string
-				for _, c := range clients {
-					if err := c.bulk(size); err != nil {
-						notes = append(notes, c.name+" tcp: "+err.Error())
-					} else {
-						up, down = up+size, down+size
-					}
-					sent, received, err := c.datagrams(datagrams, datagramSize)
-					up, down = up+sent, down+received
+				note := func(c ledgerClient, what string, err error) {
 					if err != nil && !errors.Is(err, udpecho.ErrNoUDP) {
-						notes = append(notes, c.name+" udp: "+err.Error())
+						notes = append(notes, c.name+" "+what+": "+err.Error())
 					}
 				}
-				waitBilled(p, up, down)
-				billed, other := p.billed(ledgerUser), p.billed(ledgerOther)
 
+				for _, c := range clients {
+					note(c, "tcp", c.bulk(size, false))
+					note(c, "tls", c.bulk(size, true))
+					note(c, "udp", c.datagrams(datagrams, datagramSize))
+				}
+				billed := p.settled(g, push)
+				first := fmt.Sprintf("up=%d/%d down=%d/%d", billed[0], g.up.Load(), billed[1], g.down.Load())
+
+				// Held connections, then traffic the node has not reported
+				// yet when the panel drops the user.
 				var holds []func() error
 				var held []string
 				for _, c := range clients {
-					if still, err := c.hold(); err == nil {
-						holds, held = append(holds, still), append(held, c.name)
-					} else {
-						notes = append(notes, c.name+" hold: "+err.Error())
+					for _, inner := range []bool{false, true} {
+						still, err := c.hold(inner)
+						if err != nil {
+							note(c, "hold", err)
+							continue
+						}
+						holds = append(holds, still)
+						held = append(held, map[bool]string{false: c.name, true: c.name + "+tls"}[inner])
 					}
 				}
-				p.setUsers(ledgerOther)
-				waitFetched(p)
+				p.settled(g, push)
+				p.reported()
+				if len(clients) > 0 {
+					note(clients[0], "tcp before the removal", clients[0].bulk(size, false))
+				}
+				p.setUsers(0, false)
+				p.fetched()
 				var stillOpen, letIn []string
 				for i, still := range holds {
-					if still() == nil {
+					if err := still(); err == nil {
 						stillOpen = append(stillOpen, held[i])
+					} else if os.Getenv("LEDGER_WHY") != "" {
+						t.Logf("%s's held connection: %v", held[i], err)
 					}
 				}
 				for _, c := range clients {
-					if c.bulk(1024) == nil {
+					if c.bulk(1024, false) == nil {
 						letIn = append(letIn, c.name)
 					}
 				}
-				p.setUsers(ledgerUser, ledgerOther)
-				waitFetched(p)
+				billed = p.settled(g, push)
+				late := fmt.Sprintf("up=%d/%d down=%d/%d", billed[0], g.up.Load(), billed[1], g.down.Load())
+
+				p.setUsers(0, true)
+				p.fetched()
 				var keptOut []string
 				for _, c := range clients {
-					if err := c.bulk(1024); err != nil {
+					if err := c.bulk(1024, false); err != nil {
 						keptOut = append(keptOut, c.name+": "+err.Error())
 					}
 				}
 
-				// 2 Mbit/s is 250 kB/s: 512 KiB each way takes two seconds.
-				var rate string
-				if len(clients) > 0 {
-					// A plan's limit changing for a user already on the node.
-					p.setUsersLimited(ledgerUser, 2)
-					waitFetched(p)
-					start := time.Now()
-					err := clients[0].bulk(512 << 10)
-					took := time.Since(start)
-					rate = fmt.Sprintf("%s 512KiB each way at 2Mbps took %v (%v)", clients[0].name, took.Round(10*time.Millisecond), err)
+				// A plan's limit changing for a user already on the node.
+				var speed []string
+				p.setUsers(2, true)
+				p.fetched()
+				for _, c := range clients {
+					up, err := c.upload(limited)
+					note(c, "limited upload", err)
+					down, err := c.download(limited)
+					note(c, "limited download", err)
+					speed = append(speed, fmt.Sprintf("%s up %.2fs down %.2fs", c.name, up.Seconds(), down.Seconds()))
 				}
-				t.Logf("LEDGER %-34s %-9s up=%d/%d down=%d/%d other=%v | after removal: still open %v, let in %v | re-added, kept out %v | %s | notes %v",
-					name, core, billed[0], up, billed[1], down, other, stillOpen, letIn, keptOut, rate, notes)
+				billed = p.settled(g, push)
+				other := p.billed(ledgerOther)
+				t.Logf("LEDGER %-34s %-9s | billed %s | after a removal %s | at the end up=%d/%d down=%d/%d other=%v | removed: still open %v, let in %v | re-added: kept out %v | 512KiB at 2Mbps: %s | notes %v",
+					name, core, first, late, billed[0], g.up.Load(), billed[1], g.down.Load(), other, stillOpen, letIn, keptOut, strings.Join(speed, "; "), notes)
 			})
 		}
 	}
-}
-
-// setUsersLimited makes the subscriber the only user, with a speed limit in
-// Mbit/s, as Irboard sends a plan's speed limit.
-func (p *ledgerPanel) setUsersLimited(uid, mbps int) {
-	body, _ := json.Marshal(map[string]any{"users": []any{map[string]any{"id": uid, "uuid": servedUUID, "speed_limit": mbps, "device_limit": 0}}})
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.users = servedResponse{Body: body, ContentType: "application/json", ETag: fmt.Sprintf(`"users-%x"`, body)}
-}
-
-// waitBilled waits for V2bX to report at least up and down for the
-// subscriber, and a second more for a report still on its way.
-func waitBilled(p *ledgerPanel, up, down int64) {
-	deadline := time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) {
-		if b := p.billed(ledgerUser); b[0] >= up && b[1] >= down {
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	time.Sleep(1500 * time.Millisecond)
-}
-
-// waitFetched waits for V2bX to fetch the panel's user list, and a second
-// and a half more for it to apply it.
-func waitFetched(p *ledgerPanel) {
-	for i := 0; i < 50 && !p.fetched(); i++ {
-		time.Sleep(100 * time.Millisecond)
-	}
-	time.Sleep(1500 * time.Millisecond)
 }

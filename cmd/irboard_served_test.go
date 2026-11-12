@@ -411,6 +411,9 @@ func startServedNodeWith(t *testing.T, n servedNode, core string, cert servedCer
 	case "xray":
 		cc.XrayConfig = conf.NewXrayConfig()
 		cc.XrayConfig.LogConfig.Level = "none"
+		if os.Getenv("SERVED_XRAY_LOG") != "" {
+			cc.XrayConfig.LogConfig.Level = "debug"
+		}
 		cc.XrayConfig.AllowPrivateDestinations = true
 	case "sing":
 		cc.SingConfig = conf.NewSingConfig()
