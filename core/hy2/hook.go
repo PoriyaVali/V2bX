@@ -25,6 +25,8 @@ type HookServer struct {
 	// the handshake, so without this a removed user kept an open connection
 	// for as long as they cared to.
 	auth atomic.Pointer[V2bX]
+	// departed keeps what removed users ran up since the last report.
+	departed counter.Departed
 }
 
 func (h *HookServer) TraceStream(stream server.HyStream, stats *server.StreamStats) {
@@ -60,6 +62,11 @@ func (h *HookServer) LogTraffic(id string, tx, rx uint64) (ok bool) {
 	tc := c.(*counter.TrafficCounter)
 	tc.Rx(id, int(rx))
 	tc.Tx(id, int(tx))
+	// The user's speed limit, which this core did not apply at all. Hysteria
+	// logs each chunk of a stream before it writes it on, and each datagram
+	// before it relays it, so the wait here is the limit. Uploads and
+	// downloads share the user's bucket, as on the other cores.
+	limiterinfo.RateLimiter(format.UserTag(h.Tag, id)).Wait(int64(tx + rx))
 	return true
 }
 

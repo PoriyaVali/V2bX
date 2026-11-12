@@ -43,10 +43,18 @@ func (c *Xray) DelUsers(users []panel.UserInfo, tag string, _ *panel.NodeInfo) e
 		if err != nil {
 			return err
 		}
+		uid := c.users.uidMap[user]
 		delete(c.users.uidMap, user)
 		if v, ok := c.dispatcher.Counter.Load(tag); ok {
+			// What the user ran up since the last report is still theirs to
+			// be billed. The counter was deleted with them, so up to a whole
+			// report interval of traffic was never reported. It is kept for
+			// the next report, with the last bytes of the connections closed
+			// below, which count into the same counter.
 			tc := v.(*counter.TrafficCounter)
-			tc.Delete(user)
+			if s, ok := tc.Counters.LoadAndDelete(user); ok {
+				c.users.departedOf(tag).Keep(uid, s.(*counter.TrafficStorage))
+			}
 		}
 		if v, ok := c.dispatcher.LinkManagers.Load(user); ok {
 			lm := v.(*dispatcher.LinkManager)
@@ -87,12 +95,27 @@ func (x *Xray) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 			}
 			return true
 		})
-		if len(trafficSlice) == 0 {
-			return nil, nil
-		}
-		return trafficSlice, nil
 	}
-	return nil, nil
+	// Removed users, whatever the node's reporting threshold: they will not
+	// add to what they ran up. One who was added back is reported once.
+	for _, d := range x.users.departedOf(tag).Take(reset) {
+		merged := false
+		for i := range trafficSlice {
+			if trafficSlice[i].UID == d.UID {
+				trafficSlice[i].Upload += d.Upload
+				trafficSlice[i].Download += d.Download
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			trafficSlice = append(trafficSlice, panel.UserTraffic{UID: d.UID, Upload: d.Upload, Download: d.Download})
+		}
+	}
+	if len(trafficSlice) == 0 {
+		return nil, nil
+	}
+	return trafficSlice, nil
 }
 
 func (c *Xray) AddUsers(p *vCore.AddUsersParams) (added int, err error) {

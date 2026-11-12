@@ -2,12 +2,14 @@ package xray
 
 import (
 	"fmt"
+	"github.com/PoriyaVali/V2bX/common/smartdns"
 	"os"
 	"strings"
 	"sync"
 
 	"encoding/json/v2"
 
+	"github.com/PoriyaVali/V2bX/common/counter"
 	"github.com/PoriyaVali/V2bX/common/decoy"
 	"github.com/PoriyaVali/V2bX/conf"
 	vCore "github.com/PoriyaVali/V2bX/core"
@@ -52,6 +54,25 @@ type Xray struct {
 type UserMap struct {
 	uidMap  map[string]int
 	mapLock sync.RWMutex
+	// departed holds, by node tag, the counters of users removed from the
+	// node, until a report has taken what they hold.
+	departedMu sync.Mutex
+	departed   map[string]*counter.Departed
+}
+
+// departedOf is the node's removed users' counters.
+func (m *UserMap) departedOf(tag string) *counter.Departed {
+	m.departedMu.Lock()
+	defer m.departedMu.Unlock()
+	if m.departed == nil {
+		m.departed = make(map[string]*counter.Departed)
+	}
+	d := m.departed[tag]
+	if d == nil {
+		d = &counter.Departed{}
+		m.departed[tag] = d
+	}
+	return d
 }
 
 func New(c *conf.CoreConfig) (vCore.Core, error) {
@@ -146,6 +167,15 @@ func getCore(c *conf.XrayConfig) (server *core.Instance, err error) {
 			return nil, fmt.Errorf("decode xray DNS config: %w", err)
 		}
 		os.Setenv("XRAY_DNS_PATH", c.DnsConfigPath)
+	} else if fwd := smartdns.Active(); fwd != nil {
+		// No DNS config of the operator's: where Xray resolves a name itself
+		// it asks V2bX's forwarder, not the machine's resolvers over UDP.
+		// "+local": asked directly, not through the node's outbound, which
+		// refuses loopback destinations.
+		raw := fmt.Sprintf(`{"servers":["tcp+local://%s"]}`, fwd.Addr().String())
+		if err := json.Unmarshal([]byte(raw), coreDnsConfig); err != nil {
+			return nil, fmt.Errorf("point xray DNS at the forwarder: %w", err)
+		}
 	}
 	dnsConfig, err := coreDnsConfig.Build()
 	if err != nil {

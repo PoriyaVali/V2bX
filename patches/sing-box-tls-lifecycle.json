@@ -6,7 +6,7 @@
   "module_sum": "h1:9fqgzsOwlTtDQ83kSbtcdSNHkctXqOjBpzgWUHOxEiM=",
   "go_mod_sum": "h1:3QuzuhcfVrYNDkKPuPsMd/goaOGSTEUyDBbFlBaGx48=",
   "patch": "sing-box-tls-lifecycle.patch",
-  "patch_sha256": "7b1411c5e36e23160d17f7ac65ea5ccefba27fb05e631dbc61aeb6f8536c7141",
+  "patch_sha256": "26a2d41a30992f6e4df959597f52fd50f5993f71ce5863685c6668abc3567952",
   "files": [
     {
       "path": "common/tls/std_server.go",
@@ -52,6 +52,16 @@
       "path": "transport/v2rayhttpupgrade/server_buffered_test.go",
       "base_sha256": null,
       "patched_sha256": "3f0bf66c7c177c10ea00f74df92eaada0c3e7a3a2aa0fec66e095150fe333c0d"
+    },
+    {
+      "path": "transport/v2raygrpc/server.go",
+      "base_sha256": "56c006e3543faca3a5fc597ec0de1b107e366b7cc797e03c0440c2401772238e",
+      "patched_sha256": "b1c818c4615eb5970d9151abdf455576abe280d30d553fdeda169db50a78ee0b"
+    },
+    {
+      "path": "transport/v2raygrpc/server_close_test.go",
+      "base_sha256": null,
+      "patched_sha256": "8e50bf14c2ac004a6c623da36730e0f76ea03d325e1020a8d408bc18c62813a3"
     }
   ]
 }

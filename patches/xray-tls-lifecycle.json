@@ -6,7 +6,7 @@
   "module_sum": "h1:Nf3LbPxI8F7SXIR93DuZfvn5pUz1fjF8R31bEN4t3xU=",
   "go_mod_sum": "h1:obbr2WDmr/cpQ/YLe1k0HTULnFXCO0rTWIeSrHoFk3o=",
   "patch": "xray-tls-lifecycle.patch",
-  "patch_sha256": "1ba37a47d5bb69ab8c381d6e2e970be2f4648378da553078417a7bf824903776",
+  "patch_sha256": "ac47b7e8f8ca7276242241ad84d86472074395d1f1cfbc7dcaad18b6959c9f64",
   "files": [
     {
       "path": "transport/internet/tls/config.go",
@@ -62,6 +62,16 @@
       "path": "transport/internet/grpc/encoding/closesend_test.go",
       "base_sha256": null,
       "patched_sha256": "5a58c10f3d2f5f76641de0e566e071c467a43ea5e2a4ff6b2e6b667fe5a55d04"
+    },
+    {
+      "path": "proxy/proxy.go",
+      "base_sha256": "a52ed3b7c16a8b1d0f63be3014454235232bca237dfda08f6a95e0244e3c0f1e",
+      "patched_sha256": "2129a07b172535b496db8ae55fef8f2cd2a2f1740107cd4f39dc36767d65cd49"
+    },
+    {
+      "path": "proxy/vision_filter_race_test.go",
+      "base_sha256": null,
+      "patched_sha256": "a3e5788218701b89a1dcc570d46ab3090f0b8f7b3330155ff2a10c310749d8a4"
     }
   ]
 }

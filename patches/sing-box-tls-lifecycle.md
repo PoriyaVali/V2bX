@@ -85,6 +85,20 @@ now hands them to the handler first, as `v2rayhttp`'s server does
 once in thirty runs under the race detector; over a real network, where the
 request and the header arrive together, it is the common case.
 
+## Closing a gRPC connection on the server
+
+`transport/v2raygrpc/server.go` (the gRPC transport of builds with `with_grpc`,
+which V2bX's are): a server-side connection's `Close` did nothing. A gRPC
+stream ends when its handler returns, and the handler waited only for the
+connection's own handler to finish. So closing a connection to end it, as V2bX
+does when the panel removes a user, left the stream open and its reads waiting
+for the client. The removed user kept the connection, and V2bX, which waits for
+a closed connection's reads to end before it settles the user's traffic,
+waited with it: the node applied no other change to its users until that
+client went away. A user removed and added back in that time could not
+connect. `Tun` now returns when the connection is closed
+(`server_close_test.go`).
+
 Use `scripts/prepare_tls_dependencies.py` to verify the complete pinned source
 and apply the patch into an isolated directory. Test and release workflows
 explicitly select the resulting alternate modfile. Standard `go.mod`/`go.sum`

@@ -494,10 +494,20 @@ func (h *HookServer) detachUserConns(inbound string, uuids []string) []io.Closer
 	return list
 }
 
+// closeDetachedConns closes the connections side by side: a close can wait,
+// for its stream's FIN or for a read to come back, and one that did held up
+// the closes after it, so the rest of a removed user's connections stayed
+// open behind it.
 func closeDetachedConns(list []io.Closer) int {
+	var wg sync.WaitGroup
 	for _, c := range list {
-		_ = c.Close()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = c.Close()
+		}()
 	}
+	wg.Wait()
 	return len(list)
 }
 

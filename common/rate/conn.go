@@ -106,9 +106,12 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	}
 	n, err = c.Conn.Write(b)
 	if n > 0 {
-		if waitErr := waitWithContext(c.ctx, c.limiter, int64(n)); waitErr != nil {
-			err = waitErr
-		}
+		// The bytes are written, whether or not the wait for them is cut
+		// short by Close. Reporting the write as failed then made callers
+		// that take a write as all or nothing drop it from the user's
+		// traffic: under a speed limit, the last chunks of a download were
+		// delivered and never billed. The next write is the one that fails.
+		_ = waitWithContext(c.ctx, c.limiter, int64(n))
 	}
 	return n, err
 }

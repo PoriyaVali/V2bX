@@ -89,3 +89,13 @@ gRPC connection called `CloseSend` while its writer could still be in `Send`,
 which a gRPC client stream does not allow, and the race detector reported it.
 Both are now serialized by a send lock; `Close` still cancels the stream first,
 so a `Send` held up by flow control returns (`closesend_test.go`).
+
+`proxy/proxy.go`: a Vision connection's reader and its writer each run
+`XtlsFilterTls` on what passes and read what it has learned (how many packets
+are left to look at, whether the stream is TLS, whether to switch to direct
+copy), on their own goroutines and with no lock. That is a data race on every
+Vision connection carrying TLS in both directions at once, which is nearly all
+of them; the served-node tests met it as soon as they sent TLS through a
+Vision node while reading. The state is now behind a lock, and the writer
+takes one consistent view of it for each write
+(`vision_filter_race_test.go`).

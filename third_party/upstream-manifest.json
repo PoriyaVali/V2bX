@@ -272,6 +272,7 @@
     "version": "v0.6.5",
     "directory": "sing-quic",
     "modified_files": [
+      "hysteria/service.go",
       "tuic/service.go"
     ],
     "files": [
@@ -563,7 +564,7 @@
       {
         "path": "hysteria/service.go",
         "upstream_sha256": "51fa3841b26468bd28de6251c85780c103f231786657443f8288dfdb64f605f8",
-        "patched_sha256": "51fa3841b26468bd28de6251c85780c103f231786657443f8288dfdb64f605f8"
+        "patched_sha256": "9c8bd199a4a921fa2707e40653b70a99bc52521d2f21f8041b915ae151d0b4dc"
       },
       {
         "path": "hysteria/service_packet.go",
@@ -688,7 +689,7 @@
       {
         "path": "tuic/service.go",
         "upstream_sha256": "61b709a63ff047de52463fe4402e3a4774ab562d38acd64578aca7782822baf1",
-        "patched_sha256": "a55c9b85c21a9e9aeff3af91d75c697e6fbd45ba6bbe13c8a714d9e2fb1ff613"
+        "patched_sha256": "ab13b5d120c32a86f8163ac9caa0c84a55649b7b7e6ef140750c6c4908eef87f"
       },
       {
         "path": "tuic/service_packet.go",

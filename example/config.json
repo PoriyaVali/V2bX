@@ -3,6 +3,9 @@
     "Level": "info",
     "Output": ""
   },
+  "DNS": {
+    "Mode": "auto"
+  },
   "Cores": [
     {
       "Type": "sing",

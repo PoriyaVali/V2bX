@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/quic-go"
@@ -58,12 +59,21 @@ type Service[U comparable] struct {
 	xplusPassword string
 	tlsConfig     aTLS.ServerConfig
 	quicConfig    *quic.Config
-	userMap       map[string]U
-	udpDisabled   bool
-	udpTimeout    time.Duration
-	handler       ServerHandler
-	quicListener  io.Closer
+	// userMap is replaced whole by UpdateUsers while connections
+	// authenticate against it.
+	userMap      atomic.Pointer[map[string]U]
+	udpDisabled  bool
+	udpTimeout   time.Duration
+	handler      ServerHandler
+	quicListener io.Closer
+	// sessions are the connections being served, so that a user's can be
+	// closed when the user is removed.
+	sessions sync.Map
 }
+
+// errUserRemoved closes the connection of a user taken off the service. It
+// is not an error to report.
+var errUserRemoved = E.Cause(net.ErrClosed, "user removed")
 
 func NewService[U comparable](options ServiceOptions) (*Service[U], error) {
 	quicConfig := &quic.Config{
@@ -110,7 +120,6 @@ func NewService[U comparable](options ServiceOptions) (*Service[U], error) {
 		xplusPassword: options.XPlusPassword,
 		tlsConfig:     options.TLSConfig,
 		quicConfig:    quicConfig,
-		userMap:       make(map[string]U),
 		handler:       options.Handler,
 		udpDisabled:   options.UDPDisabled,
 		udpTimeout:    options.UDPTimeout,
@@ -119,10 +128,37 @@ func NewService[U comparable](options ServiceOptions) (*Service[U], error) {
 
 func (s *Service[U]) UpdateUsers(userList []U, passwordList []string) {
 	userMap := make(map[string]U)
+	current := make(map[U]struct{}, len(userList))
 	for i, user := range userList {
 		userMap[passwordList[i]] = user
+		current[user] = struct{}{}
 	}
-	s.userMap = userMap
+	s.userMap.Store(&userMap)
+	// A removed user's connection is closed, not left authenticated as
+	// someone the service no longer has. Each stream on it was refused, but
+	// the connection stayed up, so a client kept using it: once the user was
+	// added back, that client still got nothing until it reconnected of its
+	// own accord.
+	s.sessions.Range(func(key, _ any) bool {
+		session := key.(*serverSession[U])
+		if session.authenticated.Load() {
+			if _, found := current[session.authUser]; !found {
+				go session.closeWithError0(ErrorCodeAuthError, errUserRemoved)
+			}
+		}
+		return true
+	})
+}
+
+// lookupUser is the user with this password, if the service has one.
+func (s *Service[U]) lookupUser(password string) (U, bool) {
+	var zero U
+	users := s.userMap.Load()
+	if users == nil {
+		return zero, false
+	}
+	user, found := (*users)[password]
+	return user, found
 }
 
 func (s *Service[U]) Start(conn net.PacketConn) error {
@@ -162,21 +198,33 @@ func (s *Service[U]) loopConnections(listener qtls.Listener) {
 			connDone:   make(chan struct{}),
 			udpConnMap: make(map[uint32]*udpPacketConn),
 		}
+		s.sessions.Store(session, struct{}{})
+		go func() {
+			// Until the session closes itself, or its connection ends without
+			// it: not every way out of a session closes it.
+			select {
+			case <-session.connDone:
+			case <-connection.Context().Done():
+			}
+			s.sessions.Delete(session)
+		}()
 		go session.handleConnection()
 	}
 }
 
 type serverSession[U comparable] struct {
 	*Service[U]
-	ctx          context.Context
-	quicConn     *quic.Conn
-	connAccess   sync.Mutex
-	connDone     chan struct{}
-	connErr      error
-	authUser     U
-	udpAccess    sync.RWMutex
-	udpConnMap   map[uint32]*udpPacketConn
-	udpSessionID uint32
+	ctx        context.Context
+	quicConn   *quic.Conn
+	connAccess sync.Mutex
+	connDone   chan struct{}
+	connErr    error
+	authUser   U
+	// authenticated is set once authUser is.
+	authenticated atomic.Bool
+	udpAccess     sync.RWMutex
+	udpConnMap    map[uint32]*udpPacketConn
+	udpSessionID  uint32
 }
 
 func (s *serverSession[U]) handleConnection() {
@@ -193,7 +241,7 @@ func (s *serverSession[U]) handleConnection() {
 		s.closeWithError0(ErrorCodeProtocolError, E.Cause(err, "read client hello"))
 		return
 	}
-	user, loaded := s.userMap[clientHello.Auth]
+	user, loaded := s.lookupUser(clientHello.Auth)
 	if !loaded {
 		WriteServerHello(controlStream, ServerHello{
 			OK:      false,
@@ -213,6 +261,13 @@ func (s *serverSession[U]) handleConnection() {
 	}
 	_ = controlStream.SetDeadline(time.Time{})
 	s.authUser = user
+	s.authenticated.Store(true)
+	// Removed while this was being checked: UpdateUsers looked at the
+	// session before it was authenticated.
+	if current, found := s.lookupUser(clientHello.Auth); !found || current != user {
+		s.closeWithError0(ErrorCodeAuthError, errUserRemoved)
+		return
+	}
 	s.quicConn.SetCongestionControl(hyCC.NewBrutalSender(uint64(math.Min(float64(s.sendBPS), float64(clientHello.RecvBPS))), s.brutalDebug, s.logger))
 	if !s.udpDisabled {
 		go s.loopMessages()

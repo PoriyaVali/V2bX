@@ -52,15 +52,21 @@ func (h *Hysteria2) DelUsers(users []panel.UserInfo, tag string, _ *panel.NodeIn
 		return fmt.Errorf("hysteria2: node %s not found", tag)
 	}
 	hook := n.TrafficLogger.(*HookServer)
+	uids := make([]int, len(users))
 	n.Auth.mutex.Lock()
-	for _, u := range users {
+	for i, u := range users {
+		uids[i] = n.Auth.usersMap[u.Uuid]
 		delete(n.Auth.usersMap, u.Uuid)
 	}
 	n.Auth.mutex.Unlock()
 	// After the user set, so a report racing this cannot recreate the entry.
-	for _, u := range users {
+	// What the user ran up since the last report is kept for the next one:
+	// deleting the counter lost up to a whole report interval of traffic.
+	for i, u := range users {
 		if v, ok := hook.Counter.Load(tag); ok {
-			v.(*counter.TrafficCounter).Delete(u.Uuid)
+			if s, ok := v.(*counter.TrafficCounter).Counters.LoadAndDelete(u.Uuid); ok {
+				hook.departed.Keep(uids[i], s.(*counter.TrafficStorage))
+			}
 		}
 	}
 	return nil
@@ -74,12 +80,17 @@ func (h *Hysteria2) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTra
 		return nil, nil
 	}
 	hook := n.TrafficLogger.(*HookServer)
+	var trafficSlice []panel.UserTraffic
+	// Removed users, whatever the node's reporting threshold: they will not
+	// add to what they ran up.
+	for _, d := range hook.departed.Take(reset) {
+		trafficSlice = append(trafficSlice, panel.UserTraffic{UID: d.UID, Upload: d.Upload, Download: d.Download})
+	}
 	v, ok := hook.Counter.Load(tag)
 	if !ok {
-		return nil, nil
+		return trafficSlice, nil
 	}
 	min := hook.reportMin.Load()
-	var trafficSlice []panel.UserTraffic
 	v.(*counter.TrafficCounter).Counters.Range(func(key, value interface{}) bool {
 		uuid := key.(string)
 		traffic := value.(*counter.TrafficStorage)
@@ -99,6 +110,14 @@ func (h *Hysteria2) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTra
 			// plain reset were wiped without ever being reported.
 			up = traffic.UpCounter.Swap(0)
 			down = traffic.DownCounter.Swap(0)
+		}
+		// One who was removed and added back is reported once.
+		for i := range trafficSlice {
+			if trafficSlice[i].UID == uid {
+				trafficSlice[i].Upload += up
+				trafficSlice[i].Download += down
+				return true
+			}
 		}
 		trafficSlice = append(trafficSlice, panel.UserTraffic{
 			UID:      uid,

@@ -16,6 +16,9 @@ var (
 type ManagedWriter struct {
 	writer  buf.Writer
 	manager *LinkManager
+	// end ends a link that closing its writer and interrupting its reader
+	// may not: one an inbound handed to DispatchLink. nil for a pipe.
+	end func()
 }
 
 func (w *ManagedWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
@@ -79,5 +82,8 @@ func (m *LinkManager) CloseAll() {
 	for w, r := range links {
 		common.Close(w)
 		common.Interrupt(r)
+		if w.end != nil {
+			w.end()
+		}
 	}
 }

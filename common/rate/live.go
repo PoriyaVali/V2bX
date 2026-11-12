@@ -70,6 +70,12 @@ func (l *LiveLimiter) WaitContext(ctx context.Context, count int64) error {
 	return nil
 }
 
+// Wait takes count from limiter, waiting for it as a rate-limited write does:
+// for no longer than ctx lasts.
+func Wait(ctx context.Context, limiter Waiter, count int64) error {
+	return waitWithContext(ctx, limiter, count)
+}
+
 func waitWithContext(ctx context.Context, limiter Waiter, count int64) error {
 	if ctx.Err() != nil {
 		return net.ErrClosed
