@@ -165,8 +165,10 @@ jobs:
       - name: Certificate lifecycle over TLS and QUIC
         env:
           GOEXPERIMENT: jsonv2
+        # ./cmd carries the served-node tests, which take about five minutes
+        # of that under the race detector with QUIC.
         run: |
-          go test -race -tags with_quic -count=1 -timeout 5m \
+          go test -race -tags with_quic -count=1 -timeout 15m \
             ./common/certmanager ./common/file ./common/tlscert ./common/decoy \
             ./conf ./api/panel ./node ./core/sing ./core/xray ./core/hy2 ./core/trusttunnel ./core/mihomo ./cmd
 
