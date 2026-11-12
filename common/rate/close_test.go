@@ -82,6 +82,23 @@ func TestRateConnCloseInterruptsLiveWait(t *testing.T) {
 			}
 			<-consulted
 			_ = conn.Close()
+			if direction == "write" {
+				// The bytes were written before the wait for them: the
+				// write succeeded, and the next one finds the connection
+				// closed.
+				select {
+				case err := <-result:
+					if err != nil {
+						t.Fatalf("a write that was delivered returned %v", err)
+					}
+				case <-time.After(300 * time.Millisecond):
+					t.Fatal("Close left the transfer blocked in its speed limiter")
+				}
+				if _, err := conn.Write(make([]byte, 1)); !errors.Is(err, net.ErrClosed) {
+					t.Fatalf("a write after Close returned %v, want net.ErrClosed", err)
+				}
+				return
+			}
 			requireStoppedWait(t, result, release)
 		})
 	}
