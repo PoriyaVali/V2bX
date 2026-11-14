@@ -556,7 +556,7 @@ Exact changed target paths (including prior patch and two moved test files):
 
 Resumed at owner's explicit continue. Original published bb5ccfc and prior
 12-file patch remain preserved; no commit/push/release/server/ACME issuance.
-Own isolated source D:/Drmobjay_apk/V2bX-trusttunnel-20261023. New scoped agents
+Own isolated source <local workspace>/V2bX-trusttunnel-20261023. New scoped agents
 completed reproducible dependency prep, shared manager review and dedicated
 Hysteria2 live TLS tests. Root completed Sing/Xray integration, validated
 certificate snapshots, path ownership guards and CI build graph selection.
@@ -665,7 +665,7 @@ Exact current changed target paths (including prior patch and moved tests):
 Objective: deeply audit and repair TrustTunnel configuration, bootstrap users
 and initial reload on V2bX v1.9.2. Base is exact dev_new/Latest
 bb5ccfca6b9d56c0269d6bafe9bdc639a6db0191, authored by Ahmad Charghani.
-Original D:/Drmobjay_apk/V2bX at 7199d4b and all shared app work preserved.
+Original <local workspace>/V2bX at 7199d4b and all shared app work preserved.
 This isolated branch is fix/trusttunnel-startup-20261023. Codex/root and scoped
 Codex agents own this patch; prior agent work is not claimed as ours.
 
